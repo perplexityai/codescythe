@@ -10,6 +10,7 @@ publish = false
 
 [lib]
 crate-type = ["cdylib"]
+path = "lib.rs"
 
 [dependencies]
 codescythe = { path = "../codescythe" }

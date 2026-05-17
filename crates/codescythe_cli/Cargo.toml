@@ -9,7 +9,7 @@ description = "Codescythe command-line interface"
 
 [[bin]]
 name = "codescythe"
-path = "src/main.rs"
+path = "main.rs"
 
 [dependencies]
 anyhow.workspace = true

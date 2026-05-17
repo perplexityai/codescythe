@@ -13,7 +13,7 @@ config_setting(
 
 rust_shared_library(
     name = "codescythe_napi",
-    srcs = ["src/lib.rs"],
+    srcs = ["lib.rs"],
     crate_name = "codescythe_napi",
     edition = "2024",
     proc_macro_deps = [

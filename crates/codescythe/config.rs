@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const SCHEMA: &str = include_str!("../../../codescythe.schema.json");
+const SCHEMA: &str = include_str!("../../codescythe.schema.json");
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]

@@ -8,7 +8,7 @@ load(
 
 rust_binary(
     name = "codescythe",
-    srcs = ["src/main.rs"],
+    srcs = ["main.rs"],
     crate_name = "codescythe",
     edition = "2024",
     visibility = ["//visibility:public"],

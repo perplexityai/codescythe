@@ -19,10 +19,10 @@ COMMON_DEPS = [
 rust_library(
     name = "codescythe",
     srcs = [
-        "src/analyze.rs",
-        "src/config.rs",
-        "src/fix.rs",
-        "src/lib.rs",
+        "analyze.rs",
+        "config.rs",
+        "fix.rs",
+        "lib.rs",
     ],
     compile_data = ["//:config_schema"],
     crate_name = "codescythe",
