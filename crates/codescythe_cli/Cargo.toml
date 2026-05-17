@@ -1,0 +1,18 @@
+[package]
+name = "codescythe_cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Codescythe command-line interface"
+
+[[bin]]
+name = "codescythe"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+codescythe = { path = "../codescythe" }
+serde_json.workspace = true

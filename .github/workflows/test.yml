@@ -1,0 +1,38 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bazel-test:
+    name: Bazel test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-24.04
+            config: linux_x64
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            config: linux_arm64
+          - name: darwin-arm64
+            runner: macos-15
+            config: darwin_arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: bazel test --config=${{ matrix.config }} //...
+
+      - name: Build native N-API package
+        run: bazel build --config=${{ matrix.config }} //crates/codescythe_napi:release_nodes

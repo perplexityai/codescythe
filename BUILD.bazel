@@ -1,0 +1,23 @@
+load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# gazelle:exclude target
+# gazelle:exclude node_modules
+# gazelle:exclude bazel-*
+# gazelle:map_kind ts_library ts_library //tools:ts.bzl
+
+gazelle_binary(
+    name = "gazelle_bin",
+    languages = ["@gazelle_ts//ts"],
+)
+
+gazelle(
+    name = "gazelle",
+    gazelle = ":gazelle_bin",
+)
+
+filegroup(
+    name = "config_schema",
+    srcs = ["codescythe.schema.json"],
+)

@@ -1,0 +1,14 @@
+package(default_visibility = ["//visibility:public"])
+
+platform(
+    name = "local_host",
+    parents = ["@platforms//host"],
+)
+
+platform(
+    name = "local_linux_gnu",
+    constraint_values = [
+        "@llvm//constraints/libc:gnu.2.28",
+    ],
+    parents = ["@platforms//host"],
+)

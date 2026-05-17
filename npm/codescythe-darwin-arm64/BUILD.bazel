@@ -1,0 +1,25 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "README.md",
+    "index.js",
+    "package.json",
+])
+
+genrule(
+    name = "native_node",
+    srcs = ["//crates/codescythe_napi:release_node_darwin_arm64"],
+    outs = ["codescythe.darwin-arm64.node"],
+    cmd = "cp $< $@",
+)
+
+filegroup(
+    name = "package",
+    srcs = [
+        "README.md",
+        "index.js",
+        "package.json",
+        ":native_node",
+    ],
+    visibility = ["//visibility:public"],
+)

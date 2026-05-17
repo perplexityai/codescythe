@@ -1,0 +1,27 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  npm/codescythe:
+    optionalDependencies:
+      '@perplexity/codescythe-darwin-arm64':
+        specifier: workspace:*
+        version: link:../codescythe-darwin-arm64
+      '@perplexity/codescythe-linux-arm64-gnu':
+        specifier: workspace:*
+        version: link:../codescythe-linux-arm64-gnu
+      '@perplexity/codescythe-linux-x64-gnu':
+        specifier: workspace:*
+        version: link:../codescythe-linux-x64-gnu
+
+  npm/codescythe-darwin-arm64: {}
+
+  npm/codescythe-linux-arm64-gnu: {}
+
+  npm/codescythe-linux-x64-gnu: {}

@@ -1,0 +1,29 @@
+{
+  "name": "@perplexity/codescythe",
+  "version": "0.1.0",
+  "description": "Focused TypeScript dead-code analysis and removal",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/perplexityai/codescythe.git"
+  },
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "bin": {
+    "codescythe": "./bin/codescythe.js"
+  },
+  "files": [
+    "bin",
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@perplexity/codescythe-darwin-arm64": "workspace:*",
+    "@perplexity/codescythe-linux-arm64-gnu": "workspace:*",
+    "@perplexity/codescythe-linux-x64-gnu": "workspace:*"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

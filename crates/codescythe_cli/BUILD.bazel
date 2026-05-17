@@ -1,0 +1,15 @@
+load("@rules_rs//rs:rust_binary.bzl", "rust_binary")
+
+rust_binary(
+    name = "codescythe",
+    srcs = ["src/main.rs"],
+    crate_name = "codescythe",
+    edition = "2024",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/codescythe",
+        "@crates//:anyhow",
+        "@crates//:clap",
+        "@crates//:serde_json",
+    ],
+)

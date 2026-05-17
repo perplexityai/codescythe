@@ -1,0 +1,25 @@
+[package]
+name = "codescythe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Focused TypeScript dead-code analysis and removal core"
+
+[dependencies]
+anyhow.workspace = true
+globset.workspace = true
+jsonschema.workspace = true
+oxc.workspace = true
+oxc_allocator.workspace = true
+oxc_ast.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

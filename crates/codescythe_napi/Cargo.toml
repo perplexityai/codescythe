@@ -1,0 +1,18 @@
+[package]
+name = "codescythe_napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Node-API bindings for Codescythe"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+codescythe = { path = "../codescythe" }
+napi.workspace = true
+napi-derive.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,16 @@
+package(default_visibility = ["//visibility:public"])
+
+platform(
+    name = "linux_x64_gnu",
+    parents = ["@rules_rs//rs/platforms:x86_64-unknown-linux-gnu"],
+)
+
+platform(
+    name = "linux_arm64_gnu",
+    parents = ["@rules_rs//rs/platforms:aarch64-unknown-linux-gnu"],
+)
+
+platform(
+    name = "darwin_arm64",
+    parents = ["@rules_rs//rs/platforms:aarch64-apple-darwin"],
+)

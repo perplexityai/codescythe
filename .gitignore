@@ -1,0 +1,7 @@
+/bazel-*
+/node_modules
+/target
+/.DS_Store
+/.idea
+/.vscode
+*.log

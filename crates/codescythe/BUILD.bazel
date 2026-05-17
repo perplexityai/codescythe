@@ -1,0 +1,43 @@
+load("@rules_rs//rs:rust_library.bzl", "rust_library")
+load("@rules_rs//rs:rust_test.bzl", "rust_test")
+
+COMMON_DEPS = [
+    "@crates//:anyhow",
+    "@crates//:globset",
+    "@crates//:jsonschema",
+    "@crates//:oxc",
+    "@crates//:oxc_allocator",
+    "@crates//:oxc_ast",
+    "@crates//:oxc_parser",
+    "@crates//:oxc_span",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:thiserror",
+    "@crates//:walkdir",
+]
+
+rust_library(
+    name = "codescythe",
+    srcs = [
+        "src/analyze.rs",
+        "src/config.rs",
+        "src/fix.rs",
+        "src/lib.rs",
+    ],
+    compile_data = ["//:config_schema"],
+    crate_name = "codescythe",
+    edition = "2024",
+    visibility = ["//visibility:public"],
+    deps = COMMON_DEPS,
+)
+
+rust_test(
+    name = "codescythe_test",
+    crate = ":codescythe",
+    data = [
+        "//tests/fixtures/knip-export-basics:fixtures",
+    ],
+    deps = COMMON_DEPS + [
+        "@crates//:tempfile",
+    ],
+)

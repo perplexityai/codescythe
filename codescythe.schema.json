@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/perplexityai/codescythe/main/codescythe.schema.json",
+  "title": "Codescythe configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "Optional JSON Schema URI used by editors.",
+      "type": "string"
+    },
+    "entry": {
+      "description": "Entry files or glob patterns. Exports in entry files are ignored unless includeEntryExports is true.",
+      "$ref": "#/$defs/stringOrStringArray"
+    },
+    "project": {
+      "description": "Project source files or glob patterns to analyze for unused files and exports.",
+      "$ref": "#/$defs/stringOrStringArray"
+    },
+    "ignore": {
+      "description": "Glob patterns to exclude from analysis.",
+      "$ref": "#/$defs/stringOrStringArray"
+    },
+    "includeEntryExports": {
+      "type": "boolean",
+      "default": false
+    },
+    "ignoreExportsUsedInFile": {
+      "description": "Do not report exported symbols that are referenced in their declaring file.",
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "$defs": {
+    "stringOrStringArray": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    }
+  }
+}

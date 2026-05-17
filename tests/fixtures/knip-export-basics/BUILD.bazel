@@ -1,0 +1,20 @@
+load("//tools:ts.bzl", "ts_library")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "fixtures",
+    srcs = glob(["**"]),
+)
+
+ts_library(
+    name = "knip-export-basics",
+    srcs = [
+        "dangling.ts",
+        "index.ts",
+        "my-module.ts",
+        "my-namespace.ts",
+        "types.ts",
+    ],
+    visibility = ["//visibility:public"],
+)

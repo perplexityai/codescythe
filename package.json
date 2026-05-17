@@ -1,0 +1,14 @@
+{
+  "name": "codescythe-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.33.4",
+  "scripts": {
+    "test": "bazel test //...",
+    "build:napi": "bazel build //crates/codescythe_napi:release_nodes",
+    "gazelle": "bazel run //:gazelle"
+  },
+  "devDependencies": {},
+  "workspaces": [
+    "npm/*"
+  ]
+}
