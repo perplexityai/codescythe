@@ -5,7 +5,7 @@ common --repo_env=BAZEL_NO_APPLE_CPP_TOOLCHAIN=1
 common --@llvm//config:experimental_stub_libgcc_s=True
 common:linux --host_platform=//platforms:local_linux_gnu
 
-build:linux_x64 --platforms=//crates/codescythe_napi/platforms:linux_x64_gnu
+build:linux_amd64 --platforms=//crates/codescythe_napi/platforms:linux_amd64_gnu
 build:linux_arm64 --platforms=//crates/codescythe_napi/platforms:linux_arm64_gnu
 build:darwin_arm64 --platforms=//crates/codescythe_napi/platforms:darwin_arm64
 build:linux --@rules_go//go/config:gc_linkopts=-extldflags,-no-pie

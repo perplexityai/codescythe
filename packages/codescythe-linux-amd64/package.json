@@ -1,11 +1,11 @@
 {
-  "name": "@perplexity/codescythe-linux-x64-gnu",
+  "name": "@perplexity/codescythe-linux-amd64",
   "version": "0.1.0",
-  "description": "Codescythe native binding for Linux x64 GNU",
+  "description": "Codescythe native binding for Linux amd64",
   "license": "Apache-2.0",
   "main": "./index.js",
   "files": [
-    "codescythe.linux-x64-gnu.node",
+    "codescythe.linux-amd64.node",
     "index.js",
     "README.md"
   ],

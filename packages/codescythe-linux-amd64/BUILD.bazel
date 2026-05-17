@@ -8,8 +8,8 @@ exports_files([
 
 genrule(
     name = "native_node",
-    srcs = ["//crates/codescythe_napi:release_node_linux_arm64"],
-    outs = ["codescythe.linux-arm64-gnu.node"],
+    srcs = ["//crates/codescythe_napi:release_node_linux_amd64"],
+    outs = ["codescythe.linux-amd64.node"],
     cmd = "cp $< $@",
 )
 

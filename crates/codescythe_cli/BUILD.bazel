@@ -1,4 +1,10 @@
 load("@rules_rs//rs:rust_binary.bzl", "rust_binary")
+load(
+    ":release_binary.bzl",
+    "release_binary_darwin_arm64",
+    "release_binary_linux_amd64",
+    "release_binary_linux_arm64",
+)
 
 rust_binary(
     name = "codescythe",
@@ -12,4 +18,38 @@ rust_binary(
         "@crates//:clap",
         "@crates//:serde_json",
     ],
+)
+
+release_binary_linux_amd64(
+    name = "release_binary_linux_amd64",
+    srcs = [":codescythe"],
+    outs = ["codescythe-linux-amd64"],
+    cmd = "cp $< $@ && chmod +x $@",
+    visibility = ["//visibility:public"],
+)
+
+release_binary_linux_arm64(
+    name = "release_binary_linux_arm64",
+    srcs = [":codescythe"],
+    outs = ["codescythe-linux-arm64"],
+    cmd = "cp $< $@ && chmod +x $@",
+    visibility = ["//visibility:public"],
+)
+
+release_binary_darwin_arm64(
+    name = "release_binary_darwin_arm64",
+    srcs = [":codescythe"],
+    outs = ["codescythe-darwin-arm64"],
+    cmd = "cp $< $@ && chmod +x $@",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "release_binaries",
+    srcs = [
+        ":release_binary_darwin_arm64",
+        ":release_binary_linux_amd64",
+        ":release_binary_linux_arm64",
+    ],
+    visibility = ["//visibility:public"],
 )

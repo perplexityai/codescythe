@@ -1,7 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
 platform(
-    name = "linux_x64_gnu",
+    name = "linux_amd64_gnu",
     parents = ["@rules_rs//rs/platforms:x86_64-unknown-linux-gnu"],
 )
 

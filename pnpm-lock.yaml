@@ -8,20 +8,20 @@ importers:
 
   .: {}
 
-  npm/codescythe:
+  packages/codescythe:
     optionalDependencies:
       '@perplexity/codescythe-darwin-arm64':
         specifier: workspace:*
         version: link:../codescythe-darwin-arm64
-      '@perplexity/codescythe-linux-arm64-gnu':
+      '@perplexity/codescythe-linux-amd64':
         specifier: workspace:*
-        version: link:../codescythe-linux-arm64-gnu
-      '@perplexity/codescythe-linux-x64-gnu':
+        version: link:../codescythe-linux-amd64
+      '@perplexity/codescythe-linux-arm64':
         specifier: workspace:*
-        version: link:../codescythe-linux-x64-gnu
+        version: link:../codescythe-linux-arm64
 
-  npm/codescythe-darwin-arm64: {}
+  packages/codescythe-darwin-arm64: {}
 
-  npm/codescythe-linux-arm64-gnu: {}
+  packages/codescythe-linux-amd64: {}
 
-  npm/codescythe-linux-x64-gnu: {}
+  packages/codescythe-linux-arm64: {}

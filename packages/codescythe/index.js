@@ -23,10 +23,10 @@ function requireNative() {
 
 function nativePackageName() {
   if (process.platform === 'linux' && process.arch === 'x64') {
-    return '@perplexity/codescythe-linux-x64-gnu';
+    return '@perplexity/codescythe-linux-amd64';
   }
   if (process.platform === 'linux' && process.arch === 'arm64') {
-    return '@perplexity/codescythe-linux-arm64-gnu';
+    return '@perplexity/codescythe-linux-arm64';
   }
   if (process.platform === 'darwin' && process.arch === 'arm64') {
     return '@perplexity/codescythe-darwin-arm64';

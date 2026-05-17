@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { analyze, fix } = require('..');
+const { analyze, fix } = require('@perplexity/codescythe');
 
 const args = process.argv.slice(2);
 const options = {};

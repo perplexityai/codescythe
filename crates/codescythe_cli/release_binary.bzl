@@ -18,7 +18,7 @@ def _llvm_toolchains(target):
         for host in _HOSTS
     ]
 
-def _release_node(platform, llvm_target):
+def _release_binary(platform, llvm_target):
     return with_cfg(
         native.genrule,
     ).set(
@@ -38,17 +38,17 @@ def _release_node(platform, llvm_target):
         True,
     ).build()
 
-release_node_linux_amd64, _release_node_linux_amd64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:linux_amd64_gnu",
+release_binary_darwin_arm64, _release_binary_darwin_arm64_internal = _release_binary(
+    "//crates/codescythe_cli/platforms:darwin_arm64",
+    "macos_aarch64",
+)
+
+release_binary_linux_amd64, _release_binary_linux_amd64_internal = _release_binary(
+    "//crates/codescythe_cli/platforms:linux_amd64_musl",
     "linux_x86_64",
 )
 
-release_node_linux_arm64, _release_node_linux_arm64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:linux_arm64_gnu",
+release_binary_linux_arm64, _release_binary_linux_arm64_internal = _release_binary(
+    "//crates/codescythe_cli/platforms:linux_arm64_musl",
     "linux_aarch64",
-)
-
-release_node_darwin_arm64, _release_node_darwin_arm64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:darwin_arm64",
-    "macos_aarch64",
 )
