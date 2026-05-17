@@ -1,8 +1,10 @@
+load("//tools:ts.bzl", "ts_library")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
     "README.md",
-    "index.js",
+    "index.ts",
     "package.json",
 ])
 
@@ -17,9 +19,15 @@ filegroup(
     name = "package",
     srcs = [
         "README.md",
-        "index.js",
+        "index.ts",
         "package.json",
         ":native_node",
     ],
+    visibility = ["//visibility:public"],
+)
+
+ts_library(
+    name = "codescythe-linux-amd64",
+    srcs = ["index.ts"],
     visibility = ["//visibility:public"],
 )

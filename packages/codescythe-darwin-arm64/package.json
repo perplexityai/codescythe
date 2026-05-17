@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "description": "Codescythe native binding for Darwin arm64",
   "license": "Apache-2.0",
-  "main": "./index.js",
+  "main": "./index.ts",
   "files": [
     "codescythe.darwin-arm64.node",
-    "index.js",
+    "index.ts",
     "README.md"
   ],
   "os": [

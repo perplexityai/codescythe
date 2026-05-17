@@ -1,4 +1,3 @@
 exports_files([
-    "smoke_napi_package.js",
     "ts.bzl",
 ])

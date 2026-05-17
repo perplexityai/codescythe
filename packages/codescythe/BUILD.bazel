@@ -2,27 +2,40 @@ load("//tools:ts.bzl", "ts_library")
 
 package(default_visibility = ["//visibility:public"])
 
+# gazelle:exclude npm_smoke.ts
+# gazelle:exclude bin
+
 exports_files([
     "README.md",
     "index.d.ts",
-    "index.js",
+    "index.ts",
     "package.json",
-    "bin/codescythe.js",
+    "bin/codescythe.ts",
 ])
 
 ts_library(
     name = "codescythe",
-    srcs = ["index.d.ts"],
+    srcs = [
+        "index.d.ts",
+        "index.ts",
+    ],
     visibility = ["//visibility:public"],
+)
+
+# keep
+ts_library(
+    name = "npm_tests",
+    testonly = True,
+    srcs = ["npm_smoke.ts"],
 )
 
 filegroup(
     name = "package",
     srcs = [
         "README.md",
-        "bin/codescythe.js",
+        "bin/codescythe.ts",
         "index.d.ts",
-        "index.js",
+        "index.ts",
         "package.json",
     ],
     visibility = ["//visibility:public"],

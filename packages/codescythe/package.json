@@ -7,14 +7,14 @@
     "type": "git",
     "url": "git+https://github.com/perplexityai/codescythe.git"
   },
-  "main": "./index.js",
+  "main": "./index.ts",
   "types": "./index.d.ts",
   "bin": {
-    "codescythe": "./bin/codescythe.js"
+    "codescythe": "./bin/codescythe.ts"
   },
   "files": [
     "bin",
-    "index.js",
+    "index.ts",
     "index.d.ts",
     "README.md"
   ],
@@ -24,6 +24,6 @@
     "@perplexity/codescythe-linux-arm64": "workspace:*"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=22.18.0"
   }
 }

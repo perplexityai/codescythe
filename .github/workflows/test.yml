@@ -51,7 +51,7 @@ jobs:
             mkdir -p "$out"
             cp "packages/$pkg/README.md" "$out/"
             cp "packages/$pkg/index.d.ts" "$out/"
-            cp "packages/$pkg/index.js" "$out/"
+            cp "packages/$pkg/index.ts" "$out/"
             cp "packages/$pkg/package.json" "$out/"
             cp -R "packages/$pkg/bin" "$out/"
           }
@@ -65,7 +65,7 @@ jobs:
 
             mkdir -p "$out"
             cp "packages/$pkg/README.md" "$out/"
-            cp "packages/$pkg/index.js" "$out/"
+            cp "packages/$pkg/index.ts" "$out/"
             cp "packages/$pkg/package.json" "$out/"
 
             built_node="$(bazel cquery --output=files "$target" | tail -n 1)"
@@ -173,6 +173,12 @@ jobs:
         with:
           node-version: 22
 
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
+      - name: Install npm test dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Download loader package
         uses: actions/download-artifact@v4
         with:
@@ -192,7 +198,21 @@ jobs:
           path: smoke/bin
 
       - name: Smoke test package
-        run: node tools/smoke_napi_package.js smoke/codescythe smoke/${{ matrix.package }}
+        run: |
+          set -euo pipefail
+
+          CODESCYTHE_PACKAGE_DIR=smoke/codescythe \
+          CODESCYTHE_NATIVE_PACKAGE_DIR=smoke/${{ matrix.package }} \
+          pnpm test:npm
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            native_node="$(find "smoke/${{ matrix.package }}" -name '*.node' -print -quit)"
+            file "$native_node"
+            if strings "$native_node" | grep -q 'GLIBC_'; then
+              echo "$native_node unexpectedly references glibc symbols" >&2
+              exit 1
+            fi
+          fi
 
       - name: Smoke test static binary
         run: |

@@ -9,12 +9,15 @@
   },
   "scripts": {
     "test": "bazel test //...",
+    "test:npm": "node --experimental-transform-types ./node_modules/mocha/bin/mocha.js --extension ts packages/codescythe/npm_smoke.ts",
     "build:binary": "bazel build //crates/codescythe_cli:release_binaries",
     "build:napi": "bazel build //crates/codescythe_napi:release_nodes",
     "build:packages": "bazel build //packages/codescythe:package //packages/codescythe-darwin-arm64:package //packages/codescythe-linux-amd64:package //packages/codescythe-linux-arm64:package",
     "gazelle": "bazel run //:gazelle"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "mocha": "^11.0.0"
+  },
   "workspaces": [
     "packages/*"
   ]

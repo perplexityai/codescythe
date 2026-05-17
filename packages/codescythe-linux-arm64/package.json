@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "description": "Codescythe native binding for Linux arm64",
   "license": "Apache-2.0",
-  "main": "./index.js",
+  "main": "./index.ts",
   "files": [
     "codescythe.linux-arm64.node",
-    "index.js",
+    "index.ts",
     "README.md"
   ],
   "os": [
@@ -14,8 +14,5 @@
   ],
   "cpu": [
     "arm64"
-  ],
-  "libc": [
-    "glibc"
   ]
 }

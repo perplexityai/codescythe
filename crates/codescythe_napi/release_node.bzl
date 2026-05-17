@@ -39,12 +39,12 @@ def _release_node(platform, llvm_target):
     ).build()
 
 release_node_linux_amd64, _release_node_linux_amd64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:linux_amd64_gnu",
+    "//crates/codescythe_napi/platforms:linux_amd64_musl",
     "linux_x86_64",
 )
 
 release_node_linux_arm64, _release_node_linux_arm64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:linux_arm64_gnu",
+    "//crates/codescythe_napi/platforms:linux_arm64_musl",
     "linux_aarch64",
 )
 
