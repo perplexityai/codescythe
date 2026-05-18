@@ -1,7 +1,8 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    fs,
-    path::{Path, PathBuf},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    env, fs,
+    path::{Component, Path, PathBuf},
+    thread,
 };
 
 use anyhow::{Context, Result};
@@ -11,10 +12,19 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::{Parser, ParserReturn};
 use oxc_span::{GetSpan, SourceType, Span};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::CodescytheConfig;
+
+const PARSE_THREADS_ENV: &str = "CODESCYTHE_PARSE_THREADS";
+const RAYON_THREADS_ENV: &str = "RAYON_NUM_THREADS";
+
+type PathIndex = HashMap<String, usize>;
+type UsedFiles = HashSet<usize>;
+type UsedExports = HashMap<usize, HashSet<String>>;
+type UnresolvedImports = HashMap<String, HashSet<String>>;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AnalysisOptions {
@@ -81,26 +91,30 @@ pub fn analyze_path(
         .with_context(|| format!("failed to resolve {}", cwd.display()))?;
     let project_files = discover_project_files(&cwd, config)?;
     let entry_files = discover_entry_files(&cwd, config, &project_files)?;
-    let entry_set = entry_files.iter().cloned().collect::<BTreeSet<_>>();
+    let entry_set = entry_files.iter().cloned().collect::<HashSet<_>>();
 
-    let mut files = Vec::with_capacity(project_files.len());
-    for path in &project_files {
-        files.push(parse_file(&cwd, path)?);
-    }
+    let files = parse_project_files(&cwd, &project_files)?;
 
     let index_by_path = files
         .iter()
         .enumerate()
         .map(|(index, file)| (file.path.clone(), index))
-        .collect::<BTreeMap<_, _>>();
+        .collect::<HashMap<_, _>>();
+    let index_by_relative = files
+        .iter()
+        .enumerate()
+        .map(|(index, file)| (file.relative.clone(), index))
+        .collect::<PathIndex>();
 
-    let mut used_files = BTreeSet::<usize>::new();
-    let mut used_exports = BTreeMap::<usize, BTreeSet<String>>::new();
-    let mut unresolved = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut entry_indexes = HashSet::<usize>::new();
+    let mut used_files = UsedFiles::new();
+    let mut used_exports = UsedExports::new();
+    let mut unresolved = UnresolvedImports::new();
     let mut queue = VecDeque::<usize>::new();
 
     for entry in &entry_set {
         if let Some(index) = index_by_path.get(entry) {
+            entry_indexes.insert(*index);
             if used_files.insert(*index) {
                 queue.push_back(*index);
             }
@@ -109,10 +123,10 @@ pub fn analyze_path(
 
     while let Some(index) = queue.pop_front() {
         let file = &files[index];
-        let public_entry = entry_set.contains(&file.path) && !config.include_entry_exports;
+        let public_entry = entry_indexes.contains(&index) && !config.include_entry_exports;
 
         for import in &file.imports {
-            match resolve_import(&cwd, &file.path, &import.source, &index_by_path) {
+            match resolve_import(&file.relative, &import.source, &index_by_relative) {
                 Some(target) => {
                     if used_files.insert(target) {
                         queue.push_back(target);
@@ -131,7 +145,7 @@ pub fn analyze_path(
         }
 
         for source in &file.side_effect_imports {
-            match resolve_import(&cwd, &file.path, source, &index_by_path) {
+            match resolve_import(&file.relative, source, &index_by_relative) {
                 Some(target) => {
                     if used_files.insert(target) {
                         queue.push_back(target);
@@ -149,12 +163,11 @@ pub fn analyze_path(
         for (local, member) in &file.member_uses {
             if let Some(source) = file.namespace_imports.get(local) {
                 mark_member_import(
-                    &cwd,
-                    &file.path,
+                    &file.relative,
                     source,
                     member,
                     &files,
-                    &index_by_path,
+                    &index_by_relative,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
@@ -165,17 +178,16 @@ pub fn analyze_path(
 
             if let Some(named) = file.named_imports.get(local) {
                 if let Some(target) =
-                    resolve_import(&cwd, &file.path, &named.source, &index_by_path)
+                    resolve_import(&file.relative, &named.source, &index_by_relative)
                 {
                     if let Some(export) = files[target].exports.get(&named.imported) {
                         if let Some(namespace_source) = &export.namespace_source {
                             mark_member_import(
-                                &cwd,
-                                &files[target].path,
+                                &files[target].relative,
                                 namespace_source,
                                 member,
                                 &files,
-                                &index_by_path,
+                                &index_by_relative,
                                 &mut used_files,
                                 &mut used_exports,
                                 &mut queue,
@@ -191,10 +203,9 @@ pub fn analyze_path(
         if public_entry {
             for export in file.exports.values() {
                 mark_reexport(
-                    &cwd,
                     file,
                     export,
-                    &index_by_path,
+                    &index_by_relative,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
@@ -203,11 +214,10 @@ pub fn analyze_path(
             }
             for source in &file.reexport_all {
                 mark_all_exports(
-                    &cwd,
                     file,
                     source,
                     &files,
-                    &index_by_path,
+                    &index_by_relative,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
@@ -220,10 +230,9 @@ pub fn analyze_path(
         for export_name in current_used_exports {
             if let Some(export) = file.exports.get(&export_name) {
                 mark_reexport(
-                    &cwd,
                     file,
                     export,
-                    &index_by_path,
+                    &index_by_relative,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
@@ -236,7 +245,7 @@ pub fn analyze_path(
     let mut issues = Issues::default();
 
     for (index, file) in files.iter().enumerate() {
-        let is_entry = entry_set.contains(&file.path);
+        let is_entry = entry_indexes.contains(&index);
         let is_used = used_files.contains(&index);
 
         if !is_used && !is_entry {
@@ -264,7 +273,6 @@ pub fn analyze_path(
                     .as_ref()
                     .is_some_and(|local| file.local_references.contains(local));
             if !used_by_import && !used_in_file {
-                let (line, col) = line_col(&file.source, export.name_span.start);
                 issues
                     .exports
                     .entry(file.relative.clone())
@@ -274,8 +282,8 @@ pub fn analyze_path(
                         SymbolIssue {
                             symbol: name.clone(),
                             kind: export.kind,
-                            line,
-                            col,
+                            line: export.line,
+                            col: export.col,
                             span: (export.remove_span.start, export.remove_span.end),
                         },
                     );
@@ -285,7 +293,11 @@ pub fn analyze_path(
 
     issues.unresolved = unresolved
         .into_iter()
-        .map(|(file, imports)| (file, imports.into_iter().collect()))
+        .map(|(file, imports)| {
+            let mut imports = imports.into_iter().collect::<Vec<_>>();
+            imports.sort();
+            (file, imports)
+        })
         .collect();
 
     let counters = Counters {
@@ -445,64 +457,134 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
         anyhow::bail!("failed to parse {}:\n{}", path.display(), rendered);
     }
 
-    let mut visitor = FileVisitor::new(cwd, path, source.clone());
+    let mut visitor = FileVisitor::new(cwd, path);
     visitor.visit_program(&program);
-    Ok(visitor.finish())
+    let mut file = visitor.finish();
+    for export in file.exports.values_mut() {
+        (export.line, export.col) = line_col(&source, export.name_span.start);
+    }
+    Ok(file)
+}
+
+fn parse_project_files(cwd: &Path, project_files: &[PathBuf]) -> Result<Vec<FileData>> {
+    let threads = parse_thread_count();
+    if threads <= 1 {
+        return project_files
+            .iter()
+            .map(|path| parse_file(cwd, path))
+            .collect();
+    }
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .context("failed to build parse thread pool")?
+        .install(|| {
+            project_files
+                .par_iter()
+                .map(|path| parse_file(cwd, path))
+                .collect()
+        })
+}
+
+fn parse_thread_count() -> usize {
+    if let Some(threads) = env_thread_count(PARSE_THREADS_ENV) {
+        return threads;
+    }
+    if let Some(threads) = env_thread_count(RAYON_THREADS_ENV) {
+        return threads;
+    }
+
+    thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+}
+
+fn env_thread_count(name: &str) -> Option<usize> {
+    env::var(name)
+        .ok()?
+        .parse::<usize>()
+        .ok()
+        .map(|count| count.max(1))
 }
 
 fn resolve_import(
-    cwd: &Path,
-    from: &Path,
+    from_relative: &str,
     specifier: &str,
-    index_by_path: &BTreeMap<PathBuf, usize>,
+    index_by_relative: &PathIndex,
 ) -> Option<usize> {
     if !specifier.starts_with('.') {
         return None;
     }
 
-    let base = from.parent()?.join(specifier);
-    let mut candidates = Vec::new();
-    candidates.push(base.clone());
+    let base = normalize_import_path(from_relative, specifier)?;
+    if let Some(index) = index_by_relative.get(&base) {
+        return Some(*index);
+    }
+
     for ext in ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"] {
-        candidates.push(base.with_extension(ext));
-    }
-    for ext in ["ts", "tsx", "js", "jsx"] {
-        candidates.push(base.join(format!("index.{ext}")));
-    }
-
-    candidates
-        .into_iter()
-        .filter_map(|candidate| normalize_existing(cwd, &candidate))
-        .find_map(|candidate| index_by_path.get(&candidate).copied())
-}
-
-fn normalize_existing(cwd: &Path, path: &Path) -> Option<PathBuf> {
-    if path.exists() {
-        path.canonicalize().ok()
-    } else {
-        let normalized = cwd.join(path.strip_prefix(cwd).ok()?);
-        if normalized.exists() {
-            normalized.canonicalize().ok()
-        } else {
-            None
+        let candidate = with_extension(&base, ext);
+        if let Some(index) = index_by_relative.get(&candidate) {
+            return Some(*index);
         }
     }
+    for ext in ["ts", "tsx", "js", "jsx"] {
+        let candidate = format!("{base}/index.{ext}");
+        if let Some(index) = index_by_relative.get(&candidate) {
+            return Some(*index);
+        }
+    }
+
+    None
+}
+
+fn normalize_import_path(from_relative: &str, specifier: &str) -> Option<String> {
+    let parent = from_relative
+        .rsplit_once('/')
+        .map_or("", |(parent, _)| parent);
+    let combined = if parent.is_empty() {
+        specifier.to_string()
+    } else {
+        format!("{parent}/{specifier}")
+    };
+    normalize_relative_components(&combined)
+}
+
+fn normalize_relative_components(path: &str) -> Option<String> {
+    let mut parts = Vec::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                parts.pop()?;
+            }
+            Component::Prefix(_) | Component::RootDir => return None,
+        }
+    }
+    Some(parts.join("/"))
+}
+
+fn with_extension(path: &str, extension: &str) -> String {
+    Path::new(path)
+        .with_extension(extension)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn mark_member_import(
-    cwd: &Path,
-    from: &Path,
+    from_relative: &str,
     source: &str,
     member: &str,
     files: &[FileData],
-    index_by_path: &BTreeMap<PathBuf, usize>,
-    used_files: &mut BTreeSet<usize>,
-    used_exports: &mut BTreeMap<usize, BTreeSet<String>>,
+    index_by_relative: &PathIndex,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
-    unresolved: &mut BTreeMap<String, BTreeSet<String>>,
+    unresolved: &mut UnresolvedImports,
     importer_relative: &str,
 ) {
-    match resolve_import(cwd, from, source, index_by_path) {
+    match resolve_import(from_relative, source, index_by_relative) {
         Some(target) => {
             if used_files.insert(target) {
                 queue.push_back(target);
@@ -514,12 +596,11 @@ fn mark_member_import(
             if let Some(export) = files[target].exports.get(member) {
                 if let Some(namespace_source) = &export.namespace_source {
                     mark_member_import(
-                        cwd,
-                        &files[target].path,
+                        &files[target].relative,
                         namespace_source,
                         member,
                         files,
-                        index_by_path,
+                        index_by_relative,
                         used_files,
                         used_exports,
                         queue,
@@ -539,17 +620,16 @@ fn mark_member_import(
 }
 
 fn mark_reexport(
-    cwd: &Path,
     file: &FileData,
     export: &ExportInfo,
-    index_by_path: &BTreeMap<PathBuf, usize>,
-    used_files: &mut BTreeSet<usize>,
-    used_exports: &mut BTreeMap<usize, BTreeSet<String>>,
+    index_by_relative: &PathIndex,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
-    unresolved: &mut BTreeMap<String, BTreeSet<String>>,
+    unresolved: &mut UnresolvedImports,
 ) {
     if let (Some(source), Some(name)) = (&export.reexport_source, &export.reexport_name) {
-        match resolve_import(cwd, &file.path, source, index_by_path) {
+        match resolve_import(&file.relative, source, index_by_relative) {
             Some(target) => {
                 if used_files.insert(target) {
                     queue.push_back(target);
@@ -566,7 +646,7 @@ fn mark_reexport(
     }
 
     if let Some(source) = &export.namespace_source {
-        match resolve_import(cwd, &file.path, source, index_by_path) {
+        match resolve_import(&file.relative, source, index_by_relative) {
             Some(target) => {
                 if used_files.insert(target) {
                     queue.push_back(target);
@@ -583,17 +663,16 @@ fn mark_reexport(
 }
 
 fn mark_all_exports(
-    cwd: &Path,
     file: &FileData,
     source: &str,
     files: &[FileData],
-    index_by_path: &BTreeMap<PathBuf, usize>,
-    used_files: &mut BTreeSet<usize>,
-    used_exports: &mut BTreeMap<usize, BTreeSet<String>>,
+    index_by_relative: &PathIndex,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
-    unresolved: &mut BTreeMap<String, BTreeSet<String>>,
+    unresolved: &mut UnresolvedImports,
 ) {
-    match resolve_import(cwd, &file.path, source, index_by_path) {
+    match resolve_import(&file.relative, source, index_by_relative) {
         Some(target) => {
             if used_files.insert(target) {
                 queue.push_back(target);
@@ -615,7 +694,6 @@ fn mark_all_exports(
 struct FileData {
     path: PathBuf,
     relative: String,
-    source: String,
     exports: BTreeMap<String, ExportInfo>,
     imports: Vec<ImportRecord>,
     side_effect_imports: Vec<String>,
@@ -631,6 +709,8 @@ struct ExportInfo {
     kind: ExportKind,
     local_name: Option<String>,
     name_span: Span,
+    line: usize,
+    col: usize,
     remove_span: Span,
     reexport_source: Option<String>,
     reexport_name: Option<String>,
@@ -652,7 +732,6 @@ struct NamedImport {
 struct FileVisitor {
     path: PathBuf,
     relative: String,
-    source: String,
     exports: BTreeMap<String, ExportInfo>,
     imports: Vec<ImportRecord>,
     side_effect_imports: Vec<String>,
@@ -664,11 +743,10 @@ struct FileVisitor {
 }
 
 impl FileVisitor {
-    fn new(cwd: &Path, path: &Path, source: String) -> Self {
+    fn new(cwd: &Path, path: &Path) -> Self {
         Self {
             path: path.to_path_buf(),
             relative: relative_path(cwd, path),
-            source,
             exports: BTreeMap::new(),
             imports: Vec::new(),
             side_effect_imports: Vec::new(),
@@ -684,7 +762,6 @@ impl FileVisitor {
         FileData {
             path: self.path,
             relative: self.relative,
-            source: self.source,
             exports: self.exports,
             imports: self.imports,
             side_effect_imports: self.side_effect_imports,
@@ -710,6 +787,8 @@ impl FileVisitor {
                 kind,
                 local_name,
                 name_span,
+                line: 0,
+                col: 0,
                 remove_span,
                 reexport_source: None,
                 reexport_name: None,
@@ -733,6 +812,8 @@ impl FileVisitor {
                 kind,
                 local_name: None,
                 name_span,
+                line: 0,
+                col: 0,
                 remove_span,
                 reexport_source: Some(source),
                 reexport_name: Some(local),
@@ -851,6 +932,8 @@ impl<'a> Visit<'a> for FileVisitor {
                     kind: export_kind(declaration.export_kind),
                     local_name: None,
                     name_span: exported.span(),
+                    line: 0,
+                    col: 0,
                     remove_span: declaration.span,
                     reexport_source: None,
                     reexport_name: None,
