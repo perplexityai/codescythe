@@ -317,6 +317,7 @@ fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<P
     let mut files = Vec::new();
 
     for entry in WalkDir::new(cwd)
+        .follow_links(true)
         .into_iter()
         .filter_entry(|entry| should_enter(entry))
     {
@@ -351,10 +352,7 @@ fn discover_entry_files(
     let mut entries = BTreeSet::<PathBuf>::new();
     for pattern in &config.entry {
         if !has_glob_meta(pattern) {
-            let path = cwd
-                .join(pattern)
-                .canonicalize()
-                .unwrap_or_else(|_| cwd.join(pattern));
+            let path = normalize_path(&cwd.join(pattern));
             if path.exists() {
                 entries.insert(path);
             }
@@ -380,7 +378,7 @@ fn infer_entry_files(cwd: &Path) -> Result<Vec<PathBuf>> {
     ] {
         let path = cwd.join(candidate);
         if path.exists() {
-            entries.insert(path.canonicalize()?);
+            entries.insert(normalize_path(&path));
         }
     }
 
@@ -391,7 +389,7 @@ fn infer_entry_files(cwd: &Path) -> Result<Vec<PathBuf>> {
             if let Some(path) = value.get(field).and_then(|value| value.as_str()) {
                 let path = cwd.join(path);
                 if path.exists() {
-                    entries.insert(path.canonicalize()?);
+                    entries.insert(normalize_path(&path));
                 }
             }
         }
@@ -400,14 +398,14 @@ fn infer_entry_files(cwd: &Path) -> Result<Vec<PathBuf>> {
                 serde_json::Value::String(path) => {
                     let path = cwd.join(path);
                     if path.exists() {
-                        entries.insert(path.canonicalize()?);
+                        entries.insert(normalize_path(&path));
                     }
                 }
                 serde_json::Value::Object(map) => {
                     for path in map.values().filter_map(|value| value.as_str()) {
                         let path = cwd.join(path);
                         if path.exists() {
-                            entries.insert(path.canonicalize()?);
+                            entries.insert(normalize_path(&path));
                         }
                     }
                 }
@@ -1167,6 +1165,20 @@ fn relative_path(cwd: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
 fn has_glob_meta(pattern: &str) -> bool {
     pattern
         .bytes()
@@ -1190,6 +1202,44 @@ mod tests {
         assert!(analysis.issues.exports["my-namespace.ts"].contains_key("key"));
         assert!(analysis.issues.exports["types.ts"].contains_key("UnusedType"));
         assert!(!analysis.issues.exports.contains_key("index.ts"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn follows_runfiles_style_symlinked_source_directories() {
+        let real = tempfile::tempdir().unwrap();
+        let runfiles = tempfile::tempdir().unwrap();
+
+        fs::write(
+            real.path().join("codescythe.json"),
+            r#"{
+              "entry": ["app/index.ts"],
+              "project": ["app/**/*.ts"]
+            }"#,
+        )
+        .unwrap();
+        fs::create_dir(real.path().join("app")).unwrap();
+        fs::write(
+            real.path().join("app/index.ts"),
+            "import { used } from './used';\nconsole.log(used);\n",
+        )
+        .unwrap();
+        fs::write(real.path().join("app/used.ts"), "export const used = 1;\n").unwrap();
+        fs::write(real.path().join("app/dead.ts"), "export const dead = 1;\n").unwrap();
+
+        std::os::unix::fs::symlink(
+            real.path().join("codescythe.json"),
+            runfiles.path().join("codescythe.json"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(real.path().join("app"), runfiles.path().join("app")).unwrap();
+
+        let config = crate::load_config(runfiles.path(), None).unwrap();
+        let analysis = analyze_path(runfiles.path(), &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(analysis.counters.total, 3);
+        assert!(analysis.issues.files.contains_key("app/dead.ts"));
+        assert!(!analysis.issues.files.contains_key("app/used.ts"));
     }
 
     fn fixture_path(name: &str) -> (tempfile::TempDir, PathBuf) {
