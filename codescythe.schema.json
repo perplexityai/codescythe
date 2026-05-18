@@ -28,6 +28,12 @@
         "$ref": "#/$defs/stringOrStringArray"
       }
     },
+    "unresolvedImports": {
+      "description": "Controls how unresolved imports are handled.",
+      "type": "string",
+      "enum": ["report", "ignore", "error"],
+      "default": "report"
+    },
     "includeEntryExports": {
       "type": "boolean",
       "default": false
