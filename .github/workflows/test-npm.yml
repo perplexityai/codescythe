@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build npm packages
-    runs-on: macos-15
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'macos-15' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -27,12 +27,24 @@ jobs:
 
       - name: Build npm packages
         run: |
-          bazel build \
-            //crates/codescythe_napi:release_nodes \
-            //packages/codescythe:package \
-            //packages/codescythe-darwin-arm64:package \
-            //packages/codescythe-linux-amd64:package \
+          set -euo pipefail
+
+          targets=(
+            //crates/codescythe_napi:release_node_linux_amd64
+            //crates/codescythe_napi:release_node_linux_arm64
+            //packages/codescythe:package
+            //packages/codescythe-linux-amd64:package
             //packages/codescythe-linux-arm64:package
+          )
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            targets+=(
+              //crates/codescythe_napi:release_node_darwin_arm64
+              //packages/codescythe-darwin-arm64:package
+            )
+          fi
+
+          bazel build "${targets[@]}"
 
       - name: Prepare smoke artifacts
         run: |
@@ -68,9 +80,12 @@ jobs:
           }
 
           copy_loader_package codescythe
-          copy_native_package codescythe-darwin-arm64 //packages/codescythe-darwin-arm64:native_node codescythe.darwin-arm64.node
           copy_native_package codescythe-linux-amd64 //packages/codescythe-linux-amd64:native_node codescythe.linux-amd64.node
           copy_native_package codescythe-linux-arm64 //packages/codescythe-linux-arm64:native_node codescythe.linux-arm64.node
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            copy_native_package codescythe-darwin-arm64 //packages/codescythe-darwin-arm64:native_node codescythe.darwin-arm64.node
+          fi
 
       - name: Upload loader package
         uses: actions/upload-artifact@v4
@@ -80,6 +95,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Darwin arm64 package
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
           name: codescythe-darwin-arm64
@@ -108,9 +124,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: darwin-arm64
-            runner: macos-15
-            package: codescythe-darwin-arm64
           - name: linux-amd64
             runner: ubuntu-24.04
             package: codescythe-linux-amd64
@@ -162,3 +175,43 @@ jobs:
               exit 1
             fi
           fi
+
+  smoke_darwin:
+    name: Smoke test npm (darwin-arm64)
+    needs: build
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
+      - name: Install npm test dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download loader package
+        uses: actions/download-artifact@v4
+        with:
+          name: codescythe
+          path: smoke/codescythe
+
+      - name: Download native package
+        uses: actions/download-artifact@v4
+        with:
+          name: codescythe-darwin-arm64
+          path: smoke/codescythe-darwin-arm64
+
+      - name: Smoke test package
+        run: |
+          set -euo pipefail
+
+          CODESCYTHE_PACKAGE_DIR=smoke/codescythe \
+          CODESCYTHE_NATIVE_PACKAGE_DIR=smoke/codescythe-darwin-arm64 \
+          pnpm test:npm
