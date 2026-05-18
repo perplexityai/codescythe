@@ -86,7 +86,7 @@ pub fn analyze_path(
     config: &CodescytheConfig,
     options: AnalysisOptions,
 ) -> Result<Analysis> {
-    let cwd = normalize_path(cwd);
+    let cwd = absolute_normalize_path(cwd)?;
     if !cwd.exists() {
         anyhow::bail!("analysis root does not exist: {}", cwd.display());
     }
@@ -321,7 +321,7 @@ fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<P
         .filter_entry(|entry| should_enter(entry))
     {
         let entry = entry?;
-        if !entry.file_type().is_file() {
+        if !entry.path().is_file() {
             continue;
         }
         let relative = relative_path(cwd, entry.path());
@@ -426,7 +426,7 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet> {
 }
 
 fn should_enter(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
+    if !entry.path().is_dir() {
         return true;
     }
     !matches!(
@@ -1275,6 +1275,15 @@ fn relative_path(cwd: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+fn absolute_normalize_path(path: &Path) -> Result<PathBuf> {
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()?.join(path)
+    };
+    Ok(normalize_path(&path))
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

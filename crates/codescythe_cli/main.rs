@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn explicit_directory_overrides_config_parent() {
         let directory = Path::new("/tmp/runfiles/_main");
-        let config = Path::new("/tmp/runfiles/_main/pplx/frontend/codescythe.json");
+        let config = Path::new("/tmp/runfiles/_main/workspace/frontend/codescythe.json");
 
         let analysis_root = analysis_root(Some(directory), Some(config)).unwrap();
 
