@@ -1,0 +1,7 @@
+{
+  "name": "codescythe-resolution-fixture",
+  "type": "module",
+  "imports": {
+    "#internal": "./app/internal.ts"
+  }
+}

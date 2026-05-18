@@ -11,6 +11,7 @@ use oxc::ast_visit::{Visit, walk};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::{Parser, ParserReturn};
+use oxc_resolver::{ResolveError, ResolveOptions, Resolver, TsconfigDiscovery};
 use oxc_span::{GetSpan, SourceType, Span};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -21,7 +22,6 @@ use crate::CodescytheConfig;
 const PARSE_THREADS_ENV: &str = "CODESCYTHE_PARSE_THREADS";
 const RAYON_THREADS_ENV: &str = "RAYON_NUM_THREADS";
 
-type PathIndex = HashMap<String, usize>;
 type UsedFiles = HashSet<usize>;
 type UsedExports = HashMap<usize, HashSet<String>>;
 type UnresolvedImports = HashMap<String, HashSet<String>>;
@@ -101,11 +101,7 @@ pub fn analyze_path(
         .enumerate()
         .map(|(index, file)| (file.path.clone(), index))
         .collect::<HashMap<_, _>>();
-    let index_by_relative = files
-        .iter()
-        .enumerate()
-        .map(|(index, file)| (file.relative.clone(), index))
-        .collect::<PathIndex>();
+    let module_resolver = ModuleResolver::new(&cwd, &files);
 
     let mut entry_indexes = HashSet::<usize>::new();
     let mut used_files = UsedFiles::new();
@@ -127,8 +123,8 @@ pub fn analyze_path(
         let public_entry = entry_indexes.contains(&index) && !config.include_entry_exports;
 
         for import in &file.imports {
-            match resolve_import(&file.relative, &import.source, &index_by_relative) {
-                Some(target) => {
+            match module_resolver.resolve(file, &import.source)? {
+                ImportResolution::Project(target) => {
                     if used_files.insert(target) {
                         queue.push_back(target);
                     }
@@ -136,65 +132,67 @@ pub fn analyze_path(
                         used_exports.entry(target).or_default().insert(name.clone());
                     }
                 }
-                None => {
+                ImportResolution::Unresolved => {
                     unresolved
                         .entry(file.relative.clone())
                         .or_default()
                         .insert(import.source.clone());
                 }
+                ImportResolution::External => {}
             }
         }
 
         for source in &file.side_effect_imports {
-            match resolve_import(&file.relative, source, &index_by_relative) {
-                Some(target) => {
+            match module_resolver.resolve(file, source)? {
+                ImportResolution::Project(target) => {
                     if used_files.insert(target) {
                         queue.push_back(target);
                     }
                 }
-                None => {
+                ImportResolution::Unresolved => {
                     unresolved
                         .entry(file.relative.clone())
                         .or_default()
                         .insert(source.clone());
                 }
+                ImportResolution::External => {}
             }
         }
 
         for (local, member) in &file.member_uses {
             if let Some(source) = file.namespace_imports.get(local) {
                 mark_member_import(
-                    &file.relative,
+                    file,
                     source,
                     member,
                     &files,
-                    &index_by_relative,
+                    &module_resolver,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
                     &file.relative,
-                );
+                )?;
             }
 
             if let Some(named) = file.named_imports.get(local) {
-                if let Some(target) =
-                    resolve_import(&file.relative, &named.source, &index_by_relative)
+                if let ImportResolution::Project(target) =
+                    module_resolver.resolve(file, &named.source)?
                 {
                     if let Some(export) = files[target].exports.get(&named.imported) {
                         if let Some(namespace_source) = &export.namespace_source {
                             mark_member_import(
-                                &files[target].relative,
+                                &files[target],
                                 namespace_source,
                                 member,
                                 &files,
-                                &index_by_relative,
+                                &module_resolver,
                                 &mut used_files,
                                 &mut used_exports,
                                 &mut queue,
                                 &mut unresolved,
                                 &file.relative,
-                            );
+                            )?;
                         }
                     }
                 }
@@ -206,24 +204,24 @@ pub fn analyze_path(
                 mark_reexport(
                     file,
                     export,
-                    &index_by_relative,
+                    &module_resolver,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
-                );
+                )?;
             }
             for source in &file.reexport_all {
                 mark_all_exports(
                     file,
                     source,
                     &files,
-                    &index_by_relative,
+                    &module_resolver,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
-                );
+                )?;
             }
         }
 
@@ -233,12 +231,12 @@ pub fn analyze_path(
                 mark_reexport(
                     file,
                     export,
-                    &index_by_relative,
+                    &module_resolver,
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
-                );
+                )?;
             }
         }
     }
@@ -507,84 +505,129 @@ fn env_thread_count(name: &str) -> Option<usize> {
         .map(|count| count.max(1))
 }
 
-fn resolve_import(
-    from_relative: &str,
-    specifier: &str,
-    index_by_relative: &PathIndex,
-) -> Option<usize> {
-    if !specifier.starts_with('.') {
-        return None;
-    }
-
-    let base = normalize_import_path(from_relative, specifier)?;
-    if let Some(index) = index_by_relative.get(&base) {
-        return Some(*index);
-    }
-
-    for ext in ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"] {
-        let candidate = with_extension(&base, ext);
-        if let Some(index) = index_by_relative.get(&candidate) {
-            return Some(*index);
-        }
-    }
-    for ext in ["ts", "tsx", "js", "jsx"] {
-        let candidate = format!("{base}/index.{ext}");
-        if let Some(index) = index_by_relative.get(&candidate) {
-            return Some(*index);
-        }
-    }
-
-    None
+struct ModuleResolver {
+    resolver: Resolver,
+    index_by_path: HashMap<PathBuf, usize>,
 }
 
-fn normalize_import_path(from_relative: &str, specifier: &str) -> Option<String> {
-    let parent = from_relative
-        .rsplit_once('/')
-        .map_or("", |(parent, _)| parent);
-    let combined = if parent.is_empty() {
-        specifier.to_string()
-    } else {
-        format!("{parent}/{specifier}")
-    };
-    normalize_relative_components(&combined)
+enum ImportResolution {
+    Project(usize),
+    External,
+    Unresolved,
 }
 
-fn normalize_relative_components(path: &str) -> Option<String> {
-    let mut parts = Vec::new();
-    for component in Path::new(path).components() {
-        match component {
-            Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                parts.pop()?;
+impl ModuleResolver {
+    fn new(cwd: &Path, files: &[FileData]) -> Self {
+        let resolver = Resolver::new(ResolveOptions {
+            cwd: Some(cwd.to_path_buf()),
+            tsconfig: Some(TsconfigDiscovery::Auto),
+            condition_names: vec!["node".into(), "import".into()],
+            extensions: vec![
+                ".ts".into(),
+                ".tsx".into(),
+                ".mts".into(),
+                ".cts".into(),
+                ".js".into(),
+                ".jsx".into(),
+                ".mjs".into(),
+                ".cjs".into(),
+                ".json".into(),
+                ".node".into(),
+            ],
+            extension_alias: vec![
+                (
+                    ".js".into(),
+                    vec![".ts".into(), ".tsx".into(), ".js".into(), ".jsx".into()],
+                ),
+                (".jsx".into(), vec![".tsx".into(), ".jsx".into()]),
+                (".mjs".into(), vec![".mts".into(), ".mjs".into()]),
+                (".cjs".into(), vec![".cts".into(), ".cjs".into()]),
+            ],
+            symlinks: false,
+            node_path: false,
+            builtin_modules: true,
+            ..ResolveOptions::default()
+        });
+        let index_by_path = files
+            .iter()
+            .enumerate()
+            .map(|(index, file)| (normalize_path(&file.path), index))
+            .collect::<HashMap<_, _>>();
+
+        Self {
+            resolver,
+            index_by_path,
+        }
+    }
+
+    fn resolve(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
+        match self.resolver.resolve_file(&from.path, specifier) {
+            Ok(resolution) => {
+                let path = normalize_path(resolution.path());
+                Ok(self
+                    .index_by_path
+                    .get(&path)
+                    .copied()
+                    .map_or(ImportResolution::External, ImportResolution::Project))
             }
-            Component::Prefix(_) | Component::RootDir => return None,
+            Err(ResolveError::Builtin { .. } | ResolveError::Ignored(_)) => {
+                Ok(ImportResolution::External)
+            }
+            Err(error) if is_resolution_miss(&error) => {
+                Ok(if should_report_unresolved(specifier, &error) {
+                    ImportResolution::Unresolved
+                } else {
+                    ImportResolution::External
+                })
+            }
+            Err(error) => {
+                anyhow::bail!(
+                    "failed to resolve import {specifier:?} from {}: {error}",
+                    from.relative
+                )
+            }
         }
     }
-    Some(parts.join("/"))
 }
 
-fn with_extension(path: &str, extension: &str) -> String {
-    Path::new(path)
-        .with_extension(extension)
-        .to_string_lossy()
-        .replace('\\', "/")
+fn is_resolution_miss(error: &ResolveError) -> bool {
+    matches!(
+        error,
+        ResolveError::NotFound(_)
+            | ResolveError::MatchedAliasNotFound(_, _)
+            | ResolveError::ExtensionAlias(_, _, _)
+            | ResolveError::PackageImportNotDefined(_, _)
+            | ResolveError::PackagePathNotExported { .. }
+            | ResolveError::InvalidModuleSpecifier(_, _)
+            | ResolveError::Specifier(_)
+    )
+}
+
+fn should_report_unresolved(specifier: &str, error: &ResolveError) -> bool {
+    matches!(
+        error,
+        ResolveError::MatchedAliasNotFound(_, _) | ResolveError::PackageImportNotDefined(_, _)
+    ) || specifier.starts_with('.')
+        || specifier.starts_with('/')
+        || specifier.starts_with('#')
+        || specifier.starts_with("@/")
+        || specifier.starts_with("~/")
 }
 
 fn mark_member_import(
-    from_relative: &str,
+    from_file: &FileData,
     source: &str,
     member: &str,
     files: &[FileData],
-    index_by_relative: &PathIndex,
+    resolver: &ModuleResolver,
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
     unresolved: &mut UnresolvedImports,
     importer_relative: &str,
-) {
-    match resolve_import(from_relative, source, index_by_relative) {
-        Some(target) => {
+) -> Result<()> {
+    match resolver.resolve(from_file, source)? {
+        ImportResolution::Project(target) => {
             if used_files.insert(target) {
                 queue.push_back(target);
             }
@@ -595,84 +638,89 @@ fn mark_member_import(
             if let Some(export) = files[target].exports.get(member) {
                 if let Some(namespace_source) = &export.namespace_source {
                     mark_member_import(
-                        &files[target].relative,
+                        &files[target],
                         namespace_source,
                         member,
                         files,
-                        index_by_relative,
+                        resolver,
                         used_files,
                         used_exports,
                         queue,
                         unresolved,
                         importer_relative,
-                    );
+                    )?;
                 }
             }
         }
-        None => {
+        ImportResolution::Unresolved => {
             unresolved
                 .entry(importer_relative.to_string())
                 .or_default()
                 .insert(source.to_string());
         }
+        ImportResolution::External => {}
     }
+    Ok(())
 }
 
 fn mark_reexport(
     file: &FileData,
     export: &ExportInfo,
-    index_by_relative: &PathIndex,
+    resolver: &ModuleResolver,
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
     unresolved: &mut UnresolvedImports,
-) {
+) -> Result<()> {
     if let (Some(source), Some(name)) = (&export.reexport_source, &export.reexport_name) {
-        match resolve_import(&file.relative, source, index_by_relative) {
-            Some(target) => {
+        match resolver.resolve(file, source)? {
+            ImportResolution::Project(target) => {
                 if used_files.insert(target) {
                     queue.push_back(target);
                 }
                 used_exports.entry(target).or_default().insert(name.clone());
             }
-            None => {
+            ImportResolution::Unresolved => {
                 unresolved
                     .entry(file.relative.clone())
                     .or_default()
                     .insert(source.clone());
             }
+            ImportResolution::External => {}
         }
     }
 
     if let Some(source) = &export.namespace_source {
-        match resolve_import(&file.relative, source, index_by_relative) {
-            Some(target) => {
+        match resolver.resolve(file, source)? {
+            ImportResolution::Project(target) => {
                 if used_files.insert(target) {
                     queue.push_back(target);
                 }
             }
-            None => {
+            ImportResolution::Unresolved => {
                 unresolved
                     .entry(file.relative.clone())
                     .or_default()
                     .insert(source.clone());
             }
+            ImportResolution::External => {}
         }
     }
+    Ok(())
 }
 
 fn mark_all_exports(
     file: &FileData,
     source: &str,
     files: &[FileData],
-    index_by_relative: &PathIndex,
+    resolver: &ModuleResolver,
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
     unresolved: &mut UnresolvedImports,
-) {
-    match resolve_import(&file.relative, source, index_by_relative) {
-        Some(target) => {
+) -> Result<()> {
+    match resolver.resolve(file, source)? {
+        ImportResolution::Project(target) => {
             if used_files.insert(target) {
                 queue.push_back(target);
             }
@@ -680,13 +728,15 @@ fn mark_all_exports(
                 used_exports.entry(target).or_default().insert(name.clone());
             }
         }
-        None => {
+        ImportResolution::Unresolved => {
             unresolved
                 .entry(file.relative.clone())
                 .or_default()
                 .insert(source.to_string());
         }
+        ImportResolution::External => {}
     }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -1241,6 +1291,60 @@ mod tests {
         assert_eq!(analysis.counters.total, 3);
         assert!(analysis.issues.files.contains_key("app/dead.ts"));
         assert!(!analysis.issues.files.contains_key("app/used.ts"));
+    }
+
+    #[test]
+    fn follows_oxc_resolution_rules_for_project_imports() {
+        let (_tempdir, cwd) = fixture_path("oxc-resolution");
+
+        let config = crate::load_config(&cwd, None).unwrap();
+        let analysis = analyze_path(&cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert!(analysis.issues.unresolved.is_empty());
+        assert!(analysis.issues.files.contains_key("app/dead.ts"));
+        assert!(!analysis.issues.files.contains_key("app/aliased.ts"));
+        assert!(!analysis.issues.files.contains_key("app/internal.ts"));
+        assert!(!analysis.issues.files.contains_key("app/extension.ts"));
+        assert!(!analysis.issues.exports["app/aliased.ts"].contains_key("aliased"));
+        assert!(analysis.issues.exports["app/aliased.ts"].contains_key("unusedAliased"));
+        assert!(!analysis.issues.exports["app/internal.ts"].contains_key("internal"));
+        assert!(analysis.issues.exports["app/internal.ts"].contains_key("unusedInternal"));
+        assert!(!analysis.issues.exports["app/extension.ts"].contains_key("extension"));
+        assert!(analysis.issues.exports["app/extension.ts"].contains_key("unusedExtension"));
+    }
+
+    #[test]
+    fn reports_missing_local_imports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        fs::create_dir_all(cwd.join("app")).unwrap();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": "app/index.ts",
+              "project": "app/**/*.ts"
+            }"#,
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("app/index.ts"),
+            r#"import './missing';
+import missingExternal from 'missing-external';
+import missingExternalSubpath from 'missing-external/subpath';
+
+console.log(missingExternal, missingExternalSubpath);
+"#,
+        )
+        .unwrap();
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(
+            analysis.issues.unresolved["app/index.ts"],
+            vec!["./missing".to_string()]
+        );
     }
 
     fn fixture_path(name: &str) -> (tempfile::TempDir, PathBuf) {

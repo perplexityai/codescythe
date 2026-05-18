@@ -1,0 +1,5 @@
+{
+  "$schema": "../../../codescythe.schema.json",
+  "entry": "app/index.ts",
+  "project": "app/**/*.ts"
+}

@@ -34,6 +34,20 @@ rust_test(
     ],
 )
 
+rust_test(
+    name = "codescythe_cli_e2e_test",
+    srcs = ["e2e.rs"],
+    crate_name = "codescythe_cli_e2e_test",
+    data = [
+        ":codescythe",
+        "//tests/fixtures/oxc-resolution:fixtures",
+    ],
+    edition = "2024",
+    deps = [
+        "@crates//:serde_json",
+    ],
+)
+
 release_binary_linux_amd64(
     name = "release_binary_linux_amd64",
     srcs = [":codescythe"],
