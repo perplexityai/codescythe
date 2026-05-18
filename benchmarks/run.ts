@@ -21,10 +21,10 @@ type Fixture = {
   repo: string;
   commit: string;
   markerTarget: string;
-  trackedFiles: number;
-  tsFiles: number;
+  sourceFiles: number;
+  benchmarkedFiles: number;
+  rawTsFiles: number;
   extraFiles?: string;
-  treeTruncated?: boolean;
 };
 
 type Options = {
@@ -85,8 +85,9 @@ const fixtures: Fixture[] = [
     repo: 'microsoft/vscode',
     commit: '9b7643f90393b9ad2c5d5cbbdad70fa928090009',
     markerTarget: '@benchmark_vscode//:package_json',
-    trackedFiles: 14689,
-    tsFiles: 10213,
+    sourceFiles: 14689,
+    benchmarkedFiles: 9537,
+    rawTsFiles: 10213,
   },
   {
     name: 'grafana',
@@ -94,8 +95,9 @@ const fixtures: Fixture[] = [
     repo: 'grafana/grafana',
     commit: '7709dc39cf8ee2de85c38b8943b208adf8a3c47c',
     markerTarget: '@benchmark_grafana//:package_json',
-    trackedFiles: 21680,
-    tsFiles: 8733,
+    sourceFiles: 21680,
+    benchmarkedFiles: 8701,
+    rawTsFiles: 8733,
     extraFiles: '5,955 Go files',
   },
   {
@@ -104,9 +106,9 @@ const fixtures: Fixture[] = [
     repo: 'elastic/kibana',
     commit: 'd706f62a04af1112db6b4dfef3c94955bdb98250',
     markerTarget: '@benchmark_kibana//:package_json',
-    trackedFiles: 43905,
-    tsFiles: 29280,
-    treeTruncated: true,
+    sourceFiles: 110440,
+    benchmarkedFiles: 86370,
+    rawTsFiles: 87408,
   },
 ];
 
@@ -475,10 +477,10 @@ function printSummary(
 }
 
 function formatCorpus(fixture: Fixture) {
-  const prefix = fixture.treeTruncated ? 'at least ' : '';
   const parts = [
-    `${prefix}${formatCount(fixture.trackedFiles)} tracked files`,
-    `${prefix}${formatCount(fixture.tsFiles)} TS/TSX files benchmarked`,
+    `${formatCount(fixture.sourceFiles)} source files`,
+    `${formatCount(fixture.benchmarkedFiles)} benchmarked TS-family files`,
+    `${formatCount(fixture.rawTsFiles)} raw TS/TSX files`,
   ];
   if (fixture.extraFiles) {
     parts.push(fixture.extraFiles);
