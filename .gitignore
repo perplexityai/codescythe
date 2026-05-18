@@ -1,6 +1,7 @@
 /bazel-*
 /node_modules
 /target
+/.worktrees
 /.DS_Store
 /.idea
 /.vscode

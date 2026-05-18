@@ -9,6 +9,7 @@ COMMON_DEPS = [
     "@crates//:oxc_allocator",
     "@crates//:oxc_ast",
     "@crates//:oxc_parser",
+    "@crates//:oxc_resolver",
     "@crates//:oxc_span",
     "@crates//:rayon",
     "@crates//:serde",
@@ -37,6 +38,7 @@ rust_test(
     crate = ":codescythe",
     data = [
         "//tests/fixtures/knip-export-basics:fixtures",
+        "//tests/fixtures/oxc-resolution:fixtures",
     ],
     deps = COMMON_DEPS + [
         "@crates//:tempfile",
