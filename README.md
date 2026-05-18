@@ -28,6 +28,20 @@ Codescythe takes a deliberately smaller slice of Knip's problem space.
 | Framework awareness | Designed for framework and tool integrations through plugins and compilers. | Intentionally avoids a framework plugin surface. |
 | Best fit | Comprehensive audits where framework config, dependency hygiene, and workspace conventions matter. | Deterministic cleanup jobs where the TypeScript boundary is already known and repeatable graph behavior matters more than integration breadth. |
 
+## Benchmarks
+
+The benchmark suite runs Codescythe and Knip against pinned real-world
+TypeScript-heavy repositories fetched through Bazel. A local smoke run with
+`--samples 1 --warmups 0` produced:
+
+| Fixture | TypeScript corpus | Codescythe | Knip |
+| --- | ---: | ---: | ---: |
+| `microsoft/vscode` | 10,213 TS/TSX files | 738.0ms | 5.76s |
+| `grafana/grafana` | 8,733 TS/TSX files | 771.0ms | 9.29s |
+| `elastic/kibana` | at least 29,280 TS/TSX files | 5.41s | 68.06s |
+
+Run `pnpm benchmark` to measure the same fixtures locally.
+
 ## Config
 
 The config schema lives at `codescythe.schema.json` and is compiled into the
