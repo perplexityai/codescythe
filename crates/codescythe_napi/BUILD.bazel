@@ -6,11 +6,6 @@ load(
     "release_node_linux_arm64",
 )
 
-config_setting(
-    name = "linux_musl",
-    constraint_values = ["@llvm//constraints/libc:musl"],
-)
-
 rust_shared_library(
     name = "codescythe_napi",
     srcs = ["lib.rs"],
@@ -22,9 +17,6 @@ rust_shared_library(
     rustc_flags = select({
         "@platforms//os:macos": [
             "-Clink-arg=-Wl,-undefined,dynamic_lookup",
-        ],
-        ":linux_musl": [
-            "-Ctarget-feature=-crt-static",
         ],
         "//conditions:default": [],
     }),

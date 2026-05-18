@@ -1,54 +1,10 @@
-load("@with_cfg.bzl", "with_cfg")
-
-_HOSTS = [
-    "linux_aarch64",
-    "linux_x86_64",
-    "macos_aarch64",
-    "macos_x86_64",
-    "windows_aarch64",
-    "windows_x86_64",
-]
-
-def _llvm_toolchains(target):
-    return [
-        Label("@llvm_toolchains//:bootstrap_%s_to_%s" % (host, target))
-        for host in _HOSTS
-    ] + [
-        Label("@llvm_toolchains//:%s_to_%s" % (host, target))
-        for host in _HOSTS
-    ]
-
-def _release_node(platform, llvm_target):
-    return with_cfg(
-        native.genrule,
-    ).set(
-        "compilation_mode",
-        "opt",
-    ).set(
-        "platforms",
-        [Label(platform)],
-    ).extend(
-        "extra_toolchains",
-        _llvm_toolchains(llvm_target),
-    ).set(
-        Label("@llvm//config:experimental_stub_libgcc_s"),
-        True,
-    ).set(
-        Label("@llvm//config/bootstrap:experimental_stub_libgcc_s"),
-        True,
-    ).build()
-
-release_node_linux_amd64, _release_node_linux_amd64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:linux_amd64_musl",
-    "linux_x86_64",
+load(
+    "//crates/codescythe_cli:release_binary.bzl",
+    "release_binary_darwin_arm64",
+    "release_binary_linux_amd64_gnu",
+    "release_binary_linux_arm64_gnu",
 )
 
-release_node_linux_arm64, _release_node_linux_arm64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:linux_arm64_musl",
-    "linux_aarch64",
-)
-
-release_node_darwin_arm64, _release_node_darwin_arm64_internal = _release_node(
-    "//crates/codescythe_napi/platforms:darwin_arm64",
-    "macos_aarch64",
-)
+release_node_darwin_arm64 = release_binary_darwin_arm64
+release_node_linux_amd64 = release_binary_linux_amd64_gnu
+release_node_linux_arm64 = release_binary_linux_arm64_gnu

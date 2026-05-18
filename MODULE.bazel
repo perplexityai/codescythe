@@ -17,8 +17,8 @@ bazel_dep(name = "aspect_rules_ts", version = "3.8.8")
 bazel_dep(name = "rules_nodejs", version = "6.7.4")
 bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
 
-bazel_dep(name = "rules_rs", version = "0.0.82")
-bazel_dep(name = "llvm", version = "0.8.3")
+bazel_dep(name = "rules_rs", version = "0.0.73")
+bazel_dep(name = "llvm", version = "0.8.0")
 bazel_dep(name = "with_cfg.bzl", version = "0.14.6")
 
 benchmark_fixture_build_file = """
