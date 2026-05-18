@@ -17,8 +17,18 @@ pub struct CodescytheConfig {
     pub ignore: Vec<String>,
     #[serde(deserialize_with = "deserialize_aliases")]
     pub aliases: BTreeMap<String, Vec<String>>,
+    pub unresolved_imports: UnresolvedImportsMode,
     pub include_entry_exports: bool,
     pub ignore_exports_used_in_file: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UnresolvedImportsMode {
+    #[default]
+    Report,
+    Ignore,
+    Error,
 }
 
 pub fn load_config(cwd: &Path, config_path: Option<&Path>) -> Result<CodescytheConfig> {

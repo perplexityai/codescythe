@@ -5,7 +5,7 @@ mod fix;
 pub use analyze::{
     Analysis, AnalysisOptions, Counters, FileIssue, Issues, SymbolIssue, analyze_path,
 };
-pub use config::{CodescytheConfig, load_config};
+pub use config::{CodescytheConfig, UnresolvedImportsMode, load_config};
 pub use fix::{FixResult, apply_fixes};
 
 use std::path::Path;
