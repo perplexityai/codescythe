@@ -30,9 +30,22 @@
     },
     "unresolvedImports": {
       "description": "Controls how unresolved imports are handled.",
-      "type": "string",
-      "enum": ["report", "ignore", "error"],
-      "default": "report"
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["report", "ignore", "error"],
+          "default": "report"
+        },
+        "ignore": {
+          "description": "Unresolved import specifier glob patterns to ignore.",
+          "$ref": "#/$defs/stringOrStringArray"
+        }
+      },
+      "default": {
+        "mode": "report"
+      }
     },
     "includeEntryExports": {
       "type": "boolean",
