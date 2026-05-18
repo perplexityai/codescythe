@@ -13,7 +13,7 @@ concurrency:
 jobs:
   test:
     name: Test Rust
-    runs-on: macos-15
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'macos-15' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
   build:
     name: Build native CLI binaries
     needs: test
-    runs-on: macos-15
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-24.04' || 'macos-15' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,18 @@ jobs:
 
       - name: Build native CLI binaries
         run: |
-          bazel build //crates/codescythe_cli:release_binaries
+          set -euo pipefail
+
+          targets=(
+            //crates/codescythe_cli:release_binary_linux_amd64
+            //crates/codescythe_cli:release_binary_linux_arm64
+          )
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            targets+=(//crates/codescythe_cli:release_binary_darwin_arm64)
+          fi
+
+          bazel build "${targets[@]}"
 
       - name: Prepare smoke artifacts
         run: |
@@ -63,11 +74,15 @@ jobs:
             chmod +x "artifacts/binaries/$output"
           }
 
-          copy_binary //crates/codescythe_cli:release_binary_darwin_arm64 codescythe-darwin-arm64
           copy_binary //crates/codescythe_cli:release_binary_linux_amd64 codescythe-linux-amd64
           copy_binary //crates/codescythe_cli:release_binary_linux_arm64 codescythe-linux-arm64
 
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            copy_binary //crates/codescythe_cli:release_binary_darwin_arm64 codescythe-darwin-arm64
+          fi
+
       - name: Upload Darwin arm64 binary
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
           name: codescythe-binary-darwin-arm64
@@ -96,10 +111,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: darwin-arm64
-            runner: macos-15
-            binary_artifact: codescythe-binary-darwin-arm64
-            binary: codescythe-darwin-arm64
           - name: linux-amd64
             runner: ubuntu-24.04
             binary_artifact: codescythe-binary-linux-amd64
@@ -154,3 +165,42 @@ jobs:
               echo "$binary has no GLIBC_ symbol references"
             fi
           fi
+
+  smoke_darwin:
+    name: Smoke test native CLI (darwin-arm64)
+    needs: build
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download static binary
+        uses: actions/download-artifact@v4
+        with:
+          name: codescythe-binary-darwin-arm64
+          path: smoke/bin
+
+      - name: Smoke test static binary
+        run: |
+          set -euo pipefail
+
+          binary="smoke/bin/codescythe-darwin-arm64"
+          chmod +x "$binary"
+          file "$binary"
+
+          "$binary" --version
+          "$binary" --help
+
+          set +e
+          output="$("$binary" --json -C tests/fixtures/knip-export-basics)"
+          status="$?"
+          set -e
+
+          if [ "$status" -ne 1 ]; then
+            echo "expected fixture analysis to exit with 1, got $status" >&2
+            echo "$output"
+            exit 1
+          fi
+
+          echo "$output" | grep '"dangling.ts"'
