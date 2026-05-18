@@ -47,6 +47,7 @@ type Tool = {
   command: string;
   args: string[];
   okStatuses: Set<number>;
+  cwd: string;
 };
 
 type ResultRow = {
@@ -286,6 +287,7 @@ function createTools(
         configPath,
       ],
       okStatuses: new Set([0, 1]),
+      cwd: repoRoot,
     },
   ];
 
@@ -301,12 +303,11 @@ function createTools(
         'json',
         '--include',
         'files,exports,types',
-        '--directory',
-        fixtureRoot,
         '--config',
         configPath,
       ],
       okStatuses: new Set([0]),
+      cwd: fixtureRoot,
     });
   }
 
@@ -346,6 +347,10 @@ function resolveKnipBin(parsed: Options): string | undefined {
     '.bin',
     process.platform === 'win32' ? 'knip.cmd' : 'knip',
   );
+  const packageBin = path.join(repoRoot, 'node_modules', 'knip', 'bin', 'knip.js');
+  if (existsSync(packageBin)) {
+    return packageBin;
+  }
   if (canRun(localBin, ['--version'])) {
     return localBin;
   }
@@ -463,7 +468,7 @@ function measureTools(tools: Tool[], parsed: Options): ResultRow[] {
 
 function runTool(tool: Tool) {
   const result = spawnSync(tool.command, tool.args, {
-    cwd: repoRoot,
+    cwd: tool.cwd,
     encoding: 'utf8',
     env: {
       ...process.env,

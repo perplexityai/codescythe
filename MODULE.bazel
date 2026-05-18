@@ -25,6 +25,11 @@ benchmark_fixture_build_file = """
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+)
+
+filegroup(
     name = "package_json",
     srcs = ["package.json"],
 )

@@ -275,6 +275,45 @@ Unresolved imports are filtered through the configured unresolved-import policy
 and sorted per importer before they are added to the final report. Counters are
 derived from the final issue maps plus the discovered project-file count.
 
+## Differences From Knip
+
+Codescythe uses Knip as a conformance reference for the TypeScript source graph,
+but it does not try to clone Knip's full product surface.
+
+The biggest intentional difference is unused-file reporting. Knip tends to
+report the roots of dead islands. If an unused file imports another unused file,
+Knip may report the importer and suppress the imported child. Codescythe reports
+every project file that is unreachable from the configured entries. That means
+Codescythe can be a strict superset of Knip for dead subgraphs, while still
+remaining safe: a Codescythe-only unused file should have no importer that
+Codescythe considers reachable.
+
+```mermaid
+flowchart LR
+    A["Configured entries"] --> B["Reachable graph"]
+    U1["Unused root"] --> U2["Unused child"]
+    U2 --> U3["Unused grandchild"]
+    B -. "no edge" .-> U1
+    K["Knip unused-file output"] --> U1
+    C["Codescythe unused-file output"] --> U1
+    C --> U2
+    C --> U3
+```
+
+Knip also has framework plugins, package-script parsing, package metadata
+entrypoints, dependency reporting, and workspace inference. Codescythe is
+source-graph oriented: it follows configured entries, configured project globs,
+static imports, dynamic string imports, and re-exports. If a framework or
+package script should be part of the graph, it needs to be modeled as an entry
+or import in Codescythe's config.
+
+The Kibana conformance test therefore runs Knip in a narrowed mode: framework
+plugins are disabled and the copied fixture's root manifest is stripped of
+package/workspace entry metadata. The test asserts that every Knip unused file
+is reported by Codescythe, every injected synthetic unused file is reported by
+both tools, and each Codescythe-only file is imported only by files that are
+also unused.
+
 ## Fixing
 
 `apply_fixes` only removes unused exports. It does not remove unused files.

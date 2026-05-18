@@ -22,6 +22,7 @@ node --experimental-transform-types benchmarks/run.ts --fixture vscode --samples
 node --experimental-transform-types benchmarks/run.ts --fixture grafana --samples 7
 node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples 7
 node --experimental-transform-types benchmarks/run.ts --skip-build --skip-knip
+pnpm conformance:kibana
 CODESCYTHE_BIN=/tmp/codescythe KNIP_BIN=/tmp/knip pnpm benchmark
 CODESCYTHE_PARSE_THREADS=4 pnpm benchmark
 ```
@@ -48,3 +49,46 @@ benchmark config makes every TypeScript-family file an entry, it still measures
 whole-corpus parsing rather than the lazy path's best case. Set
 `CODESCYTHE_PARSE_THREADS` to tune parse parallelism; `RAYON_NUM_THREADS` is
 respected when the Codescythe-specific variable is unset.
+
+## Current Kibana Numbers
+
+Local run on May 18, 2026:
+
+```sh
+node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples 3 --warmups 1 --skip-build
+```
+
+```text
+tool        mean       rme        samples  ops/sec
+----------  ---------  ---------  -------  -------
+codescythe  2170.2ms   +/-11.95%  4        0.46
+knip        48742.7ms  +/-30.00%  3        0.02
+```
+
+The matching conformance run with 16 injected unused files reported
+82,969 unused files for Codescythe and 82,965 for Knip out of 86,072
+benchmarked files. Codescythe covered every Knip unused file, both tools found
+all synthetic files, and the 4 Codescythe-only files were imported only by other
+unused files.
+
+## Kibana Conformance
+
+`pnpm conformance:kibana` copies the Kibana fixture to a temporary directory,
+injects synthetic unused TypeScript files, then runs a shared core-graph config
+through Codescythe and Knip. The comparison disables Knip framework plugins so
+the file-level result checks the configured TypeScript graph:
+
+- Every file Knip reports unused must also be reported unused by Codescythe.
+- Every synthetic fuzz file must be reported unused by both tools.
+- Codescythe-only unused files are allowed only when every importer found in
+  the project graph is also unused. This preserves Codescythe's more complete
+  dead-subgraph reporting while guarding against reachable false positives.
+
+The conformance script is also a Bazel test at
+`//benchmarks:kibana_conformance_test`. It is tagged `functional_test` so CI can
+run the normal test lane with
+`bazel test //... --build_tests_only --test_tag_filters=-functional_test` and
+the slower Kibana lane separately with
+`bazel test //... --build_tests_only --test_tag_filters=functional_test`. Use
+`--skip-build`, `--codescythe-bin`, `--knip-bin`, `--fuzz-files`, and `--seed`
+to control local runs.
