@@ -15,11 +15,11 @@ type Analysis = {
 };
 
 type NativeBinding = {
-  analyze(options: {cwd: string}): string;
+  analyze(options: {config?: string; cwd?: string}): string;
 };
 
 type Codescythe = {
-  analyze(options: {cwd: string}): Analysis;
+  analyze(options: {config?: string; cwd?: string}): Analysis;
 };
 
 const repoRoot = process.cwd();
@@ -53,6 +53,12 @@ describe('@perplexity/codescythe npm package', () => {
     assertFixtureAnalysis(analysis);
   });
 
+  it('uses the config parent as the cwd when cwd is omitted', () => {
+    const codescythe = smokeRequire('@perplexity/codescythe') as Codescythe;
+    const analysis = codescythe.analyze({config: path.join(fixture, 'codescythe.json')});
+    assertFixtureAnalysis(analysis);
+  });
+
   it('runs the public package bin', () => {
     const binResult = childProcess.spawnSync(
       process.execPath,
@@ -62,6 +68,29 @@ describe('@perplexity/codescythe npm package', () => {
         '--json',
         '-C',
         fixture,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_PATH: nodeModules,
+        },
+      },
+    );
+
+    assert.equal(binResult.status, 1, binResult.stderr || binResult.stdout);
+    assertFixtureAnalysis(JSON.parse(binResult.stdout) as Analysis);
+  });
+
+  it('runs the public package bin from the config parent', () => {
+    const binResult = childProcess.spawnSync(
+      process.execPath,
+      [
+        '--experimental-transform-types',
+        path.join(mainPackageDir, 'bin/codescythe.ts'),
+        '--json',
+        '--config',
+        path.join(fixture, 'codescythe.json'),
       ],
       {
         encoding: 'utf8',

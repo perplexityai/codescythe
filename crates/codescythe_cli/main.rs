@@ -1,4 +1,8 @@
-use std::{path::PathBuf, process::ExitCode};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use anyhow::Result;
 use clap::Parser;
@@ -9,8 +13,8 @@ struct Args {
     #[arg(short, long)]
     config: Option<PathBuf>,
 
-    #[arg(short = 'C', long, default_value = ".")]
-    directory: PathBuf,
+    #[arg(short = 'C', long)]
+    directory: Option<PathBuf>,
 
     #[arg(long)]
     fix: bool,
@@ -40,8 +44,8 @@ fn main() -> ExitCode {
 
 fn run() -> Result<bool> {
     let args = Args::parse();
-    let cwd = args.directory.canonicalize()?;
     let config = args.config.as_deref();
+    let cwd = analysis_root(args.directory.as_deref(), config)?;
 
     if args.fix {
         let result = codescythe::run_and_fix(&cwd, config)?;
@@ -117,5 +121,45 @@ fn print_text_report(analysis: &codescythe::Analysis) {
                 println!("  {path}: {import}");
             }
         }
+    }
+}
+
+fn analysis_root(directory: Option<&Path>, config: Option<&Path>) -> Result<PathBuf> {
+    if let Some(directory) = directory {
+        return Ok(directory.to_path_buf());
+    }
+
+    if let Some(parent) = config
+        .and_then(Path::parent)
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        return Ok(parent.to_path_buf());
+    }
+
+    Ok(env::current_dir()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_analysis_root_from_config_parent_without_directory() {
+        let root = Path::new("/tmp/runfiles/_main");
+        let config = root.join("codescythe.json");
+
+        let analysis_root = analysis_root(None, Some(&config)).unwrap();
+
+        assert_eq!(analysis_root, root);
+    }
+
+    #[test]
+    fn explicit_directory_overrides_config_parent() {
+        let directory = Path::new("/tmp/runfiles/_main");
+        let config = Path::new("/tmp/runfiles/_main/pplx/frontend/codescythe.json");
+
+        let analysis_root = analysis_root(Some(directory), Some(config)).unwrap();
+
+        assert_eq!(analysis_root, directory);
     }
 }

@@ -86,9 +86,10 @@ pub fn analyze_path(
     config: &CodescytheConfig,
     options: AnalysisOptions,
 ) -> Result<Analysis> {
-    let cwd = cwd
-        .canonicalize()
-        .with_context(|| format!("failed to resolve {}", cwd.display()))?;
+    let cwd = normalize_path(cwd);
+    if !cwd.exists() {
+        anyhow::bail!("analysis root does not exist: {}", cwd.display());
+    }
     let project_files = discover_project_files(&cwd, config)?;
     let entry_files = discover_entry_files(&cwd, config, &project_files)?;
     let entry_set = entry_files.iter().cloned().collect::<HashSet<_>>();

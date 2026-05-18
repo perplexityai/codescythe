@@ -13,8 +13,8 @@ pub struct RunOptions {
 #[napi]
 pub fn analyze(options: Option<RunOptions>) -> napi::Result<String> {
     let options = options.unwrap_or_default();
-    let cwd = cwd(options.cwd)?;
     let config = options.config.as_deref().map(PathBuf::from);
+    let cwd = cwd(options.cwd, config.as_deref())?;
     let analysis = codescythe::run(&cwd, config.as_deref()).map_err(to_napi_error)?;
     serde_json::to_string(&analysis).map_err(to_napi_error)
 }
@@ -22,8 +22,8 @@ pub fn analyze(options: Option<RunOptions>) -> napi::Result<String> {
 #[napi]
 pub fn fix(options: Option<RunOptions>) -> napi::Result<String> {
     let options = options.unwrap_or_default();
-    let cwd = cwd(options.cwd)?;
     let config = options.config.as_deref().map(PathBuf::from);
+    let cwd = cwd(options.cwd, config.as_deref())?;
     let result = codescythe::run_and_fix(&cwd, config.as_deref()).map_err(to_napi_error)?;
     serde_json::to_string(&result).map_err(to_napi_error)
 }
@@ -38,10 +38,15 @@ impl Default for RunOptions {
     }
 }
 
-fn cwd(value: Option<String>) -> napi::Result<PathBuf> {
+fn cwd(value: Option<String>, config: Option<&std::path::Path>) -> napi::Result<PathBuf> {
     match value {
         Some(path) => Ok(PathBuf::from(path)),
-        None => std::env::current_dir().map_err(to_napi_error),
+        None => config
+            .and_then(std::path::Path::parent)
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(PathBuf::from)
+            .map(Ok)
+            .unwrap_or_else(|| std::env::current_dir().map_err(to_napi_error)),
     }
 }
 

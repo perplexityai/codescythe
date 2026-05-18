@@ -1,4 +1,5 @@
 load("@rules_rs//rs:rust_binary.bzl", "rust_binary")
+load("@rules_rs//rs:rust_test.bzl", "rust_test")
 load(
     ":release_binary.bzl",
     "release_binary_darwin_arm64",
@@ -12,6 +13,19 @@ rust_binary(
     crate_name = "codescythe",
     edition = "2024",
     visibility = ["//visibility:public"],
+    deps = [
+        "//crates/codescythe",
+        "@crates//:anyhow",
+        "@crates//:clap",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "codescythe_cli_test",
+    srcs = ["main.rs"],
+    crate_name = "codescythe_cli_test",
+    edition = "2024",
     deps = [
         "//crates/codescythe",
         "@crates//:anyhow",
