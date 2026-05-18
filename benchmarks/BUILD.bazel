@@ -1,0 +1,27 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+
+package(default_visibility = ["//visibility:public"])
+
+js_test(
+    name = "kibana_conformance_test",
+    args = [
+        "--codescythe-bin",
+        "$(rootpath //crates/codescythe_cli:codescythe)",
+        "--fixture-package-json",
+        "$(rootpath @benchmark_kibana//:package_json)",
+        "--fuzz-files",
+        "16",
+        "--skip-build",
+    ],
+    data = [
+        "//:node_modules/knip",
+        "//crates/codescythe_cli:codescythe",
+        "@benchmark_kibana//:all_files",
+        "@benchmark_kibana//:package_json",
+    ],
+    copy_data_to_bin = False,
+    entry_point = "kibana_conformance.ts",
+    node_options = ["--experimental-transform-types"],
+    tags = ["functional_test"],
+    timeout = "long",
+)

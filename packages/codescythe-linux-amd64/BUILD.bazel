@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("//tools:ts.bzl", "ts_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -24,6 +25,11 @@ filegroup(
         ":native_node",
     ],
     visibility = ["//visibility:public"],
+)
+
+js_library(
+    name = "pkg",
+    srcs = [":package"],
 )
 
 ts_library(
