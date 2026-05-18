@@ -148,9 +148,11 @@ or `KNIP_BIN=/path/to/knip` to benchmark a specific binary. Pass `--skip-build`
 when `target/release/codescythe` already exists, or `--skip-knip` to run only
 Codescythe.
 
-Codescythe parses project files in parallel by default, capped at the machine's
-available parallelism. Set `CODESCYTHE_PARSE_THREADS` to tune benchmark runs for
-local filesystem behavior; `RAYON_NUM_THREADS` is also respected when the
+Codescythe discovers the full project file set up front, then parses files in
+parallel graph-frontier batches from the configured entries. Benchmarks whose
+config treats every source file as an entry still exercise whole-corpus parsing;
+entry-specific audits exercise the lazy path. Set `CODESCYTHE_PARSE_THREADS` to
+tune parse parallelism; `RAYON_NUM_THREADS` is respected when the
 Codescythe-specific variable is unset.
 
 ## Tests And CI

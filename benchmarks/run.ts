@@ -4,6 +4,7 @@ const Benchmark = require('benchmark');
 const { spawnSync } = require('node:child_process');
 const {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   realpathSync,
   rmSync,
@@ -24,6 +25,9 @@ type Fixture = {
   sourceFiles: number;
   benchmarkedFiles: number;
   rawTsFiles: number;
+  entry?: string[];
+  ignore?: string[];
+  setup?: 'kibana';
   extraFiles?: string;
 };
 
@@ -107,8 +111,16 @@ const fixtures: Fixture[] = [
     commit: 'd706f62a04af1112db6b4dfef3c94955bdb98250',
     markerTarget: '@benchmark_kibana//:package_json',
     sourceFiles: 110440,
-    benchmarkedFiles: 86370,
+    benchmarkedFiles: 86056,
     rawTsFiles: 87408,
+    entry: [
+      'src/core/server/index.ts',
+      'src/core/public/index.ts',
+      'src/platform/packages/shared/kbn-config-schema/index.ts',
+      'x-pack/platform/plugins/shared/security/server/index.ts',
+    ],
+    ignore: ['**/*.gen.ts'],
+    setup: 'kibana',
   },
 ];
 
@@ -131,6 +143,7 @@ try {
 
   for (const fixture of selectedFixtures) {
     const fixtureRoot = resolveFixtureRoot(fixture);
+    prepareFixture(fixture, fixtureRoot);
     const configPath = writeFixtureConfig(configRoot, fixture);
     const tools = createTools(fixtureRoot, configPath, codescytheBin, knipBin);
     const rows = measureTools(tools, options);
@@ -226,13 +239,28 @@ function selectFixtures(selection: FixtureSelection): Fixture[] {
 function writeFixtureConfig(directory: string, fixture: Fixture): string {
   const configPath = path.join(directory, `${fixture.name}.json`);
   writeJson(configPath, {
-    entry: sourcePatterns,
+    entry: fixture.entry ?? sourcePatterns,
     project: sourcePatterns,
-    ignore: ignorePatterns,
+    ignore: [...ignorePatterns, ...(fixture.ignore ?? [])],
     includeEntryExports: true,
     ignoreExportsUsedInFile: false,
   });
   return configPath;
+}
+
+function prepareFixture(fixture: Fixture, fixtureRoot: string) {
+  if (fixture.setup === 'kibana') {
+    const tsconfigBaseDir = path.join(
+      fixtureRoot,
+      'node_modules',
+      '@kbn',
+      'tsconfig-base',
+    );
+    mkdirSync(tsconfigBaseDir, { recursive: true });
+    writeJson(path.join(tsconfigBaseDir, 'tsconfig.json'), {
+      extends: '../../../tsconfig.base.json',
+    });
+  }
 }
 
 function writeJson(filePath: string, value: unknown) {
@@ -462,7 +490,8 @@ function printSummary(
   console.log(`Fixture: ${fixture.label} (${fixture.repo} @ ${fixture.commit.slice(0, 12)})`);
   console.log(`Root: ${fixtureRoot}`);
   console.log(`Corpus: ${formatCorpus(fixture)}`);
-  console.log(`Config: entry/project ${sourcePatterns.join(', ')}`);
+  console.log(`Config: entry ${formatPatterns(fixture.entry ?? sourcePatterns)}`);
+  console.log(`Config: project ${sourcePatterns.join(', ')}`);
   console.log(`Runs: ${parsed.samples} minimum samples, ${parsed.warmups} warmup runs`);
   console.log('');
   console.log(formatTable(rows));
@@ -490,6 +519,13 @@ function formatCorpus(fixture: Fixture) {
 
 function formatCount(value: number) {
   return value.toLocaleString('en-US');
+}
+
+function formatPatterns(patterns: string[]) {
+  if (patterns.length <= 3) {
+    return patterns.join(', ');
+  }
+  return `${patterns.slice(0, 3).join(', ')}, ... (${patterns.length} total)`;
 }
 
 function formatTable(rows: ResultRow[]) {
