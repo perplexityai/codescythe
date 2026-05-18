@@ -1,0 +1,303 @@
+# Architecture
+
+Codescythe is a focused TypeScript dead-code analyzer. The core algorithm lives
+in `crates/codescythe`; the CLI, N-API binding, and npm package are thin
+runtime adapters around that library.
+
+The analyzer keeps two related but separate pieces of state:
+
+- File reachability: which configured project files are reachable from the
+  configured entry files.
+- Export usage: which named exports from reachable project files are actually
+  imported or re-exported by reachable code.
+
+This split lets Codescythe report both unused files and unused exports without
+requiring a TypeScript type checker or framework-specific plugins.
+
+## Pipeline
+
+```mermaid
+flowchart TD
+    A["Load and validate config"] --> B["Discover project files"]
+    B --> C["Discover entry files"]
+    B --> D["Build resolver and project path index"]
+    C --> F["Seed used files and queue from entries"]
+    D --> F
+    F --> G{"Queue has a file?"}
+    G -->|yes| P["Drain current graph frontier"]
+    P --> R["Parse frontier through FileCache in a Rayon batch"]
+    R --> H["Inspect imports, side effects, members, and re-exports"]
+    H --> I{"Resolve specifier"}
+    I -->|project file| J["Mark target file and imported export used"]
+    I -->|external| K["Ignore for project dead-code analysis"]
+    I -->|unresolved| L["Record unresolved import"]
+    J --> M["Propagate re-export and namespace edges"]
+    K --> G
+    L --> G
+    M --> G
+    G -->|no| N["Compare project files and exports with used sets"]
+    N --> Q["Parse only files that need export reporting"]
+    Q --> O["Emit issues and counters"]
+```
+
+`codescythe::run(cwd, config_path)` loads config and calls `analyze_path`.
+`codescythe::run_and_fix(cwd, config_path)` runs the same analysis, then applies
+supported export removals.
+
+## Config Loading
+
+`load_config` accepts an analysis root and an optional config path.
+
+When a config path is passed, Codescythe reads that file. If the file is named
+`package.json`, it reads the nested `codescythe` object from it.
+
+Without an explicit config path, Codescythe checks:
+
+1. `codescythe.json` in the analysis root.
+2. A `codescythe` object in `package.json`.
+3. The default config.
+
+Config is validated against the bundled `codescythe.schema.json`. Pattern fields
+accept either a string or an array of strings. If `project` is empty, it defaults
+to:
+
+```json
+"**/*.{ts,tsx,js,jsx,mts,cts}"
+```
+
+The loader always adds built-in ignores for `.git`, Bazel symlink trees,
+`node_modules`, `dist`, `build`, and `coverage`.
+
+`aliases` config is passed into `oxc_resolver` and overrides package-level
+imports for matching specifiers. `unresolvedImports` controls whether actionable
+unresolved imports are reported, ignored, or treated as errors, with optional
+specifier globs for suppressing known virtual imports.
+
+The CLI and N-API adapter both derive the analysis root the same way: an explicit
+directory or `cwd` option wins, otherwise a config file's parent directory wins,
+otherwise the current process directory is used.
+
+## Project File Discovery
+
+`discover_project_files` walks the analysis root with `walkdir` and follows
+links. Directory traversal is pruned early for common non-project directories:
+`.git`, `node_modules`, `target`, `dist`, `build`, `coverage`, and any directory
+whose name starts with `bazel-`.
+
+For each regular file, Codescythe computes a slash-normalized relative path and
+keeps the file when:
+
+- It matches the configured `project` glob set.
+- It does not match the configured or built-in `ignore` glob set.
+
+The resulting absolute paths are sorted before indexing, which keeps output
+stable. Discovery is still eager because Codescythe needs the complete project
+path set to report unused files, but source text is not read at this stage.
+
+## Entry File Discovery
+
+Entry files seed the reachability traversal.
+
+When `entry` is configured, literal entry patterns are resolved relative to the
+analysis root if the path exists. Glob entry patterns are matched against the
+already discovered project files.
+
+When `entry` is omitted, Codescythe infers entries from common package
+entrypoints:
+
+- `src/index.ts`, `src/index.tsx`, `src/index.js`
+- `index.ts`, `index.tsx`, `index.js`
+- `main`, `module`, `types`, and `bin` fields in `package.json`
+
+Inferred entries are filtered to files that are also part of the project file
+set. A configured literal entry must also be present in the project path index
+before it can seed the traversal.
+
+## Parsing
+
+Project files are parsed lazily with Oxc. `analyze_path` builds a `FileCache`
+from the discovered project paths, then parses files when the reachability walk
+or export reporting needs their AST-derived metadata.
+
+Reachability parsing happens in graph-frontier batches. Each traversal iteration
+drains the current queue of reachable file indexes, parses any unparsed files in
+that frontier with Rayon, then inspects the parsed files to discover the next
+frontier. This keeps file reads and parsing parallel without reading files that
+the dependency graph has not reached.
+
+Parsing uses `SourceType::from_path` so the extension controls whether a file is
+parsed as TypeScript, JSX, ESM, or CommonJS-flavored source. Each file is parsed
+at most once per analysis run.
+
+The parse pool is capped by `CODESCYTHE_PARSE_THREADS` when set, then
+`RAYON_NUM_THREADS`, then the host's available parallelism.
+
+The AST visitor stores one `FileData` record per parsed file. That record
+contains:
+
+- `exports`: exported symbols keyed by module export name.
+- `imports`: named/default imports and destructured dynamic imports.
+- `side_effect_imports`: bare imports, namespace imports, and string-literal
+  dynamic imports.
+- `namespace_imports`: local namespace binding to source specifier.
+- `named_imports`: local named binding to imported source and export name.
+- `member_uses`: static member expressions such as `Namespace.value`.
+- `reexport_all`: sources from `export * from "./module"`.
+- `local_references`: identifier references used by
+  `ignoreExportsUsedInFile`.
+
+Export records also keep their kind, source span, removal span, and re-export
+metadata. The line and column reported to users are calculated from the export
+name span after parsing.
+
+## Import And Export Shapes
+
+The visitor records these source forms:
+
+- `import { value } from "./file"` marks export `value` from the resolved file.
+- `import value from "./file"` marks export `default`.
+- `import * as ns from "./file"` marks the target file reachable and records
+  `ns` as a namespace binding.
+- `import "./file"` marks the target file reachable but does not mark any export
+  used.
+- `const { value } = await import("./file")` marks export `value` from the
+  resolved file. The string-literal `import()` expression also marks the file
+  reachable.
+- `export { value } from "./file"` marks the source file reachable and creates
+  a re-export edge from the current export name to `value` in the source file.
+- `export * from "./file"` records a star re-export source. When it is treated
+  as public, all known exports from the source file are marked used.
+- `export * as ns from "./file"` creates a namespace export. If reachable code
+  later uses `ns.value`, Codescythe resolves the namespace source and marks
+  `value` used there.
+
+Namespace member tracking is intentionally syntactic. Codescythe recognizes
+static member expressions where the object is an identifier, such as
+`MyNamespace.x`; it does not try to evaluate computed property names or arbitrary
+aliasing.
+
+## Resolution
+
+Codescythe delegates module resolution to `oxc_resolver`.
+
+The resolver is configured with:
+
+- The analysis root as `cwd`.
+- automatic `tsconfig` discovery.
+- `node` and `import` condition names.
+- TypeScript, JavaScript, JSON, and native `.node` extensions.
+- configured import aliases.
+- extension aliases that let JavaScript specifiers resolve to TypeScript
+  sources, such as `./file.js` resolving to `file.ts` or `file.tsx`.
+- built-in Node modules enabled.
+- `node_path` disabled.
+- symlink preservation, so runfiles-style symlinked source trees can resolve
+  back to the walked project paths.
+
+After discovery, Codescythe builds a normalized path index from every project
+file path. A resolved specifier is classified as:
+
+- `Project` when the resolved path is in that index.
+- `External` when resolution succeeds but points outside the project set, or
+  when the specifier is a Node built-in or an ignored resolver result.
+- `Unresolved` for selected resolver misses that should be actionable for a
+  project import.
+
+Missing bare package imports are generally treated as external misses instead of
+project unresolved issues. Missing local paths, root-like paths, package imports
+starting with `#`, and common alias forms such as `@/` and `~/` are reported as
+unresolved.
+
+## Reachability Algorithm
+
+`analyze_path` seeds three mutable collections:
+
+- `used_files`: indexes of project files reachable from entries.
+- `used_exports`: a per-file set of module export names used by reachable code.
+- `unresolved`: importer-relative paths mapped to unresolved specifiers.
+
+It also keeps a FIFO queue of newly reachable file indexes. Entry files are
+inserted into `used_files` and queued first. Each loop drains the current queue
+as a graph frontier, batch-parses that frontier through `FileCache`, then
+processes the parsed files. Newly discovered project files become the next
+frontier.
+
+For each queued file, Codescythe:
+
+1. Resolves each named or default import. Project targets are marked reachable,
+   queued the first time they become reachable, and have the imported export
+   name added to `used_exports`.
+2. Resolves each side-effect import. Project targets are marked reachable and
+   queued, but no export is marked.
+3. Applies namespace member usage. A recorded `Namespace.member` use marks
+   `member` on the namespace source. If a named import refers to a namespace
+   re-export, member usage is forwarded through that namespace export.
+4. Resolves re-export source files and marks them reachable without marking
+   their exported names used. File reachability follows the dependency graph,
+   while export liveness remains symbol-specific.
+5. Treats entry-file exports as public API when `includeEntryExports` is false.
+   Own exports from those entry files are skipped during issue reporting, while
+   re-exported sources are marked so public barrel files keep their targets
+   alive.
+6. Propagates any currently used re-exported names. If `file.ts` exports
+   `{ value } from "./source"`, and reachable code imports `value` from
+   `file.ts`, then `value` is marked used in `source`.
+
+A project file is queued only the first time it becomes reachable. Export-use
+state is still accumulated for final reporting, and re-export propagation is
+performed while a reachable file is being processed. Some propagation paths,
+such as `export * from "./source"` and namespace re-exports, may parse the
+target immediately because they need to inspect the target's export table before
+the next frontier is processed.
+
+## Issue Generation
+
+After traversal, Codescythe compares the complete project file list against the
+used sets.
+
+A file is reported under `issues.files` when it is neither reachable nor an
+entry file. By default, exports inside unreachable files are not also reported,
+which keeps output focused on the larger dead file and avoids reading or parsing
+that file at all. The internal `AnalysisOptions::include_unreachable_exports`
+option can include those export issues when callers need the extra detail; that
+mode parses otherwise unreachable files during issue generation.
+
+An export is reported under `issues.exports` when:
+
+- The file is eligible for export reporting.
+- The export name is absent from that file's `used_exports` set.
+- `ignoreExportsUsedInFile` is false, or the export's local declaration name is
+  not referenced inside the declaring file.
+
+Entry-file exports are skipped unless `includeEntryExports` is true.
+
+Unresolved imports are filtered through the configured unresolved-import policy
+and sorted per importer before they are added to the final report. Counters are
+derived from the final issue maps plus the discovered project-file count.
+
+## Fixing
+
+`apply_fixes` only removes unused exports. It does not remove unused files.
+
+Each export issue carries a parser span for the declaration or export statement
+that introduced it. Fixing expands each span to full lines, merges overlapping
+ranges, and applies replacements from the end of the file toward the beginning
+so earlier byte offsets stay valid.
+
+Because removal ranges are statement-based, multiple exports declared in the
+same export statement share the same removal span. The fix path is intentionally
+small and should stay backed by conformance fixtures before it grows more
+granular editing behavior.
+
+## Design Boundaries
+
+Codescythe's analysis is deterministic and source-graph oriented:
+
+- It only analyzes files inside the configured project set.
+- It does not inspect framework config, package scripts, dependency usage, or
+  generated runtime entrypoints unless those files are modeled as entries or
+  imports.
+- It uses AST syntax plus module resolution, not TypeScript type-checker
+  symbol resolution.
+- It treats external packages and Node built-ins as outside the project graph.
+- It favors stable, explainable output over broad plugin inference.

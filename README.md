@@ -31,17 +31,17 @@ Codescythe takes a deliberately smaller slice of Knip's problem space.
 ## Benchmarks
 
 The benchmark suite runs Codescythe and Knip against pinned real-world
-TypeScript-heavy repositories fetched through Bazel. A local smoke run with
-`--samples 1 --warmups 0` produced:
+TypeScript-heavy repositories fetched through Bazel. Representative local runs
+produced:
 
 | Fixture | Benchmarked TS-family files | Codescythe | Knip |
 | --- | ---: | ---: | ---: |
 | `microsoft/vscode` | 9,537 | 738.0ms | 5.76s |
 | `grafana/grafana` | 8,701 | 771.0ms | 9.29s |
-| `elastic/kibana` | 86,370 | 5.41s | 68.06s |
+| `elastic/kibana` | 86,056 | 2.10s | 40.82s |
 
-Counts reflect the shared benchmark config after excluding declaration files and
-fixture directories. Run `pnpm benchmark` to measure the same fixtures locally.
+Counts reflect each fixture's generated benchmark config after excludes. Run
+`pnpm benchmark` to measure the same fixtures locally.
 
 ## Config
 
