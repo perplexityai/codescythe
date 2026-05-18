@@ -52,3 +52,13 @@ release_binary_linux_arm64, _release_binary_linux_arm64_internal = _release_bina
     "//crates/codescythe_cli/platforms:linux_arm64_musl",
     "linux_aarch64",
 )
+
+release_binary_linux_amd64_gnu, _release_binary_linux_amd64_gnu_internal = _release_binary(
+    "//crates/codescythe_cli/platforms:linux_amd64",
+    "linux_x86_64",
+)
+
+release_binary_linux_arm64_gnu, _release_binary_linux_arm64_gnu_internal = _release_binary(
+    "//crates/codescythe_cli/platforms:linux_arm64",
+    "linux_aarch64",
+)

@@ -208,8 +208,10 @@ jobs:
           if [ "${{ runner.os }}" = "Linux" ]; then
             native_node="$(find "smoke/${{ matrix.package }}" -name '*.node' -print -quit)"
             file "$native_node"
-            if strings "$native_node" | grep -q 'GLIBC_'; then
-              echo "$native_node unexpectedly references glibc symbols" >&2
+            ldd_output="$(ldd "$native_node" 2>&1 || true)"
+            echo "$ldd_output"
+            if echo "$ldd_output" | grep -q 'not found'; then
+              echo "$native_node has missing runtime libraries" >&2
               exit 1
             fi
           fi
