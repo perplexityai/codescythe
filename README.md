@@ -1,8 +1,21 @@
 # Codescythe
 
 Codescythe is a focused TypeScript dead-code analyzer and remover inspired by
-Knip, scoped to entry/project graph analysis and unused TypeScript exports/files.
-It intentionally avoids Knip's framework plugin surface.
+[Knip](https://knip.dev), scoped to entry/project graph analysis and unused
+TypeScript exports/files. It intentionally avoids Knip's framework plugin
+surface.
+
+It exists for TypeScript codebases that want a smaller, more predictable cleanup
+tool: start from known entry points, follow the import/export graph, and identify
+project files or exported symbols that nothing reachable uses. Many dead-code
+tools grow into broad framework integration layers; Codescythe chooses a narrower
+contract so the analysis is easier to reason about, test, and run as part of
+automated cleanup.
+
+The goal is not to replace Knip for every framework-aware audit. Codescythe is
+for the common package and monorepo maintenance job where the project boundary is
+already known and the useful answer is deterministic: which TypeScript files and
+exports are unused, and which of those removals can be applied safely.
 
 ## Architecture
 
