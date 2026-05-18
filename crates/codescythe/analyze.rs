@@ -11,7 +11,7 @@ use oxc::ast_visit::{Visit, walk};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::{Parser, ParserReturn};
-use oxc_resolver::{ResolveError, ResolveOptions, Resolver, TsconfigDiscovery};
+use oxc_resolver::{AliasValue, ResolveError, ResolveOptions, Resolver, TsconfigDiscovery};
 use oxc_span::{GetSpan, SourceType, Span};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -101,7 +101,7 @@ pub fn analyze_path(
         .enumerate()
         .map(|(index, file)| (file.path.clone(), index))
         .collect::<HashMap<_, _>>();
-    let module_resolver = ModuleResolver::new(&cwd, &files);
+    let module_resolver = ModuleResolver::new(&cwd, &files, config);
 
     let mut entry_indexes = HashSet::<usize>::new();
     let mut used_files = UsedFiles::new();
@@ -517,10 +517,11 @@ enum ImportResolution {
 }
 
 impl ModuleResolver {
-    fn new(cwd: &Path, files: &[FileData]) -> Self {
+    fn new(cwd: &Path, files: &[FileData], config: &CodescytheConfig) -> Self {
         let resolver = Resolver::new(ResolveOptions {
             cwd: Some(cwd.to_path_buf()),
             tsconfig: Some(TsconfigDiscovery::Auto),
+            alias: config_aliases(cwd, config),
             condition_names: vec!["node".into(), "import".into()],
             extensions: vec![
                 ".ts".into(),
@@ -588,6 +589,35 @@ impl ModuleResolver {
             }
         }
     }
+}
+
+fn config_aliases(cwd: &Path, config: &CodescytheConfig) -> Vec<(String, Vec<AliasValue>)> {
+    config
+        .aliases
+        .iter()
+        .map(|(key, values)| {
+            (
+                key.clone(),
+                values
+                    .iter()
+                    .map(|value| AliasValue::Path(config_alias_value(cwd, value)))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn config_alias_value(cwd: &Path, value: &str) -> String {
+    if is_relative_alias_path(value) {
+        return normalize_path(&cwd.join(value))
+            .to_string_lossy()
+            .replace('\\', "/");
+    }
+    value.to_string()
+}
+
+fn is_relative_alias_path(value: &str) -> bool {
+    value == "." || value == ".." || value.starts_with("./") || value.starts_with("../")
 }
 
 fn is_resolution_miss(error: &ResolveError) -> bool {
@@ -1354,6 +1384,58 @@ mod tests {
                 .issues
                 .exports
                 .get("src/used.ts")
+                .is_some_and(|exports| exports.contains_key("used"))
+        );
+    }
+
+    #[test]
+    fn explicit_aliases_override_package_json_imports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r##"{
+              "entry": "src/main.ts",
+              "project": [
+                "src/**/*.ts",
+                "generated/**/*.ts",
+                "wrong/**/*.ts"
+              ],
+              "aliases": {
+                "#generated/*": "./generated/*.ts"
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "package.json",
+            r##"{
+              "imports": {
+                "#generated/*": "./wrong/*.ts"
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import { used } from '#generated/used';\nconsole.log(used);\n",
+        );
+        write_file(cwd, "generated/used.ts", "export const used = 1;\n");
+        write_file(cwd, "wrong/used.ts", "export const used = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert!(analysis.issues.unresolved.is_empty());
+        assert!(!analysis.issues.files.contains_key("generated/used.ts"));
+        assert!(analysis.issues.files.contains_key("wrong/used.ts"));
+        assert!(
+            !analysis
+                .issues
+                .exports
+                .get("generated/used.ts")
                 .is_some_and(|exports| exports.contains_key("used"))
         );
     }

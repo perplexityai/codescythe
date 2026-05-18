@@ -21,6 +21,13 @@
       "description": "Glob patterns to exclude from analysis.",
       "$ref": "#/$defs/stringOrStringArray"
     },
+    "aliases": {
+      "description": "Import specifier aliases. These override package.json imports and may use wildcard keys such as #generated/*.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stringOrStringArray"
+      }
+    },
     "includeEntryExports": {
       "type": "boolean",
       "default": false

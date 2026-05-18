@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,8 @@ pub struct CodescytheConfig {
     pub project: Vec<String>,
     #[serde(deserialize_with = "deserialize_patterns")]
     pub ignore: Vec<String>,
+    #[serde(deserialize_with = "deserialize_aliases")]
+    pub aliases: BTreeMap<String, Vec<String>>,
     pub include_entry_exports: bool,
     pub ignore_exports_used_in_file: bool,
 }
@@ -107,6 +109,24 @@ where
         Some(StringOrVec::Vec(values)) => values,
         None => Vec::new(),
     })
+}
+
+fn deserialize_aliases<'de, D>(deserializer: D) -> Result<BTreeMap<String, Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<BTreeMap<String, StringOrVec>>::deserialize(deserializer)?;
+    Ok(value
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, value)| {
+            let values = match value {
+                StringOrVec::String(value) => vec![value],
+                StringOrVec::Vec(values) => values,
+            };
+            (key, values)
+        })
+        .collect())
 }
 
 #[derive(Deserialize)]
