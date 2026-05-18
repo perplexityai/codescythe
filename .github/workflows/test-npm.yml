@@ -1,4 +1,4 @@
-name: test
+name: test npm
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build all native packages
+    name: Build npm packages
     runs-on: macos-15
 
     steps:
@@ -25,14 +25,9 @@ jobs:
           disk-cache: ${{ github.workflow }}-build
           repository-cache: true
 
-      - name: Test
-        run: bazel test //...
-
-      - name: Build native N-API packages
+      - name: Build npm packages
         run: |
           bazel build \
-            --compilation_mode=opt \
-            //crates/codescythe_cli:release_binaries \
             //crates/codescythe_napi:release_nodes \
             //packages/codescythe:package \
             //packages/codescythe-darwin-arm64:package \
@@ -77,21 +72,6 @@ jobs:
           copy_native_package codescythe-linux-amd64 //packages/codescythe-linux-amd64:native_node codescythe.linux-amd64.node
           copy_native_package codescythe-linux-arm64 //packages/codescythe-linux-arm64:native_node codescythe.linux-arm64.node
 
-          copy_binary() {
-            local target="$1"
-            local output="$2"
-            local built_binary
-
-            mkdir -p artifacts/binaries
-            built_binary="$(bazel cquery --output=files "$target" | tail -n 1)"
-            cp "$built_binary" "artifacts/binaries/$output"
-            chmod +x "artifacts/binaries/$output"
-          }
-
-          copy_binary //crates/codescythe_cli:release_binary_darwin_arm64 codescythe-darwin-arm64
-          copy_binary //crates/codescythe_cli:release_binary_linux_amd64 codescythe-linux-amd64
-          copy_binary //crates/codescythe_cli:release_binary_linux_arm64 codescythe-linux-arm64
-
       - name: Upload loader package
         uses: actions/upload-artifact@v4
         with:
@@ -120,29 +100,8 @@ jobs:
           path: artifacts/codescythe-linux-arm64
           retention-days: 7
 
-      - name: Upload Darwin arm64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: codescythe-binary-darwin-arm64
-          path: artifacts/binaries/codescythe-darwin-arm64
-          retention-days: 7
-
-      - name: Upload Linux amd64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: codescythe-binary-linux-amd64
-          path: artifacts/binaries/codescythe-linux-amd64
-          retention-days: 7
-
-      - name: Upload Linux arm64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: codescythe-binary-linux-arm64
-          path: artifacts/binaries/codescythe-linux-arm64
-          retention-days: 7
-
   smoke:
-    name: Smoke test (${{ matrix.name }})
+    name: Smoke test npm (${{ matrix.name }})
     needs: build
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -152,18 +111,12 @@ jobs:
           - name: darwin-arm64
             runner: macos-15
             package: codescythe-darwin-arm64
-            binary_artifact: codescythe-binary-darwin-arm64
-            binary: codescythe-darwin-arm64
           - name: linux-amd64
             runner: ubuntu-24.04
             package: codescythe-linux-amd64
-            binary_artifact: codescythe-binary-linux-amd64
-            binary: codescythe-linux-amd64
           - name: linux-arm64
             runner: ubuntu-24.04-arm
             package: codescythe-linux-arm64
-            binary_artifact: codescythe-binary-linux-arm64
-            binary: codescythe-linux-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -191,12 +144,6 @@ jobs:
           name: ${{ matrix.package }}
           path: smoke/${{ matrix.package }}
 
-      - name: Download static binary
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.binary_artifact }}
-          path: smoke/bin
-
       - name: Smoke test package
         run: |
           set -euo pipefail
@@ -213,42 +160,5 @@ jobs:
             if echo "$ldd_output" | grep -q 'not found'; then
               echo "$native_node has missing runtime libraries" >&2
               exit 1
-            fi
-          fi
-
-      - name: Smoke test static binary
-        run: |
-          set -euo pipefail
-
-          binary="smoke/bin/${{ matrix.binary }}"
-          chmod +x "$binary"
-          file "$binary"
-
-          "$binary" --version
-          "$binary" --help
-
-          set +e
-          output="$("$binary" --json -C tests/fixtures/knip-export-basics)"
-          status="$?"
-          set -e
-
-          if [ "$status" -ne 1 ]; then
-            echo "expected fixture analysis to exit with 1, got $status" >&2
-            echo "$output"
-            exit 1
-          fi
-
-          echo "$output" | grep '"dangling.ts"'
-
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            ldd_output="$(ldd "$binary" 2>&1 || true)"
-            echo "$ldd_output"
-            if echo "$ldd_output" | grep -Eq "not a dynamic executable|statically linked"; then
-              echo "$binary is static"
-            elif strings "$binary" | grep -q 'GLIBC_'; then
-              echo "$binary unexpectedly references glibc symbols" >&2
-              exit 1
-            else
-              echo "$binary has no GLIBC_ symbol references"
             fi
           fi
