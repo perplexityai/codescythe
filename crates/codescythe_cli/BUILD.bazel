@@ -7,11 +7,14 @@ load(
     "release_binary_linux_arm64",
 )
 
+VERSION = "0.3.0"
+
 rust_binary(
     name = "codescythe",
     srcs = ["main.rs"],
     crate_name = "codescythe",
     edition = "2024",
+    version = VERSION,
     visibility = ["//visibility:public"],
     deps = [
         "//crates/codescythe",
@@ -26,6 +29,7 @@ rust_test(
     srcs = ["main.rs"],
     crate_name = "codescythe_cli_test",
     edition = "2024",
+    version = VERSION,
     deps = [
         "//crates/codescythe",
         "@crates//:anyhow",

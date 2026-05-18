@@ -1,6 +1,6 @@
 module(
     name = "codescythe",
-    version = "0.1.0",
+    version = "0.3.0",
     bazel_compatibility = [">=8.5.0"],
 )
 

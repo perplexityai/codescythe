@@ -7,6 +7,25 @@ use std::{
 use serde_json::Value;
 
 #[test]
+fn cli_reports_release_version() {
+    let output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .arg("--version")
+        .output()
+        .expect("failed to run codescythe CLI");
+
+    assert!(output.status.success(), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "codescythe 0.3.0"
+    );
+}
+
+#[test]
 fn cli_resolves_oxc_resolution_fixture() {
     let output = Command::new(runfile("crates/codescythe_cli/codescythe"))
         .args([
