@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../codescythe.schema.json",
+  "entry": "src/main.ts",
+  "project": [
+    "src/**/*.ts",
+    "generated/**/*.ts"
+  ],
+  "aliases": {
+    "#generated/*": "./generated/*.ts"
+  },
+  "ignoreUnresolved": ["#virtual_generated/**"],
+  "unresolvedImports": "report"
+}

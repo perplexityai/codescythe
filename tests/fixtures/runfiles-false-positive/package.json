@@ -1,0 +1,7 @@
+{
+  "name": "codescythe-bazel-runfiles-false-positive-fixture",
+  "type": "module",
+  "imports": {
+    "#app/*": "./src/*.ts"
+  }
+}

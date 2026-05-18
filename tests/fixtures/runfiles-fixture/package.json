@@ -1,0 +1,8 @@
+{
+  "name": "codescythe-bazel-runfiles-fixture",
+  "type": "module",
+  "imports": {
+    "#app/*": "./workspace/frontend/lib/*.ts",
+    "#bazel_generated/*": "./protobuf/wrong/*.ts"
+  }
+}

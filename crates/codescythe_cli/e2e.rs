@@ -54,6 +54,48 @@ fn cli_resolves_oxc_resolution_fixture() {
         .contains_key("unusedExtension"));
 }
 
+#[test]
+fn cli_uses_config_path_as_root_for_bazel_runfiles_fixture() {
+    let fixture = runfile("tests/fixtures/runfiles-fixture");
+    let config = fixture.join("codescythe.json");
+    let output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .args([
+            "--config",
+            path_arg(&config),
+            "--json",
+            "--compact-json",
+        ])
+        .output()
+        .expect("failed to run codescythe CLI");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let analysis: Value =
+        serde_json::from_slice(&output.stdout).expect("CLI stdout should be JSON");
+    assert_eq!(analysis["counters"]["unresolved"], 1);
+    assert_eq!(
+        analysis["issues"]["unresolved"]
+            ["workspace/frontend/apps/client/platform/platformRuntime.ts"],
+        serde_json::json!(["./missing"])
+    );
+
+    let files = analysis["issues"]["files"]
+        .as_object()
+        .expect("files should be an object");
+    assert!(files.contains_key("workspace/frontend/dead.ts"));
+    assert!(files.contains_key("protobuf/wrong/client.ts"));
+    assert!(files.contains_key("typespec/schema.ts"));
+    assert!(!files.contains_key("workspace/frontend/lib/runtime.ts"));
+    assert!(!files.contains_key("protobuf/generated/client.ts"));
+    assert!(!files
+        .contains_key("workspace/frontend/apps/client/platform/platformRuntime.ts"));
+}
+
 fn runfile(relative: &str) -> PathBuf {
     let relative = Path::new(relative);
     let mut candidates = Vec::new();

@@ -11,13 +11,13 @@ use oxc::ast_visit::{Visit, walk};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::{Parser, ParserReturn};
-use oxc_resolver::{ResolveError, ResolveOptions, Resolver, TsconfigDiscovery};
+use oxc_resolver::{AliasValue, ResolveError, ResolveOptions, Resolver, TsconfigDiscovery};
 use oxc_span::{GetSpan, SourceType, Span};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use walkdir::{DirEntry, WalkDir};
 
-use crate::CodescytheConfig;
+use crate::{CodescytheConfig, UnresolvedImportsMode};
 
 const PARSE_THREADS_ENV: &str = "CODESCYTHE_PARSE_THREADS";
 const RAYON_THREADS_ENV: &str = "RAYON_NUM_THREADS";
@@ -86,7 +86,7 @@ pub fn analyze_path(
     config: &CodescytheConfig,
     options: AnalysisOptions,
 ) -> Result<Analysis> {
-    let cwd = normalize_path(cwd);
+    let cwd = absolute_normalize_path(cwd)?;
     if !cwd.exists() {
         anyhow::bail!("analysis root does not exist: {}", cwd.display());
     }
@@ -101,7 +101,8 @@ pub fn analyze_path(
         .enumerate()
         .map(|(index, file)| (file.path.clone(), index))
         .collect::<HashMap<_, _>>();
-    let module_resolver = ModuleResolver::new(&cwd, &files);
+    let module_resolver = ModuleResolver::new(&cwd, &files, config);
+    let unresolved_policy = UnresolvedImportPolicy::new(config)?;
 
     let mut entry_indexes = HashSet::<usize>::new();
     let mut used_files = UsedFiles::new();
@@ -133,10 +134,7 @@ pub fn analyze_path(
                     }
                 }
                 ImportResolution::Unresolved => {
-                    unresolved
-                        .entry(file.relative.clone())
-                        .or_default()
-                        .insert(import.source.clone());
+                    unresolved_policy.record(&mut unresolved, &file.relative, &import.source)?;
                 }
                 ImportResolution::External => {}
             }
@@ -150,10 +148,7 @@ pub fn analyze_path(
                     }
                 }
                 ImportResolution::Unresolved => {
-                    unresolved
-                        .entry(file.relative.clone())
-                        .or_default()
-                        .insert(source.clone());
+                    unresolved_policy.record(&mut unresolved, &file.relative, source)?;
                 }
                 ImportResolution::External => {}
             }
@@ -171,6 +166,7 @@ pub fn analyze_path(
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
+                    &unresolved_policy,
                     &file.relative,
                 )?;
             }
@@ -191,6 +187,7 @@ pub fn analyze_path(
                                 &mut used_exports,
                                 &mut queue,
                                 &mut unresolved,
+                                &unresolved_policy,
                                 &file.relative,
                             )?;
                         }
@@ -209,6 +206,7 @@ pub fn analyze_path(
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
+                    &unresolved_policy,
                 )?;
             }
             for source in &file.reexport_all {
@@ -221,6 +219,7 @@ pub fn analyze_path(
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
+                    &unresolved_policy,
                 )?;
             }
         }
@@ -236,6 +235,7 @@ pub fn analyze_path(
                     &mut used_exports,
                     &mut queue,
                     &mut unresolved,
+                    &unresolved_policy,
                 )?;
             }
         }
@@ -321,7 +321,7 @@ fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<P
         .filter_entry(|entry| should_enter(entry))
     {
         let entry = entry?;
-        if !entry.file_type().is_file() {
+        if !entry.path().is_file() {
             continue;
         }
         let relative = relative_path(cwd, entry.path());
@@ -426,7 +426,7 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet> {
 }
 
 fn should_enter(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
+    if !entry.path().is_dir() {
         return true;
     }
     !matches!(
@@ -517,10 +517,11 @@ enum ImportResolution {
 }
 
 impl ModuleResolver {
-    fn new(cwd: &Path, files: &[FileData]) -> Self {
+    fn new(cwd: &Path, files: &[FileData], config: &CodescytheConfig) -> Self {
         let resolver = Resolver::new(ResolveOptions {
             cwd: Some(cwd.to_path_buf()),
             tsconfig: Some(TsconfigDiscovery::Auto),
+            alias: config_aliases(cwd, config),
             condition_names: vec!["node".into(), "import".into()],
             extensions: vec![
                 ".ts".into(),
@@ -590,6 +591,74 @@ impl ModuleResolver {
     }
 }
 
+struct UnresolvedImportPolicy {
+    mode: UnresolvedImportsMode,
+    ignore: GlobSet,
+}
+
+impl UnresolvedImportPolicy {
+    fn new(config: &CodescytheConfig) -> Result<Self> {
+        Ok(Self {
+            mode: config.unresolved_imports,
+            ignore: build_glob_set(&config.ignore_unresolved)?,
+        })
+    }
+
+    fn record(
+        &self,
+        unresolved: &mut UnresolvedImports,
+        importer: &str,
+        specifier: &str,
+    ) -> Result<()> {
+        if self.ignore.is_match(specifier) || self.mode == UnresolvedImportsMode::Ignore {
+            return Ok(());
+        }
+
+        match self.mode {
+            UnresolvedImportsMode::Report => {
+                unresolved
+                    .entry(importer.to_string())
+                    .or_default()
+                    .insert(specifier.to_string());
+                Ok(())
+            }
+            UnresolvedImportsMode::Ignore => Ok(()),
+            UnresolvedImportsMode::Error => {
+                anyhow::bail!("unresolved import {specifier:?} from {importer}")
+            }
+        }
+    }
+}
+
+fn config_aliases(cwd: &Path, config: &CodescytheConfig) -> Vec<(String, Vec<AliasValue>)> {
+    config
+        .aliases
+        .iter()
+        .map(|(key, values)| {
+            (
+                key.clone(),
+                values
+                    .iter()
+                    .map(|value| AliasValue::Path(config_alias_value(cwd, value)))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn config_alias_value(cwd: &Path, value: &str) -> String {
+    if is_relative_alias_path(value) {
+        return normalize_path(&cwd.join(value))
+            .to_string_lossy()
+            .replace('\\', "/");
+    }
+    value.to_string()
+}
+
+fn is_relative_alias_path(value: &str) -> bool {
+    value == "." || value == ".." || value.starts_with("./") || value.starts_with("../")
+}
+
 fn is_resolution_miss(error: &ResolveError) -> bool {
     matches!(
         error,
@@ -624,6 +693,7 @@ fn mark_member_import(
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
     unresolved: &mut UnresolvedImports,
+    unresolved_policy: &UnresolvedImportPolicy,
     importer_relative: &str,
 ) -> Result<()> {
     match resolver.resolve(from_file, source)? {
@@ -647,16 +717,14 @@ fn mark_member_import(
                         used_exports,
                         queue,
                         unresolved,
+                        unresolved_policy,
                         importer_relative,
                     )?;
                 }
             }
         }
         ImportResolution::Unresolved => {
-            unresolved
-                .entry(importer_relative.to_string())
-                .or_default()
-                .insert(source.to_string());
+            unresolved_policy.record(unresolved, importer_relative, source)?;
         }
         ImportResolution::External => {}
     }
@@ -671,6 +739,7 @@ fn mark_reexport(
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
     unresolved: &mut UnresolvedImports,
+    unresolved_policy: &UnresolvedImportPolicy,
 ) -> Result<()> {
     if let (Some(source), Some(name)) = (&export.reexport_source, &export.reexport_name) {
         match resolver.resolve(file, source)? {
@@ -681,10 +750,7 @@ fn mark_reexport(
                 used_exports.entry(target).or_default().insert(name.clone());
             }
             ImportResolution::Unresolved => {
-                unresolved
-                    .entry(file.relative.clone())
-                    .or_default()
-                    .insert(source.clone());
+                unresolved_policy.record(unresolved, &file.relative, source)?;
             }
             ImportResolution::External => {}
         }
@@ -698,10 +764,7 @@ fn mark_reexport(
                 }
             }
             ImportResolution::Unresolved => {
-                unresolved
-                    .entry(file.relative.clone())
-                    .or_default()
-                    .insert(source.clone());
+                unresolved_policy.record(unresolved, &file.relative, source)?;
             }
             ImportResolution::External => {}
         }
@@ -718,6 +781,7 @@ fn mark_all_exports(
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
     unresolved: &mut UnresolvedImports,
+    unresolved_policy: &UnresolvedImportPolicy,
 ) -> Result<()> {
     match resolver.resolve(file, source)? {
         ImportResolution::Project(target) => {
@@ -729,10 +793,7 @@ fn mark_all_exports(
             }
         }
         ImportResolution::Unresolved => {
-            unresolved
-                .entry(file.relative.clone())
-                .or_default()
-                .insert(source.to_string());
+            unresolved_policy.record(unresolved, &file.relative, source)?;
         }
         ImportResolution::External => {}
     }
@@ -1216,6 +1277,15 @@ fn relative_path(cwd: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
+fn absolute_normalize_path(path: &Path) -> Result<PathBuf> {
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()?.join(path)
+    };
+    Ok(normalize_path(&path))
+}
+
 fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {
@@ -1314,6 +1384,152 @@ mod tests {
     }
 
     #[test]
+    fn reads_package_json_imports_by_default() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+        );
+        write_file(
+            cwd,
+            "package.json",
+            r##"{
+              "imports": {
+                "#app/*": "./src/*.ts"
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import { used } from '#app/used';\nconsole.log(used);\n",
+        );
+        write_file(cwd, "src/used.ts", "export const used = 1;\n");
+        write_file(cwd, "src/unused.ts", "export const unused = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert!(analysis.issues.unresolved.is_empty());
+        assert!(!analysis.issues.files.contains_key("src/used.ts"));
+        assert!(analysis.issues.files.contains_key("src/unused.ts"));
+        assert!(
+            !analysis
+                .issues
+                .exports
+                .get("src/used.ts")
+                .is_some_and(|exports| exports.contains_key("used"))
+        );
+    }
+
+    #[test]
+    fn explicit_aliases_override_package_json_imports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r##"{
+              "entry": "src/main.ts",
+              "project": [
+                "src/**/*.ts",
+                "generated/**/*.ts",
+                "wrong/**/*.ts"
+              ],
+              "aliases": {
+                "#generated/*": "./generated/*.ts"
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "package.json",
+            r##"{
+              "imports": {
+                "#generated/*": "./wrong/*.ts"
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import { used } from '#generated/used';\nconsole.log(used);\n",
+        );
+        write_file(cwd, "generated/used.ts", "export const used = 1;\n");
+        write_file(cwd, "wrong/used.ts", "export const used = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert!(analysis.issues.unresolved.is_empty());
+        assert!(!analysis.issues.files.contains_key("generated/used.ts"));
+        assert!(analysis.issues.files.contains_key("wrong/used.ts"));
+        assert!(
+            !analysis
+                .issues
+                .exports
+                .get("generated/used.ts")
+                .is_some_and(|exports| exports.contains_key("used"))
+        );
+    }
+
+    #[test]
+    fn unresolved_import_modes_control_behavior() {
+        let report = analyze_missing_import(None).unwrap();
+        assert_eq!(
+            report.issues.unresolved["src/main.ts"],
+            vec!["./missing".to_string()]
+        );
+        assert_eq!(report.counters.unresolved, 1);
+
+        let ignore = analyze_missing_import(Some("ignore")).unwrap();
+        assert!(ignore.issues.unresolved.is_empty());
+        assert_eq!(ignore.counters.unresolved, 0);
+
+        let error = analyze_missing_import(Some("error")).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("src/main.ts"));
+        assert!(message.contains("./missing"));
+    }
+
+    #[test]
+    fn ignored_unresolved_patterns_do_not_count_as_issues() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r##"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts",
+              "ignoreUnresolved": ["#virtual_generated/**"]
+            }"##,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import '#virtual_generated/api/foo';\nimport './missing';\n",
+        );
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(
+            analysis.issues.unresolved["src/main.ts"],
+            vec!["./missing".to_string()]
+        );
+        assert_eq!(analysis.counters.unresolved, 1);
+    }
+
+    #[test]
     fn reports_missing_local_imports() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
@@ -1345,6 +1561,37 @@ console.log(missingExternal, missingExternalSubpath);
             analysis.issues.unresolved["app/index.ts"],
             vec!["./missing".to_string()]
         );
+    }
+
+    fn analyze_missing_import(mode: Option<&str>) -> Result<Analysis> {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        let mode_config = mode
+            .map(|mode| format!(r#", "unresolvedImports": "{mode}""#))
+            .unwrap_or_default();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            &format!(
+                r#"{{
+                  "entry": "src/main.ts",
+                  "project": "src/**/*.ts"{mode_config}
+                }}"#
+            ),
+        );
+        write_file(cwd, "src/main.ts", "import './missing';\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        analyze_path(cwd, &config, AnalysisOptions::default())
+    }
+
+    fn write_file(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, contents).unwrap();
     }
 
     fn fixture_path(name: &str) -> (tempfile::TempDir, PathBuf) {

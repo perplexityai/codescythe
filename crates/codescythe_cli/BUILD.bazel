@@ -40,6 +40,7 @@ rust_test(
     crate_name = "codescythe_cli_e2e_test",
     data = [
         ":codescythe",
+        "//tests/fixtures/runfiles-fixture:fixture_files",
         "//tests/fixtures/oxc-resolution:fixtures",
     ],
     edition = "2024",

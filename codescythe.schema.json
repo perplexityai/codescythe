@@ -21,6 +21,23 @@
       "description": "Glob patterns to exclude from analysis.",
       "$ref": "#/$defs/stringOrStringArray"
     },
+    "aliases": {
+      "description": "Import specifier aliases. These override package.json imports and may use wildcard keys such as #generated/*.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stringOrStringArray"
+      }
+    },
+    "ignoreUnresolved": {
+      "description": "Unresolved import specifier glob patterns to ignore.",
+      "$ref": "#/$defs/stringOrStringArray"
+    },
+    "unresolvedImports": {
+      "description": "Controls how unresolved imports are handled.",
+      "type": "string",
+      "enum": ["report", "ignore", "error"],
+      "default": "report"
+    },
     "includeEntryExports": {
       "type": "boolean",
       "default": false

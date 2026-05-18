@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../codescythe.schema.json",
+  "entry": [
+    "workspace/frontend/apps/client/index.html",
+    "workspace/frontend/apps/client/spa/index.html",
+    "workspace/frontend/apps/client/platform/index.html",
+    "workspace/frontend/apps/client/platform/platformRuntime.ts"
+  ],
+  "project": "**/*.ts",
+  "aliases": {
+    "#bazel_generated/*": "./protobuf/generated/*.ts"
+  },
+  "ignoreUnresolved": ["#virtual_generated/**"],
+  "unresolvedImports": "report"
+}
