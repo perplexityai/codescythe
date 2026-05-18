@@ -37,7 +37,6 @@ jobs:
           set -euo pipefail
 
           bazel build \
-            --compilation_mode=opt \
             //crates/codescythe_cli:release_binary_darwin_arm64 \
             //crates/codescythe_cli:release_binary_linux_amd64 \
             //crates/codescythe_cli:release_binary_linux_arm64
@@ -49,7 +48,7 @@ jobs:
             local output="$2"
             local binary_path
 
-            binary_path="$(bazel cquery --compilation_mode=opt --output=files "$target" | tail -n 1)"
+            binary_path="$(bazel cquery --output=files "$target" | tail -n 1)"
             cp "$binary_path" "artifacts/$output"
             chmod +x "artifacts/$output"
           }
