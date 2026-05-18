@@ -1314,6 +1314,51 @@ mod tests {
     }
 
     #[test]
+    fn reads_package_json_imports_by_default() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+        );
+        write_file(
+            cwd,
+            "package.json",
+            r##"{
+              "imports": {
+                "#app/*": "./src/*.ts"
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import { used } from '#app/used';\nconsole.log(used);\n",
+        );
+        write_file(cwd, "src/used.ts", "export const used = 1;\n");
+        write_file(cwd, "src/unused.ts", "export const unused = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert!(analysis.issues.unresolved.is_empty());
+        assert!(!analysis.issues.files.contains_key("src/used.ts"));
+        assert!(analysis.issues.files.contains_key("src/unused.ts"));
+        assert!(
+            !analysis
+                .issues
+                .exports
+                .get("src/used.ts")
+                .is_some_and(|exports| exports.contains_key("used"))
+        );
+    }
+
+    #[test]
     fn reports_missing_local_imports() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
@@ -1345,6 +1390,14 @@ console.log(missingExternal, missingExternalSubpath);
             analysis.issues.unresolved["app/index.ts"],
             vec!["./missing".to_string()]
         );
+    }
+
+    fn write_file(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, contents).unwrap();
     }
 
     fn fixture_path(name: &str) -> (tempfile::TempDir, PathBuf) {
