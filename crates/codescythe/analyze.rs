@@ -102,7 +102,7 @@ pub fn analyze_path(
         .map(|(index, file)| (file.path.clone(), index))
         .collect::<HashMap<_, _>>();
     let module_resolver = ModuleResolver::new(&cwd, &files, config);
-    let unresolved_policy = UnresolvedImportPolicy::new(config);
+    let unresolved_policy = UnresolvedImportPolicy::new(config)?;
 
     let mut entry_indexes = HashSet::<usize>::new();
     let mut used_files = UsedFiles::new();
@@ -622,13 +622,15 @@ fn is_relative_alias_path(value: &str) -> bool {
 
 struct UnresolvedImportPolicy {
     mode: UnresolvedImportsMode,
+    ignore: GlobSet,
 }
 
 impl UnresolvedImportPolicy {
-    fn new(config: &CodescytheConfig) -> Self {
-        Self {
-            mode: config.unresolved_imports,
-        }
+    fn new(config: &CodescytheConfig) -> Result<Self> {
+        Ok(Self {
+            mode: config.unresolved_imports.mode,
+            ignore: build_glob_set(&config.unresolved_imports.ignore)?,
+        })
     }
 
     fn record(
@@ -637,6 +639,10 @@ impl UnresolvedImportPolicy {
         importer: &str,
         specifier: &str,
     ) -> Result<()> {
+        if self.ignore.is_match(specifier) {
+            return Ok(());
+        }
+
         match self.mode {
             UnresolvedImportsMode::Report => {
                 unresolved
@@ -1485,6 +1491,38 @@ mod tests {
     }
 
     #[test]
+    fn ignored_unresolved_patterns_do_not_count_as_issues() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r##"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts",
+              "unresolvedImports": {
+                "ignore": ["#virtual_generated/**"]
+              }
+            }"##,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import '#virtual_generated/api/foo';\nimport './missing';\n",
+        );
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(
+            analysis.issues.unresolved["src/main.ts"],
+            vec!["./missing".to_string()]
+        );
+        assert_eq!(analysis.counters.unresolved, 1);
+    }
+
+    #[test]
     fn reports_missing_local_imports() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
@@ -1522,7 +1560,7 @@ console.log(missingExternal, missingExternalSubpath);
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
         let mode_config = mode
-            .map(|mode| format!(r#", "unresolvedImports": "{mode}""#))
+            .map(|mode| format!(r#", "unresolvedImports": {{ "mode": "{mode}" }}"#))
             .unwrap_or_default();
 
         write_file(
