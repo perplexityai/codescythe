@@ -17,6 +17,9 @@ struct Args {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, requires = "json")]
+    compact_json: bool,
 }
 
 fn main() -> ExitCode {
@@ -43,7 +46,11 @@ fn run() -> Result<bool> {
     if args.fix {
         let result = codescythe::run_and_fix(&cwd, config)?;
         if args.json {
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            if args.compact_json {
+                println!("{}", serde_json::to_string(&result)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
         } else {
             println!(
                 "Removed {} unused exports from {} files",
@@ -58,7 +65,11 @@ fn run() -> Result<bool> {
 
     let analysis = codescythe::run(&cwd, config)?;
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&analysis)?);
+        if args.compact_json {
+            println!("{}", serde_json::to_string(&analysis)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&analysis)?);
+        }
     } else {
         print_text_report(&analysis);
     }

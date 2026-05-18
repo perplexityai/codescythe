@@ -13,9 +13,15 @@
     "build:binary": "bazel build //crates/codescythe_cli:release_binaries",
     "build:napi": "bazel build //crates/codescythe_napi:release_nodes",
     "build:packages": "bazel build //packages/codescythe:package //packages/codescythe-darwin-arm64:package //packages/codescythe-linux-amd64:package //packages/codescythe-linux-arm64:package",
-    "gazelle": "bazel run //:gazelle"
+    "gazelle": "bazel run //:gazelle",
+    "benchmark": "node --experimental-transform-types benchmarks/run.ts",
+    "benchmark:grafana": "node --experimental-transform-types benchmarks/run.ts --fixture grafana",
+    "benchmark:kibana": "node --experimental-transform-types benchmarks/run.ts --fixture kibana",
+    "benchmark:vscode": "node --experimental-transform-types benchmarks/run.ts --fixture vscode"
   },
   "devDependencies": {
+    "benchmark": "^2.1.4",
+    "knip": "^6.12.2",
     "mocha": "^11.0.0"
   },
   "workspaces": [

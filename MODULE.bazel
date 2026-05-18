@@ -21,6 +21,47 @@ bazel_dep(name = "rules_rs", version = "0.0.82")
 bazel_dep(name = "llvm", version = "0.8.3")
 bazel_dep(name = "with_cfg.bzl", version = "0.14.6")
 
+benchmark_fixture_build_file = """
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "package_json",
+    srcs = ["package.json"],
+)
+"""
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "benchmark_vscode",
+    build_file_content = benchmark_fixture_build_file,
+    sha256 = "2a13c215a62ef6a6858ce5d144e8956e847123151d0440185a5a1191c407d6bb",
+    strip_prefix = "vscode-9b7643f90393b9ad2c5d5cbbdad70fa928090009",
+    urls = [
+        "https://github.com/microsoft/vscode/archive/9b7643f90393b9ad2c5d5cbbdad70fa928090009.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "benchmark_grafana",
+    build_file_content = benchmark_fixture_build_file,
+    sha256 = "1f8c2e414dc367cd687dc6e9edb6697753000a2a9b0065e345bc88e21b591e7c",
+    strip_prefix = "grafana-7709dc39cf8ee2de85c38b8943b208adf8a3c47c",
+    urls = [
+        "https://github.com/grafana/grafana/archive/7709dc39cf8ee2de85c38b8943b208adf8a3c47c.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "benchmark_kibana",
+    build_file_content = benchmark_fixture_build_file,
+    sha256 = "e620e9505e6c035a24bd16e1b6ee4c6e7abd6a26d1d74ef665684927f3d6b2c8",
+    strip_prefix = "kibana-d706f62a04af1112db6b4dfef3c94955bdb98250",
+    urls = [
+        "https://github.com/elastic/kibana/archive/d706f62a04af1112db6b4dfef3c94955bdb98250.tar.gz",
+    ],
+)
+
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
 node.toolchain(node_version = "24.14.0")
 
