@@ -1,0 +1,8 @@
+{
+  "name": "codescythe-agi-runfiles-fixture",
+  "type": "module",
+  "imports": {
+    "#app/*": "./pplx/frontend/lib/*.ts",
+    "#bazel_generated/*": "./protobuf/wrong/*.ts"
+  }
+}

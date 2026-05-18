@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../codescythe.schema.json",
+  "entry": [
+    "pplx/frontend/apps/ask/index.html",
+    "pplx/frontend/apps/ask/spa/index.html",
+    "pplx/frontend/apps/ask/perplexity-windows/index.html",
+    "pplx/frontend/apps/ask/perplexity-windows/nativeNetworkFetcher.ts"
+  ],
+  "project": [
+    "pplx/frontend/**/*.{ts,tsx,js,jsx}",
+    "protobuf/**/*.{ts,tsx,js,jsx}",
+    "typespec/**/*.{ts,tsx,js,jsx}"
+  ],
+  "aliases": {
+    "#bazel_generated/*": "./protobuf/generated/*.ts"
+  },
+  "ignoreUnresolved": ["#pplx_generated/**"],
+  "unresolvedImports": "report"
+}
