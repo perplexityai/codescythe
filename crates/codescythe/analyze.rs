@@ -2326,6 +2326,28 @@ mod tests {
     }
 
     #[test]
+    fn type_imports_in_tests_mark_test_only_types_unused() {
+        let analysis = analyze_inline_project(&[
+            (
+                "src/entry.ts",
+                "import type { UsedType } from './types';\nconst value: UsedType = { value: 1 };\nconsole.log(value);\n",
+            ),
+            (
+                "src/types.ts",
+                "export type UsedType = { value: number };\nexport type OnlyForTest = { value: number };\n",
+            ),
+            (
+                "src/types.test.ts",
+                "import type { OnlyForTest } from './types';\nconst value: OnlyForTest = { value: 1 };\nconsole.log(value);\n",
+            ),
+        ]);
+
+        assert_no_unused_export(&analysis, "src/types.ts", "UsedType");
+        assert_unused_export(&analysis, "src/types.ts", "OnlyForTest");
+        assert_unused_file(&analysis, "src/types.test.ts");
+    }
+
+    #[test]
     fn propagates_used_export_through_already_reached_barrel() {
         let analysis = analyze_inline_project(&[
             ("src/entry.ts", "import './form';\nimport './feature';\n"),

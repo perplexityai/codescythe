@@ -106,10 +106,12 @@ fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
     assert!(files.contains("src/dead-wrapper.spec.ts"));
     assert!(files.contains("src/module.spec.ts"));
     assert!(files.contains("src/namespace.test.ts"));
+    assert!(files.contains("src/types.test.ts"));
     assert!(!files.contains("src/live.ts"));
     assert!(!files.contains("src/live.test.ts"));
     assert!(!files.contains("src/module.ts"));
     assert!(!files.contains("src/namespace.ts"));
+    assert!(!files.contains("src/types.ts"));
 
     let exports = analysis["issues"]["exports"]
         .as_object()
@@ -122,6 +124,10 @@ fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
         .as_object()
         .expect("src/namespace.ts exports should be an object")
         .contains_key("onlyForNamespaceTest"));
+    assert!(exports["src/types.ts"]
+        .as_object()
+        .expect("src/types.ts exports should be an object")
+        .contains_key("OnlyForTypeTest"));
 
     let writable_fixture = copy_fixture_to_temp(&fixture, "test-file-usage");
     let fix_output = Command::new(&cli)
@@ -157,19 +163,25 @@ fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
             "src/dead.ts".to_string(),
             "src/module.spec.ts".to_string(),
             "src/namespace.test.ts".to_string(),
+            "src/types.test.ts".to_string(),
         ])
     );
     assert_eq!(
         string_set(&fix_result["changedFiles"]),
-        BTreeSet::from(["src/module.ts".to_string(), "src/namespace.ts".to_string()])
+        BTreeSet::from([
+            "src/module.ts".to_string(),
+            "src/namespace.ts".to_string(),
+            "src/types.ts".to_string(),
+        ])
     );
-    assert_eq!(fix_result["removedExports"], 2);
+    assert_eq!(fix_result["removedExports"], 3);
 
     assert!(!writable_fixture.join("src/dead.ts").exists());
     assert!(!writable_fixture.join("src/dead.test.ts").exists());
     assert!(!writable_fixture.join("src/dead-wrapper.spec.ts").exists());
     assert!(!writable_fixture.join("src/module.spec.ts").exists());
     assert!(!writable_fixture.join("src/namespace.test.ts").exists());
+    assert!(!writable_fixture.join("src/types.test.ts").exists());
     assert!(writable_fixture.join("src/live.test.ts").exists());
     assert_eq!(
         fs::read_to_string(writable_fixture.join("src/module.ts")).unwrap(),
@@ -178,6 +190,10 @@ fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
     assert_eq!(
         fs::read_to_string(writable_fixture.join("src/namespace.ts")).unwrap(),
         "export const usedNamespace = 1;\n"
+    );
+    assert_eq!(
+        fs::read_to_string(writable_fixture.join("src/types.ts")).unwrap(),
+        "export type UsedType = { value: number };\n"
     );
 
     fs::remove_dir_all(&writable_fixture).unwrap();

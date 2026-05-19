@@ -1,16 +1,18 @@
 {
   "changedFiles": [
     "src/module.ts",
-    "src/namespace.ts"
+    "src/namespace.ts",
+    "src/types.ts"
   ],
   "removedFiles": [
     "src/dead-wrapper.spec.ts",
     "src/dead.test.ts",
     "src/dead.ts",
     "src/module.spec.ts",
-    "src/namespace.test.ts"
+    "src/namespace.test.ts",
+    "src/types.test.ts"
   ],
-  "removedExports": 2,
+  "removedExports": 3,
   "analysis": {
     "issues": {
       "files": {
@@ -28,6 +30,9 @@
         },
         "src/namespace.test.ts": {
           "path": "src/namespace.test.ts"
+        },
+        "src/types.test.ts": {
+          "path": "src/types.test.ts"
         }
       },
       "exports": {
@@ -46,15 +51,23 @@
             "line": 2,
             "col": 14
           }
+        },
+        "src/types.ts": {
+          "OnlyForTypeTest": {
+            "symbol": "OnlyForTypeTest",
+            "kind": "type",
+            "line": 2,
+            "col": 13
+          }
         }
       }
     },
     "counters": {
-      "files": 5,
-      "exports": 2,
+      "files": 6,
+      "exports": 3,
       "unresolved": 0,
-      "processed": 10,
-      "total": 10
+      "processed": 12,
+      "total": 12
     }
   }
 }
