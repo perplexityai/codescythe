@@ -1,0 +1,8 @@
+{
+  "entry": "index.ts",
+  "project": ["**/*.ts"],
+  "unresolvedImports": {
+    "mode": "ignore"
+  },
+  "ignoreExportsUsedInFile": true
+}

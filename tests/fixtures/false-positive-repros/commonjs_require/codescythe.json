@@ -1,0 +1,8 @@
+{
+  "entry": "index.js",
+  "project": ["**/*.js"],
+  "unresolvedImports": {
+    "mode": "ignore"
+  },
+  "ignoreExportsUsedInFile": true
+}
