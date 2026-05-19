@@ -51,7 +51,7 @@ for (let i = 0; i < args.length; i += 1) {
 
 const result = shouldFix ? fix(options) : analyze(options);
 if (json) {
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result));
 } else if (shouldFix) {
   const fixResult = result as FixResult;
   console.log(`Removed ${fixResult.removedExports} unused exports from ${fixResult.changedFiles.length} files`);

@@ -29,7 +29,7 @@ CODESCYTHE_BIN=/tmp/codescythe KNIP_BIN=/tmp/knip pnpm benchmark
 CODESCYTHE_PARSE_THREADS=4 pnpm benchmark
 ```
 
-Codescythe is measured with `--json --compact-json --directory <fixture>
+Codescythe is measured with `--json --directory <fixture>
 --config <generated-config>`. Knip is measured only when available, with
 reporting limited to file, value-export, and type-export issues so the
 comparison stays close to Codescythe's scope. The generated config is shared by

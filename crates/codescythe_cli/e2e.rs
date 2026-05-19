@@ -32,7 +32,6 @@ fn cli_resolves_oxc_resolution_fixture() {
             "-C",
             path_arg(&runfile("tests/fixtures/oxc-resolution")),
             "--json",
-            "--compact-json",
         ])
         .output()
         .expect("failed to run codescythe CLI");

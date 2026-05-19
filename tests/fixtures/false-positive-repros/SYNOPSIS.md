@@ -23,54 +23,68 @@ All repro tests exit `0` with no dead-code findings.
 ## Bazel repro tests
 
 ```starlark
-load("//tests/bazel:codescythe_test.bzl", "codescythe_test", "source_group")
+load("//tests/bazel:codescythe_test.bzl", "codescythe_test")
 
-source_group(
-    name = "commonjs_require_sources",
-    srcs = [
-        "commonjs_require/index.js",
-        "commonjs_require/make-value.js",
-    ],
+filegroup(
+    name = "commonjs_require_files",
+    srcs = glob(["commonjs_require/**"]),
 )
 
 codescythe_test(
     name = "commonjs_require_false_positive_repro",
-    config = "commonjs_require/codescythe.json",
+    args = [
+        "--config",
+        "$(location commonjs_require/codescythe.json)",
+        "--directory",
+        "commonjs_require",
+        "--json",
+    ],
+    data = [
+        ":commonjs_require_files",
+        "commonjs_require/codescythe.json",
+    ],
     expected_exit_code = 0,
     must_not_contain = ["make-value.js"],
-    targets = [":commonjs_require_sources"],
 )
 
-source_group(
-    name = "dynamic_import_destructuring_sources",
-    srcs = [
-        "dynamic_import_destructuring/index.ts",
-        "dynamic_import_destructuring/lazy.ts",
-    ],
+filegroup(
+    name = "dynamic_import_destructuring_files",
+    srcs = glob(["dynamic_import_destructuring/**"]),
 )
 
 codescythe_test(
     name = "dynamic_import_destructuring_false_positive_repro",
-    config = "dynamic_import_destructuring/codescythe.json",
+    args = [
+        "--config",
+        "$(location dynamic_import_destructuring/codescythe.json)",
+        "--json",
+    ],
+    data = [
+        ":dynamic_import_destructuring_files",
+        "dynamic_import_destructuring/codescythe.json",
+    ],
     expected_exit_code = 0,
     must_not_contain = ["lazyValue"],
-    targets = [":dynamic_import_destructuring_sources"],
 )
 
-source_group(
-    name = "import_meta_glob_sources",
-    srcs = [
-        "import_meta_glob/index.ts",
-        "import_meta_glob/routes/home.ts",
-    ],
+filegroup(
+    name = "import_meta_glob_files",
+    srcs = glob(["import_meta_glob/**"]),
 )
 
 codescythe_test(
     name = "import_meta_glob_false_positive_repro",
-    config = "import_meta_glob/codescythe.json",
+    args = [
+        "--config",
+        "$(location import_meta_glob/codescythe.json)",
+        "--json",
+    ],
+    data = [
+        ":import_meta_glob_files",
+        "import_meta_glob/codescythe.json",
+    ],
     expected_exit_code = 0,
     must_not_contain = ["routes/home.ts"],
-    targets = [":import_meta_glob_sources"],
 )
 ```
 

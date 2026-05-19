@@ -376,7 +376,6 @@ function createTools(
       command: codescytheBin,
       args: [
         '--json',
-        '--compact-json',
         '--directory',
         fixtureRoot,
         '--config',

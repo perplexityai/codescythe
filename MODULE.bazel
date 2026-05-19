@@ -112,6 +112,7 @@ toolchains.toolchain(
 )
 use_repo(toolchains, "default_rust_toolchains")
 register_toolchains("@default_rust_toolchains//:all")
+register_toolchains("//tests/bazel:codescythe_toolchain")
 
 crate = use_extension("@rules_rs//rs:extensions.bzl", "crate")
 crate.from_cargo(

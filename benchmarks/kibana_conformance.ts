@@ -109,7 +109,6 @@ try {
 
   const codescythe = runJson('codescythe', toolForExecutable(codescytheBin), [
     '--json',
-    '--compact-json',
     '--directory',
     fixtureRoot,
     '--config',

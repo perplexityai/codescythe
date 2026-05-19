@@ -1,68 +1,27 @@
-load("//tests/bazel:codescythe_test.bzl", "codescythe_test", "source_group")
-
-source_group(
-    name = "entry_sources",
-    srcs = [
-        "workspace/frontend/apps/client/platform/platformRuntime.ts",
-    ],
-    deps = [
-        ":generated_sources",
-        ":library_sources",
-    ],
-)
-
-source_group(
-    name = "generated_sources",
-    srcs = [
-        "protobuf/generated/client.ts",
-    ],
-)
-
-source_group(
-    name = "library_sources",
-    srcs = [
-        "workspace/frontend/lib/runtime.ts",
-    ],
-)
-
-source_group(
-    name = "unused_sources",
-    srcs = [
-        "protobuf/wrong/client.ts",
-        "typespec/schema.ts",
-        "workspace/frontend/dead.ts",
-    ],
-)
-
-source_group(
-    name = "all_sources",
-    deps = [
-        ":entry_sources",
-        ":unused_sources",
-    ],
-)
+load("//tests/bazel:codescythe_test.bzl", "codescythe_test")
 
 filegroup(
     name = "fixture_files",
-    srcs = [
-        ":all_sources",
-        "codescythe.json",
-        "package.json",
-        "workspace/frontend/apps/client/index.html",
-        "workspace/frontend/apps/client/platform/index.html",
-        "workspace/frontend/apps/client/spa/index.html",
-    ],
+    srcs = glob(
+        ["**"],
+        exclude = [
+            "BUILD.bazel",
+            "README.md",
+        ],
+    ),
     visibility = ["//visibility:public"],
 )
 
 codescythe_test(
     name = "codescythe_runfiles_test",
-    config = "codescythe.json",
+    args = [
+        "--config",
+        "$(location codescythe.json)",
+        "--json",
+    ],
     data = [
-        "package.json",
-        "workspace/frontend/apps/client/index.html",
-        "workspace/frontend/apps/client/platform/index.html",
-        "workspace/frontend/apps/client/spa/index.html",
+        ":fixture_files",
+        "codescythe.json",
     ],
     expected_exit_code = 1,
     must_contain = [
@@ -76,5 +35,4 @@ codescythe_test(
     must_not_contain = [
         "#virtual_generated/api/foo",
     ],
-    targets = [":all_sources"],
 )

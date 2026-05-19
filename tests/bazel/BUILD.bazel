@@ -1,1 +1,25 @@
 package(default_visibility = ["//visibility:public"])
+
+load("@rules_rs//rs:rust_binary.bzl", "rust_binary")
+load("//tests/bazel:codescythe_test.bzl", "codescythe_toolchain")
+
+toolchain_type(name = "toolchain_type")
+
+codescythe_toolchain(
+    name = "codescythe_toolchain_impl",
+    codescythe = "//crates/codescythe_cli:codescythe",
+)
+
+toolchain(
+    name = "codescythe_toolchain",
+    toolchain = ":codescythe_toolchain_impl",
+    toolchain_type = ":toolchain_type",
+)
+
+rust_binary(
+    name = "codescythe_test_runner",
+    srcs = ["codescythe_test_runner.rs"],
+    crate_name = "codescythe_test_runner",
+    edition = "2024",
+    testonly = True,
+)
