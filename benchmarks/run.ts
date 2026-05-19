@@ -13,7 +13,7 @@ const {
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 
-type FixtureName = 'vscode' | 'grafana' | 'kibana';
+type FixtureName = 'vscode' | 'grafana' | 'kibana' | 'renovate';
 type FixtureSelection = FixtureName | 'all';
 
 type Fixture = {
@@ -26,8 +26,9 @@ type Fixture = {
   benchmarkedFiles: number;
   rawTsFiles: number;
   entry?: string[];
+  project?: string[];
   ignore?: string[];
-  setup?: 'kibana';
+  setup?: 'grafana' | 'kibana';
   extraFiles?: string;
 };
 
@@ -35,10 +36,13 @@ type Options = {
   fixture: FixtureSelection;
   samples: number;
   warmups: number;
+  once: boolean;
   skipBuild: boolean;
   skipKnip: boolean;
   codescytheBin?: string;
   knipBin?: string;
+  fixturePackageJson?: string;
+  fixtureRoot?: string;
   help: boolean;
 };
 
@@ -68,6 +72,7 @@ const defaultCodescytheBin = path.join(
 );
 
 const sourcePatterns = ['**/*.{ts,tsx,mts,cts}'];
+const javaScriptSourcePatterns = ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'];
 const ignorePatterns = [
   '**/*.d.ts',
   '**/__fixtures__/**',
@@ -104,6 +109,7 @@ const fixtures: Fixture[] = [
     benchmarkedFiles: 8701,
     rawTsFiles: 8733,
     extraFiles: '5,955 Go files',
+    setup: 'grafana',
   },
   {
     name: 'kibana',
@@ -123,6 +129,44 @@ const fixtures: Fixture[] = [
     ignore: ['**/*.gen.ts'],
     setup: 'kibana',
   },
+  {
+    name: 'renovate',
+    label: 'Renovate',
+    repo: 'renovatebot/renovate',
+    commit: 'b42bb1dc25287ab0b2b328559674e442d3290da9',
+    markerTarget: '@benchmark_renovate//:package_json',
+    sourceFiles: 3015,
+    benchmarkedFiles: 2488,
+    rawTsFiles: 2472,
+    entry: [
+      '.markdownlint-cli2.mjs',
+      'lib/renovate.ts',
+      'lib/config-validator.ts',
+      'tools/check-fenced-code.ts',
+      'tools/check-git-version.mjs',
+      'tools/check/index.ts',
+      'tools/clean-cache.mjs',
+      'tools/docker.ts',
+      'tools/generate-docs.ts',
+      'tools/generate-imports.mjs',
+      'tools/generate-schema.ts',
+      'tools/mkdocs.ts',
+      'tools/prepare-deps.mjs',
+      'tools/prepare-release.ts',
+      'tools/publish-release.ts',
+      'tools/static-data/generate-distro-info.mjs',
+      'tools/static-data/generate-lambda-node-schedule.mjs',
+      'tools/static-data/generate-mise-registry.ts',
+      'tools/static-data/generate-node-schedule.mjs',
+      'tools/sync-module-labels.ts',
+      'tools/sync-org-issue-fields.ts',
+      'tools/test-shards.ts',
+      'tools/validate-schema.ts',
+      'tsdown.config.mts',
+      'vitest.config.mts',
+    ],
+    project: javaScriptSourcePatterns,
+  },
 ];
 
 let executionRoot: string | undefined;
@@ -136,6 +180,9 @@ if (options.help) {
 }
 
 const selectedFixtures = selectFixtures(options.fixture);
+if ((options.fixturePackageJson || options.fixtureRoot) && selectedFixtures.length !== 1) {
+  throw new Error('--fixture-package-json and --fixture-root require a single --fixture selection');
+}
 const configRoot = mkdtempSync(path.join(tmpdir(), 'codescythe-benchmark-config-'));
 
 try {
@@ -143,11 +190,11 @@ try {
   const knipBin = options.skipKnip ? undefined : resolveKnipBin(options);
 
   for (const fixture of selectedFixtures) {
-    const fixtureRoot = resolveFixtureRoot(fixture);
+    const fixtureRoot = resolveFixtureRoot(fixture, options);
     prepareFixture(fixture, fixtureRoot);
     const configPath = writeFixtureConfig(configRoot, fixture);
     const tools = createTools(fixtureRoot, configPath, codescytheBin, knipBin);
-    const rows = measureTools(tools, options);
+    const rows = options.once ? runToolsOnce(tools) : measureTools(tools, options);
     printSummary(fixture, fixtureRoot, options, rows, knipBin);
   }
 } finally {
@@ -159,10 +206,13 @@ function parseArgs(args: string[]): Options {
     fixture: 'all',
     samples: 5,
     warmups: 1,
+    once: false,
     skipBuild: false,
     skipKnip: false,
     codescytheBin: process.env.CODESCYTHE_BIN,
     knipBin: process.env.KNIP_BIN,
+    fixturePackageJson: process.env.BENCHMARK_FIXTURE_PACKAGE_JSON,
+    fixtureRoot: process.env.BENCHMARK_FIXTURE_ROOT,
     help: false,
   };
 
@@ -176,6 +226,8 @@ function parseArgs(args: string[]): Options {
       parsed.samples = parsePositiveInt(args[++index], arg);
     } else if (arg === '--warmups') {
       parsed.warmups = parseNonNegativeInt(args[++index], '--warmups');
+    } else if (arg === '--once') {
+      parsed.once = true;
     } else if (arg === '--skip-build') {
       parsed.skipBuild = true;
     } else if (arg === '--skip-knip') {
@@ -184,6 +236,10 @@ function parseArgs(args: string[]): Options {
       parsed.codescytheBin = path.resolve(requireValue(args[++index], '--codescythe-bin'));
     } else if (arg === '--knip-bin') {
       parsed.knipBin = path.resolve(requireValue(args[++index], '--knip-bin'));
+    } else if (arg === '--fixture-package-json') {
+      parsed.fixturePackageJson = path.resolve(requireValue(args[++index], '--fixture-package-json'));
+    } else if (arg === '--fixture-root') {
+      parsed.fixtureRoot = path.resolve(requireValue(args[++index], '--fixture-root'));
     } else if (arg === '--help' || arg === '-h') {
       parsed.help = true;
     } else {
@@ -200,11 +256,12 @@ function parseFixtureSelection(value: string | undefined): FixtureSelection {
     fixture === 'all' ||
     fixture === 'vscode' ||
     fixture === 'grafana' ||
-    fixture === 'kibana'
+    fixture === 'kibana' ||
+    fixture === 'renovate'
   ) {
     return fixture;
   }
-  throw new Error(`--fixture must be one of: all, vscode, grafana, kibana`);
+  throw new Error(`--fixture must be one of: all, vscode, grafana, kibana, renovate`);
 }
 
 function requireValue(value: string | undefined, flag: string): string {
@@ -239,9 +296,10 @@ function selectFixtures(selection: FixtureSelection): Fixture[] {
 
 function writeFixtureConfig(directory: string, fixture: Fixture): string {
   const configPath = path.join(directory, `${fixture.name}.json`);
+  const project = fixture.project ?? sourcePatterns;
   writeJson(configPath, {
-    entry: fixture.entry ?? sourcePatterns,
-    project: sourcePatterns,
+    entry: fixture.entry ?? project,
+    project,
     ignore: [...ignorePatterns, ...(fixture.ignore ?? [])],
     includeEntryExports: true,
     ignoreExportsUsedInFile: false,
@@ -250,6 +308,44 @@ function writeFixtureConfig(directory: string, fixture: Fixture): string {
 }
 
 function prepareFixture(fixture: Fixture, fixtureRoot: string) {
+  if (fixture.setup === 'grafana') {
+    const tsconfigDir = path.join(
+      fixtureRoot,
+      'node_modules',
+      '@grafana',
+      'tsconfig',
+    );
+    mkdirSync(tsconfigDir, { recursive: true });
+    writeJson(path.join(tsconfigDir, 'package.json'), {
+      name: '@grafana/tsconfig',
+      version: '0.0.0',
+      main: 'tsconfig.json',
+    });
+    writeJson(path.join(tsconfigDir, 'tsconfig.json'), {
+      compilerOptions: {
+        jsx: 'react-jsx',
+        moduleResolution: 'bundler',
+        resolveJsonModule: true,
+      },
+    });
+
+    const pluginConfigsDir = path.join(
+      fixtureRoot,
+      'node_modules',
+      '@grafana',
+      'plugin-configs',
+    );
+    mkdirSync(pluginConfigsDir, { recursive: true });
+    writeJson(path.join(pluginConfigsDir, 'tsconfig.json'), {
+      compilerOptions: {
+        allowImportingTsExtensions: true,
+        customConditions: ['@grafana-app/source'],
+        jsx: 'react-jsx',
+        moduleResolution: 'bundler',
+        resolveJsonModule: true,
+      },
+    });
+  }
   if (fixture.setup === 'kibana') {
     const tsconfigBaseDir = path.join(
       fixtureRoot,
@@ -377,7 +473,16 @@ function canRun(command: string, args: string[]) {
   return result.status === 0;
 }
 
-function resolveFixtureRoot(fixture: Fixture): string {
+function resolveFixtureRoot(fixture: Fixture, parsed: Options): string {
+  if (parsed.fixtureRoot) {
+    assertExecutable(path.join(parsed.fixtureRoot, 'package.json'), `${fixture.label} fixture package.json`);
+    return realpathSync(parsed.fixtureRoot);
+  }
+  if (parsed.fixturePackageJson) {
+    assertExecutable(parsed.fixturePackageJson, `${fixture.label} fixture package.json`);
+    return realpathSync(path.dirname(parsed.fixturePackageJson));
+  }
+
   const markerPath = bazelStdout([
     'cquery',
     fixture.markerTarget,
@@ -466,7 +571,21 @@ function measureTools(tools: Tool[], parsed: Options): ResultRow[] {
   return rows;
 }
 
-function runTool(tool: Tool) {
+function runToolsOnce(tools: Tool[]): ResultRow[] {
+  return tools.map(tool => {
+    const elapsedMs = runTool(tool);
+    return {
+      label: tool.label,
+      meanMs: elapsedMs,
+      rme: 0,
+      samples: 1,
+      hz: elapsedMs === 0 ? Number.POSITIVE_INFINITY : 1000 / elapsedMs,
+    };
+  });
+}
+
+function runTool(tool: Tool): number {
+  const started = Date.now();
   const result = spawnSync(tool.command, tool.args, {
     cwd: tool.cwd,
     encoding: 'utf8',
@@ -483,6 +602,7 @@ function runTool(tool: Tool) {
       `${tool.label} failed with exit code ${result.status ?? 'unknown'}:\n${result.stderr}`,
     );
   }
+  return Date.now() - started;
 }
 
 function printSummary(
@@ -495,9 +615,13 @@ function printSummary(
   console.log(`Fixture: ${fixture.label} (${fixture.repo} @ ${fixture.commit.slice(0, 12)})`);
   console.log(`Root: ${fixtureRoot}`);
   console.log(`Corpus: ${formatCorpus(fixture)}`);
-  console.log(`Config: entry ${formatPatterns(fixture.entry ?? sourcePatterns)}`);
-  console.log(`Config: project ${sourcePatterns.join(', ')}`);
-  console.log(`Runs: ${parsed.samples} minimum samples, ${parsed.warmups} warmup runs`);
+  console.log(`Config: entry ${formatPatterns(fixture.entry ?? fixture.project ?? sourcePatterns)}`);
+  console.log(`Config: project ${formatPatterns(fixture.project ?? sourcePatterns)}`);
+  if (parsed.once) {
+    console.log('Runs: 1 functional smoke run');
+  } else {
+    console.log(`Runs: ${parsed.samples} minimum samples, ${parsed.warmups} warmup runs`);
+  }
   console.log('');
   console.log(formatTable(rows));
 
@@ -513,7 +637,7 @@ function printSummary(
 function formatCorpus(fixture: Fixture) {
   const parts = [
     `${formatCount(fixture.sourceFiles)} source files`,
-    `${formatCount(fixture.benchmarkedFiles)} benchmarked TS-family files`,
+    `${formatCount(fixture.benchmarkedFiles)} benchmarked source files`,
     `${formatCount(fixture.rawTsFiles)} raw TS/TSX files`,
   ];
   if (fixture.extraFiles) {
@@ -568,13 +692,17 @@ function printHelp() {
   console.log(`Usage: node --experimental-transform-types benchmarks/run.ts [options]
 
 Options:
-  --fixture <name>       Fixture to benchmark: all, vscode, grafana, kibana (default: all)
+  --fixture <name>       Fixture to benchmark: all, vscode, grafana, kibana, renovate (default: all)
   --samples <n>          Minimum Benchmark.js samples per tool (default: 5)
   --warmups <n>          Warmup runs per tool (default: 1)
+  --once                 Run each selected tool once instead of benchmarking
   --skip-build           Use target/release/codescythe without rebuilding
   --skip-knip            Measure Codescythe only
   --codescythe-bin <bin> Use a specific Codescythe binary
   --knip-bin <bin>       Use a specific Knip binary
+  --fixture-package-json <file>
+                          Use a Bazel-provided fixture package.json instead of cquery
+  --fixture-root <dir>   Use a specific fixture directory instead of cquery
   -h, --help             Show this help text
 `);
 }

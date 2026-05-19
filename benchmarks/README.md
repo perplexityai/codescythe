@@ -6,6 +6,7 @@ source snapshots fetched through Bazel:
 - `microsoft/vscode` at `9b7643f90393b9ad2c5d5cbbdad70fa928090009`.
 - `grafana/grafana` at `7709dc39cf8ee2de85c38b8943b208adf8a3c47c`.
 - `elastic/kibana` at `d706f62a04af1112db6b4dfef3c94955bdb98250`.
+- `renovatebot/renovate` at `b42bb1dc25287ab0b2b328559674e442d3290da9`.
 
 Run the default benchmark. It builds Codescythe, fetches all fixtures through
 `MODULE.bazel`, and compares against the workspace's Knip dev dependency when
@@ -21,6 +22,7 @@ Useful options:
 node --experimental-transform-types benchmarks/run.ts --fixture vscode --samples 7
 node --experimental-transform-types benchmarks/run.ts --fixture grafana --samples 7
 node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples 7
+node --experimental-transform-types benchmarks/run.ts --fixture renovate --samples 7
 node --experimental-transform-types benchmarks/run.ts --skip-build --skip-knip
 pnpm conformance:kibana
 CODESCYTHE_BIN=/tmp/codescythe KNIP_BIN=/tmp/knip pnpm benchmark
@@ -32,10 +34,13 @@ Codescythe is measured with `--json --compact-json --directory <fixture>
 reporting limited to file, value-export, and type-export issues so the
 comparison stays close to Codescythe's scope. The generated config is shared by
 Codescythe and Knip. By default it treats all TypeScript-family source files as
-both `entry` and `project`; fixtures can override `entry` when a realistic
-entry graph is more useful. The Kibana benchmark uses explicit core/security
-entrypoints against the full project set. The repo installs Knip as a dev
-dependency; set `KNIP_BIN` to compare against a different Knip binary.
+both `entry` and `project`; fixtures can override `entry` and `project` when a
+realistic graph is more useful. The Kibana benchmark uses explicit
+core/security entrypoints against the full project set. The Renovate benchmark
+uses the source-side CLI, config-validator, TypeScript tooling scripts, and
+JavaScript/MJS tooling entrypoints instead of generated `dist/` package bins.
+The repo installs Knip as a dev dependency; set `KNIP_BIN` to compare against a
+different Knip binary.
 
 The Kibana source snapshot expects `@kbn/tsconfig-base` to exist in
 `node_modules`, but the Bazel-fetched fixture only contains source files. The
@@ -84,11 +89,15 @@ the file-level result checks the configured TypeScript graph:
   the project graph is also unused. This preserves Codescythe's more complete
   dead-subgraph reporting while guarding against reachable false positives.
 
-The conformance script is also a Bazel test at
-`//benchmarks:kibana_conformance_test`. It is tagged `functional_test` so CI can
-run the normal test lane with
+The pinned real-repo fixtures are also covered by Bazel functional tests:
+`//benchmarks:vscode_fixture_test`, `//benchmarks:grafana_fixture_test`,
+`//benchmarks:kibana_fixture_test`, and `//benchmarks:renovate_fixture_test`.
+Each fixture test runs the benchmark harness once against the Bazel-fetched
+source tree using the checked-in entry/project config. The deeper Kibana
+comparison lives at `//benchmarks:kibana_conformance_test`. These targets are
+tagged `functional_test` so CI can run the normal test lane with
 `bazel test //... --build_tests_only --test_tag_filters=-functional_test` and
-the slower Kibana lane separately with
+the slower functional lane separately with
 `bazel test //... --build_tests_only --test_tag_filters=functional_test`. Use
 `--skip-build`, `--codescythe-bin`, `--knip-bin`, `--fuzz-files`, and `--seed`
 to control local runs.
