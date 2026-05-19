@@ -485,7 +485,7 @@ fn discover_test_file_indexes(
     config: &CodescytheConfig,
     project_files: &[PathBuf],
 ) -> Result<TestFiles> {
-    let test = build_glob_set(&config.test)?;
+    let test = build_glob_set(&config.test_file_patterns)?;
     Ok(project_files
         .iter()
         .enumerate()
@@ -2273,7 +2273,7 @@ mod tests {
     }
 
     #[test]
-    fn default_test_patterns_mark_removed_file_tests_unused_without_test_entries() {
+    fn default_test_file_patterns_mark_removed_file_tests_unused_without_test_entries() {
         let analysis = analyze_inline_project(&[
             ("src/entry.ts", "console.log('entry');\n"),
             ("src/dead.ts", "export const dead = 1;\n"),

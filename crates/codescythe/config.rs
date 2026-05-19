@@ -14,10 +14,10 @@ pub struct CodescytheConfig {
     #[serde(deserialize_with = "deserialize_patterns")]
     pub project: Vec<String>,
     #[serde(
-        default = "default_test_patterns",
+        default = "default_test_file_patterns",
         deserialize_with = "deserialize_patterns"
     )]
-    pub test: Vec<String>,
+    pub test_file_patterns: Vec<String>,
     #[serde(deserialize_with = "deserialize_patterns")]
     pub ignore: Vec<String>,
     #[serde(deserialize_with = "deserialize_aliases")]
@@ -32,7 +32,7 @@ impl Default for CodescytheConfig {
         Self {
             entry: Vec::new(),
             project: Vec::new(),
-            test: default_test_patterns(),
+            test_file_patterns: default_test_file_patterns(),
             ignore: Vec::new(),
             aliases: BTreeMap::new(),
             unresolved_imports: UnresolvedImportsConfig::default(),
@@ -206,7 +206,7 @@ enum StringOrVec {
     Vec(Vec<String>),
 }
 
-fn default_test_patterns() -> Vec<String> {
+fn default_test_file_patterns() -> Vec<String> {
     vec!["**/*.test.*".to_string(), "**/*.spec.*".to_string()]
 }
 
@@ -302,31 +302,31 @@ mod tests {
     }
 
     #[test]
-    fn defaults_test_patterns() {
+    fn defaults_test_file_patterns() {
         let tempdir = tempfile::tempdir().unwrap();
 
         let config = load_config(tempdir.path(), None).unwrap();
 
         assert_eq!(
-            config.test,
+            config.test_file_patterns,
             vec!["**/*.test.*".to_string(), "**/*.spec.*".to_string()]
         );
     }
 
     #[test]
-    fn explicit_empty_test_patterns_disable_test_classification() {
+    fn explicit_empty_test_file_patterns_disable_test_classification() {
         let tempdir = tempfile::tempdir().unwrap();
         write_file(
             tempdir.path(),
             "codescythe.json",
             r#"{
-              "test": []
+              "testFilePatterns": []
             }"#,
         );
 
         let config = load_config(tempdir.path(), None).unwrap();
 
-        assert!(config.test.is_empty());
+        assert!(config.test_file_patterns.is_empty());
     }
 
     fn write_file(root: &Path, relative: &str, contents: &str) {
