@@ -1,0 +1,114 @@
+{
+  "fixture": "kibana",
+  "seed": "0xc0dec7",
+  "fuzz": {
+    "unusedFiles": [
+      "codescythe-conformance-fuzz/unused_0_e06c8d7a.ts",
+      "codescythe-conformance-fuzz/unused_10_21239de4.ts",
+      "codescythe-conformance-fuzz/unused_11_876acff3.ts",
+      "codescythe-conformance-fuzz/unused_12_fa7154b6.ts",
+      "codescythe-conformance-fuzz/unused_13_61b6c49d.ts",
+      "codescythe-conformance-fuzz/unused_14_38627d58.ts",
+      "codescythe-conformance-fuzz/unused_15_94f860d7.ts",
+      "codescythe-conformance-fuzz/unused_1_b33abe91.ts",
+      "codescythe-conformance-fuzz/unused_2_5a8166bc.ts",
+      "codescythe-conformance-fuzz/unused_3_6c4c12eb.ts",
+      "codescythe-conformance-fuzz/unused_4_e4c88b4e.ts",
+      "codescythe-conformance-fuzz/unused_5_5cbd1a55.ts",
+      "codescythe-conformance-fuzz/unused_6_dcd427b0.ts",
+      "codescythe-conformance-fuzz/unused_7_db35174f.ts",
+      "codescythe-conformance-fuzz/unused_8_cc219c62.ts",
+      "codescythe-conformance-fuzz/unused_9_4404f059.ts"
+    ],
+    "exportModules": [
+      {
+        "file": "src/core/server/codescythe_conformance_export_0_570ca8c5.ts",
+        "usedExport": "usedFuzzExport_0_570ca8c5",
+        "unusedExports": [
+          "unusedValueFuzzExport_0_570ca8c5",
+          "UnusedTypeFuzzExport_0_570ca8c5"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_1_2e8f0360.ts",
+        "usedExport": "usedFuzzExport_1_2e8f0360",
+        "unusedExports": [
+          "unusedValueFuzzExport_1_2e8f0360",
+          "UnusedTypeFuzzExport_1_2e8f0360"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_2_e96a5f3f.ts",
+        "usedExport": "usedFuzzExport_2_e96a5f3f",
+        "unusedExports": [
+          "unusedValueFuzzExport_2_e96a5f3f",
+          "UnusedTypeFuzzExport_2_e96a5f3f"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_3_c5efe392.ts",
+        "usedExport": "usedFuzzExport_3_c5efe392",
+        "unusedExports": [
+          "unusedValueFuzzExport_3_c5efe392",
+          "UnusedTypeFuzzExport_3_c5efe392"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_4_178badc9.ts",
+        "usedExport": "usedFuzzExport_4_178badc9",
+        "unusedExports": [
+          "unusedValueFuzzExport_4_178badc9",
+          "UnusedTypeFuzzExport_4_178badc9"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_5_e65dc94.ts",
+        "usedExport": "usedFuzzExport_5_e65dc94",
+        "unusedExports": [
+          "unusedValueFuzzExport_5_e65dc94",
+          "UnusedTypeFuzzExport_5_e65dc94"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_6_17f21ee3.ts",
+        "usedExport": "usedFuzzExport_6_17f21ee3",
+        "unusedExports": [
+          "unusedValueFuzzExport_6_17f21ee3",
+          "UnusedTypeFuzzExport_6_17f21ee3"
+        ]
+      },
+      {
+        "file": "src/core/server/codescythe_conformance_export_7_f033f6e6.ts",
+        "usedExport": "usedFuzzExport_7_f033f6e6",
+        "unusedExports": [
+          "unusedValueFuzzExport_7_f033f6e6",
+          "UnusedTypeFuzzExport_7_f033f6e6"
+        ]
+      }
+    ]
+  },
+  "counters": {
+    "codescythe": {
+      "totalFiles": 86072,
+      "unusedFiles": 82961,
+      "unusedExports": 6295
+    },
+    "knip": {
+      "unusedFiles": 82957
+    }
+  },
+  "conformance": {
+    "knipUnusedFilesMissingFromCodescythe": [],
+    "codescytheOnlyUnusedFiles": [
+      "packages/kbn-find-used-node-modules/src/find_used_node_modules.test.ts",
+      "packages/kbn-find-used-node-modules/src/find_used_node_modules.ts",
+      "src/platform/packages/private/kbn-repo-packages/modern/types.ts",
+      "src/platform/packages/shared/kbn-repo-info/types.ts"
+    ],
+    "codescytheOnlyFilesImportedByReachableFiles": [],
+    "syntheticFilesMissingFromEitherTool": [],
+    "syntheticFilesWithMismatchedReports": [],
+    "syntheticUnusedExportsMissingFromCodescythe": [],
+    "syntheticUsedExportsReportedByCodescythe": []
+  }
+}

@@ -24,6 +24,7 @@ type Options = {
   fuzzFiles: number;
   fuzzExports: number;
   seed: number;
+  snapshotOutput?: string;
   keepTemp: boolean;
   help: boolean;
 };
@@ -47,6 +48,41 @@ type SyntheticExportModule = {
   file: string;
   used: string;
   unused: string[];
+};
+
+type Snapshot = {
+  fixture: 'kibana';
+  seed: string;
+  fuzz: {
+    unusedFiles: string[];
+    exportModules: Array<{
+      file: string;
+      usedExport: string;
+      unusedExports: string[];
+    }>;
+  };
+  counters: {
+    codescythe: {
+      totalFiles: number | 'unknown';
+      unusedFiles: number;
+      unusedExports: number;
+    };
+    knip: {
+      unusedFiles: number;
+    };
+  };
+  conformance: {
+    knipUnusedFilesMissingFromCodescythe: string[];
+    codescytheOnlyUnusedFiles: string[];
+    codescytheOnlyFilesImportedByReachableFiles: Array<{
+      file: string;
+      importers: ImportRef[];
+    }>;
+    syntheticFilesMissingFromEitherTool: string[];
+    syntheticFilesWithMismatchedReports: string[];
+    syntheticUnusedExportsMissingFromCodescythe: string[];
+    syntheticUsedExportsReportedByCodescythe: string[];
+  };
 };
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -151,6 +187,26 @@ try {
     .map(module => formatExportRef(module.file, module.used))
     .filter(ref => codescytheUnusedExports.has(ref));
 
+  const snapshot = createSnapshot({
+    codescythe,
+    codescytheUnused,
+    codescytheUnusedExports,
+    knipUnused,
+    missingFromCodescythe,
+    extraInCodescythe,
+    extraReachableImporters,
+    fuzzFiles,
+    fuzzExports,
+    missingFuzzFiles,
+    unexpectedFuzzFiles,
+    missingFuzzExports,
+    unexpectedUsedFuzzExports,
+  });
+
+  if (options.snapshotOutput) {
+    writeJson(resolveOutputPath(options.snapshotOutput), snapshot);
+  }
+
   printSummary({
     sourceFixtureRoot,
     fixtureRoot,
@@ -197,6 +253,7 @@ function parseArgs(args: string[]): Options {
     fuzzFiles: 16,
     fuzzExports: 8,
     seed: 0xC0DEC7,
+    snapshotOutput: process.env.KIBANA_CONFORMANCE_SNAPSHOT_OUTPUT,
     keepTemp: false,
     help: false,
   };
@@ -206,13 +263,13 @@ function parseArgs(args: string[]): Options {
     if (arg === '--') {
       continue;
     } else if (arg === '--codescythe-bin') {
-      parsed.codescytheBin = path.resolve(requireValue(args[++index], arg));
+      parsed.codescytheBin = requireValue(args[++index], arg);
     } else if (arg === '--knip-bin') {
-      parsed.knipBin = path.resolve(requireValue(args[++index], arg));
+      parsed.knipBin = requireValue(args[++index], arg);
     } else if (arg === '--fixture-package-json') {
-      parsed.fixturePackageJson = path.resolve(requireValue(args[++index], arg));
+      parsed.fixturePackageJson = requireValue(args[++index], arg);
     } else if (arg === '--fixture-root') {
-      parsed.fixtureRoot = path.resolve(requireValue(args[++index], arg));
+      parsed.fixtureRoot = requireValue(args[++index], arg);
     } else if (arg === '--skip-build') {
       parsed.skipBuild = true;
     } else if (arg === '--fuzz-files') {
@@ -221,6 +278,8 @@ function parseArgs(args: string[]): Options {
       parsed.fuzzExports = parseNonNegativeInt(args[++index], arg);
     } else if (arg === '--seed') {
       parsed.seed = parseSeed(args[++index], arg);
+    } else if (arg === '--snapshot-output') {
+      parsed.snapshotOutput = requireValue(args[++index], arg);
     } else if (arg === '--keep-temp') {
       parsed.keepTemp = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -271,6 +330,7 @@ Options:
   --fuzz-files <n>             Synthetic unused Kibana files to inject (default: 16)
   --fuzz-exports <n>           Synthetic reachable modules with unused exports to inject (default: 8)
   --seed <n>                   Fuzz seed as decimal or 0x-prefixed hex (default: 0xC0DEC7)
+  --snapshot-output <file>     Write a stable conformance snapshot JSON file
   --keep-temp                  Keep the copied fixture and generated configs
   -h, --help                   Show this help text
 `);
@@ -282,8 +342,7 @@ function testTempRoot(): string {
 
 function resolveCodescytheBin(parsed: Options): string {
   if (parsed.codescytheBin) {
-    assertPath(parsed.codescytheBin, 'Codescythe binary');
-    return parsed.codescytheBin;
+    return resolveExistingPath(parsed.codescytheBin, 'Codescythe binary');
   }
 
   if (!parsed.skipBuild) {
@@ -303,8 +362,7 @@ function resolveCodescytheBin(parsed: Options): string {
 
 function resolveKnipBin(parsed: Options): string {
   if (parsed.knipBin) {
-    assertPath(parsed.knipBin, 'Knip binary');
-    return parsed.knipBin;
+    return resolveExistingPath(parsed.knipBin, 'Knip binary');
   }
 
   const localBin = path.join(
@@ -332,6 +390,92 @@ function assertPath(command: string, label: string) {
   }
 }
 
+function resolveExistingPath(filePath: string, label: string): string {
+  const candidates = pathCandidates(filePath);
+  const found = candidates.find(existsSync);
+  if (found) {
+    return found;
+  }
+  throw new Error(`${label} not found; tried:\n${candidates.map(candidate => `  ${candidate}`).join('\n')}`);
+}
+
+function pathCandidates(filePath: string): string[] {
+  const candidates: string[] = [];
+  const add = (candidate: string) => {
+    if (!candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
+  };
+  add(path.resolve(filePath));
+
+  if (!path.isAbsolute(filePath)) {
+    for (const execRoot of [
+      process.env.JS_BINARY__EXECROOT,
+      process.env.BAZEL_EXECROOT,
+      execRootFromCwd(),
+    ]) {
+      if (execRoot) {
+        add(path.join(execRoot, filePath));
+      }
+    }
+  }
+
+  const logicalPaths = runfileLogicalPaths(filePath);
+  for (const runfilesRoot of [
+    process.env.JS_BINARY__RUNFILES,
+    process.env.RUNFILES_DIR,
+    process.env.TEST_SRCDIR,
+  ]) {
+    if (!runfilesRoot) {
+      continue;
+    }
+    for (const logical of logicalPaths) {
+      add(path.join(runfilesRoot, logical));
+      add(path.join(runfilesRoot, process.env.TEST_WORKSPACE || '_main', logical));
+    }
+  }
+
+  return candidates;
+}
+
+function execRootFromCwd(): string | undefined {
+  const cwd = normalizeFixturePath(process.cwd());
+  const marker = '/bazel-out/';
+  const index = cwd.indexOf(marker);
+  if (index < 0) {
+    return undefined;
+  }
+  return cwd.slice(0, index);
+}
+
+function resolveOutputPath(filePath: string): string {
+  if (path.isAbsolute(filePath)) {
+    return filePath;
+  }
+  if (filePath.startsWith('bazel-out/')) {
+    const execRoot = execRootFromCwd();
+    if (execRoot) {
+      return path.join(execRoot, filePath);
+    }
+  }
+  return path.resolve(filePath);
+}
+
+function runfileLogicalPaths(filePath: string): string[] {
+  const normalized = normalizeFixturePath(filePath);
+  const logicals: string[] = [normalized.replace(/^\/+/, '')];
+  for (const marker of ['/external/', 'external/', '/execroot/_main/']) {
+    const index = normalized.lastIndexOf(marker);
+    if (index >= 0) {
+      logicals.push(normalized.slice(index + marker.length));
+    }
+  }
+  if (normalized.startsWith('_main/')) {
+    logicals.push(normalized.slice('_main/'.length));
+  }
+  return [...new Set(logicals)];
+}
+
 function toolForExecutable(command: string): Tool {
   return command.endsWith('.js')
     ? { command: process.execPath, args: [command] }
@@ -349,12 +493,15 @@ function canRun(tool: Tool, args: string[]) {
 
 function resolveFixtureRoot(parsed: Options): string {
   if (parsed.fixtureRoot) {
-    assertPath(path.join(parsed.fixtureRoot, 'package.json'), 'Kibana fixture package.json');
-    return realpathSync(parsed.fixtureRoot);
+    const packageJson = resolveExistingPath(
+      path.join(parsed.fixtureRoot, 'package.json'),
+      'Kibana fixture package.json',
+    );
+    return realpathSync(path.dirname(packageJson));
   }
   if (parsed.fixturePackageJson) {
-    assertPath(parsed.fixturePackageJson, 'Kibana fixture package.json');
-    return realpathSync(path.dirname(parsed.fixturePackageJson));
+    const packageJson = resolveExistingPath(parsed.fixturePackageJson, 'Kibana fixture package.json');
+    return realpathSync(path.dirname(packageJson));
   }
 
   const markerPath = bazelStdout([
@@ -564,6 +711,7 @@ function writeConfig(
 }
 
 function writeJson(filePath: string, value: unknown) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
@@ -854,6 +1002,68 @@ function findFilesImportedByReachable(
   }
   failures.sort((left, right) => left.file.localeCompare(right.file));
   return failures;
+}
+
+function createSnapshot(summary: {
+  codescythe: JsonRun;
+  codescytheUnused: Set<string>;
+  codescytheUnusedExports: Set<string>;
+  knipUnused: Set<string>;
+  missingFromCodescythe: string[];
+  extraInCodescythe: string[];
+  extraReachableImporters: Array<{ file: string; importers: ImportRef[] }>;
+  fuzzFiles: string[];
+  fuzzExports: SyntheticExportModule[];
+  missingFuzzFiles: string[];
+  unexpectedFuzzFiles: string[];
+  missingFuzzExports: string[];
+  unexpectedUsedFuzzExports: string[];
+}): Snapshot {
+  const analysisCounters = summary.codescythe.value.counters ?? {};
+  return {
+    fixture: 'kibana',
+    seed: `0x${options.seed.toString(16)}`,
+    fuzz: {
+      unusedFiles: summary.fuzzFiles,
+      exportModules: summary.fuzzExports.map(module => ({
+        file: module.file,
+        usedExport: module.used,
+        unusedExports: module.unused,
+      })),
+    },
+    counters: {
+      codescythe: {
+        totalFiles: analysisCounters.total ?? 'unknown',
+        unusedFiles: summary.codescytheUnused.size,
+        unusedExports: summary.codescytheUnusedExports.size,
+      },
+      knip: {
+        unusedFiles: summary.knipUnused.size,
+      },
+    },
+    conformance: {
+      knipUnusedFilesMissingFromCodescythe: summary.missingFromCodescythe,
+      codescytheOnlyUnusedFiles: summary.extraInCodescythe,
+      codescytheOnlyFilesImportedByReachableFiles: summary.extraReachableImporters.map(failure => ({
+        file: failure.file,
+        importers: failure.importers
+          .map(ref => ({
+            importer: ref.importer,
+            specifier: ref.specifier,
+          }))
+          .sort(compareImportRef),
+      })),
+      syntheticFilesMissingFromEitherTool: summary.missingFuzzFiles,
+      syntheticFilesWithMismatchedReports: summary.unexpectedFuzzFiles,
+      syntheticUnusedExportsMissingFromCodescythe: summary.missingFuzzExports,
+      syntheticUsedExportsReportedByCodescythe: summary.unexpectedUsedFuzzExports,
+    },
+  };
+}
+
+function compareImportRef(left: ImportRef, right: ImportRef): number {
+  return left.importer.localeCompare(right.importer) ||
+    left.specifier.localeCompare(right.specifier);
 }
 
 function printSummary(summary: {
