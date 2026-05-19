@@ -1,0 +1,60 @@
+{
+  "changedFiles": [
+    "src/module.ts",
+    "src/namespace.ts"
+  ],
+  "removedFiles": [
+    "src/dead-wrapper.spec.ts",
+    "src/dead.test.ts",
+    "src/dead.ts",
+    "src/module.spec.ts",
+    "src/namespace.test.ts"
+  ],
+  "removedExports": 2,
+  "analysis": {
+    "issues": {
+      "files": {
+        "src/dead-wrapper.spec.ts": {
+          "path": "src/dead-wrapper.spec.ts"
+        },
+        "src/dead.test.ts": {
+          "path": "src/dead.test.ts"
+        },
+        "src/dead.ts": {
+          "path": "src/dead.ts"
+        },
+        "src/module.spec.ts": {
+          "path": "src/module.spec.ts"
+        },
+        "src/namespace.test.ts": {
+          "path": "src/namespace.test.ts"
+        }
+      },
+      "exports": {
+        "src/module.ts": {
+          "onlyForTest": {
+            "symbol": "onlyForTest",
+            "kind": "value",
+            "line": 2,
+            "col": 14
+          }
+        },
+        "src/namespace.ts": {
+          "onlyForNamespaceTest": {
+            "symbol": "onlyForNamespaceTest",
+            "kind": "value",
+            "line": 2,
+            "col": 14
+          }
+        }
+      }
+    },
+    "counters": {
+      "files": 5,
+      "exports": 2,
+      "unresolved": 0,
+      "processed": 10,
+      "total": 10
+    }
+  }
+}

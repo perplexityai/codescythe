@@ -2273,6 +2273,59 @@ mod tests {
     }
 
     #[test]
+    fn default_test_patterns_mark_removed_file_tests_unused_without_test_entries() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "console.log('entry');\n"),
+            ("src/dead.ts", "export const dead = 1;\n"),
+            (
+                "src/dead.test.ts",
+                "import { dead } from './dead';\nconsole.log(dead);\n",
+            ),
+        ]);
+
+        assert_unused_file(&analysis, "src/dead.ts");
+        assert_unused_file(&analysis, "src/dead.test.ts");
+    }
+
+    #[test]
+    fn tests_tied_to_removed_tests_are_also_unused() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "console.log('entry');\n"),
+            ("src/dead.ts", "export const dead = 1;\n"),
+            (
+                "src/dead.test.ts",
+                "import { dead } from './dead';\nconsole.log(dead);\n",
+            ),
+            ("src/dead-wrapper.spec.ts", "import './dead.test';\n"),
+        ]);
+
+        assert_unused_file(&analysis, "src/dead.ts");
+        assert_unused_file(&analysis, "src/dead.test.ts");
+        assert_unused_file(&analysis, "src/dead-wrapper.spec.ts");
+    }
+
+    #[test]
+    fn namespace_usage_of_test_only_exports_marks_test_unused() {
+        let analysis = analyze_inline_project(&[
+            (
+                "src/entry.ts",
+                "import { used } from './module';\nconsole.log(used);\n",
+            ),
+            (
+                "src/module.ts",
+                "export const used = 1;\nexport const onlyForTest = 2;\n",
+            ),
+            (
+                "src/module.test.ts",
+                "import * as module from './module';\nconsole.log(module.onlyForTest);\n",
+            ),
+        ]);
+
+        assert_unused_export(&analysis, "src/module.ts", "onlyForTest");
+        assert_unused_file(&analysis, "src/module.test.ts");
+    }
+
+    #[test]
     fn propagates_used_export_through_already_reached_barrel() {
         let analysis = analyze_inline_project(&[
             ("src/entry.ts", "import './form';\nimport './feature';\n"),
