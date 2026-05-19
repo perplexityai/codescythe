@@ -162,6 +162,31 @@ pub fn analyze_path(
                 }
             }
 
+            for source in &file.dynamic_imports {
+                mark_all_exports(
+                    &file,
+                    source,
+                    &mut files,
+                    &module_resolver,
+                    &mut used_files,
+                    &mut used_exports,
+                    &mut queue,
+                    &mut unresolved,
+                    &unresolved_policy,
+                )?;
+            }
+
+            for pattern in &file.glob_imports {
+                mark_glob_import(
+                    &file,
+                    pattern,
+                    &mut files,
+                    &mut used_files,
+                    &mut used_exports,
+                    &mut queue,
+                )?;
+            }
+
             for (local, member) in &file.member_uses {
                 if let Some(source) = file.namespace_imports.get(local) {
                     mark_member_import(
@@ -573,6 +598,19 @@ impl FileCache {
     fn relative(&self, index: usize) -> String {
         relative_path(&self.cwd, &self.paths[index])
     }
+
+    fn matching_relative_glob(&self, pattern: &str) -> Result<Vec<usize>> {
+        let glob = build_glob_set(&[pattern.to_string()])?;
+        Ok(self
+            .paths
+            .iter()
+            .enumerate()
+            .filter_map(|(index, path)| {
+                glob.is_match(relative_path(&self.cwd, path))
+                    .then_some(index)
+            })
+            .collect())
+    }
 }
 
 fn parse_thread_count() -> usize {
@@ -926,6 +964,36 @@ fn mark_source_file(
     Ok(())
 }
 
+fn mark_glob_import(
+    file: &FileData,
+    pattern: &str,
+    files: &mut FileCache,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    queue: &mut VecDeque<usize>,
+) -> Result<()> {
+    let Some(pattern) = project_glob_from_import(&file.relative, pattern) else {
+        return Ok(());
+    };
+
+    for target in files.matching_relative_glob(&pattern)? {
+        if used_files.insert(target) {
+            queue.push_back(target);
+        }
+        let export_names = files
+            .get(target)?
+            .exports
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for name in export_names {
+            used_exports.entry(target).or_default().insert(name);
+        }
+    }
+
+    Ok(())
+}
+
 fn mark_all_exports(
     file: &FileData,
     source: &str,
@@ -967,6 +1035,8 @@ struct FileData {
     exports: BTreeMap<String, ExportInfo>,
     imports: Vec<ImportRecord>,
     side_effect_imports: Vec<String>,
+    dynamic_imports: Vec<String>,
+    glob_imports: Vec<String>,
     namespace_imports: BTreeMap<String, String>,
     named_imports: BTreeMap<String, NamedImport>,
     member_uses: Vec<(String, String)>,
@@ -1005,6 +1075,8 @@ struct FileVisitor {
     exports: BTreeMap<String, ExportInfo>,
     imports: Vec<ImportRecord>,
     side_effect_imports: Vec<String>,
+    dynamic_imports: Vec<String>,
+    glob_imports: Vec<String>,
     namespace_imports: BTreeMap<String, String>,
     named_imports: BTreeMap<String, NamedImport>,
     member_uses: Vec<(String, String)>,
@@ -1020,6 +1092,8 @@ impl FileVisitor {
             exports: BTreeMap::new(),
             imports: Vec::new(),
             side_effect_imports: Vec::new(),
+            dynamic_imports: Vec::new(),
+            glob_imports: Vec::new(),
             namespace_imports: BTreeMap::new(),
             named_imports: BTreeMap::new(),
             member_uses: Vec::new(),
@@ -1035,6 +1109,8 @@ impl FileVisitor {
             exports: self.exports,
             imports: self.imports,
             side_effect_imports: self.side_effect_imports,
+            dynamic_imports: self.dynamic_imports,
+            glob_imports: self.glob_imports,
             namespace_imports: self.namespace_imports,
             named_imports: self.named_imports,
             member_uses: self.member_uses,
@@ -1090,6 +1166,23 @@ impl FileVisitor {
                 namespace_source: None,
             },
         );
+    }
+
+    fn add_dynamic_import_binding(&mut self, pattern: &BindingPattern<'_>, source: &str) {
+        if let Some(local) = binding_identifier_name(pattern) {
+            self.side_effect_imports.push(source.to_string());
+            self.namespace_imports.insert(local, source.to_string());
+            return;
+        }
+
+        let mut names = Vec::new();
+        collect_imported_binding_names(pattern, &mut names);
+        for name in names {
+            self.imports.push(ImportRecord {
+                source: source.to_string(),
+                imported: Some(name),
+            });
+        }
     }
 }
 
@@ -1228,23 +1321,22 @@ impl<'a> Visit<'a> for FileVisitor {
     fn visit_variable_declarator(&mut self, declaration: &VariableDeclarator<'a>) {
         if let Some(init) = &declaration.init {
             if let Some(source) = import_source_from_expression(init) {
-                let mut names = Vec::new();
-                collect_binding_names(&declaration.id, &mut names);
-                for name in names {
-                    self.imports.push(ImportRecord {
-                        source: source.clone(),
-                        imported: Some(name),
-                    });
-                }
+                self.add_dynamic_import_binding(&declaration.id, &source);
             }
         }
         walk::walk_variable_declarator(self, declaration);
     }
 
+    fn visit_call_expression(&mut self, expression: &CallExpression<'a>) {
+        self.glob_imports
+            .extend(import_meta_glob_patterns(expression));
+
+        walk::walk_call_expression(self, expression);
+    }
+
     fn visit_import_expression(&mut self, expression: &ImportExpression<'a>) {
         if let Expression::StringLiteral(source) = &expression.source {
-            self.side_effect_imports
-                .push(source.value.as_str().to_string());
+            self.dynamic_imports.push(source.value.as_str().to_string());
         }
         walk::walk_import_expression(self, expression);
     }
@@ -1370,12 +1462,51 @@ fn collect_binding_names(pattern: &BindingPattern<'_>, names: &mut Vec<String>) 
     }
 }
 
+fn collect_imported_binding_names(pattern: &BindingPattern<'_>, names: &mut Vec<String>) {
+    match pattern {
+        BindingPattern::ObjectPattern(pattern) => {
+            for property in &pattern.properties {
+                if !property.computed {
+                    if let Some(name) = property_key_name(&property.key) {
+                        names.push(name);
+                        continue;
+                    }
+                }
+                collect_binding_names(&property.value, names);
+            }
+        }
+        BindingPattern::AssignmentPattern(pattern) => {
+            collect_imported_binding_names(&pattern.left, names);
+        }
+        _ => collect_binding_names(pattern, names),
+    }
+}
+
+fn binding_identifier_name(pattern: &BindingPattern<'_>) -> Option<String> {
+    match pattern {
+        BindingPattern::BindingIdentifier(identifier) => Some(identifier.name.as_str().to_string()),
+        BindingPattern::AssignmentPattern(pattern) => binding_identifier_name(&pattern.left),
+        _ => None,
+    }
+}
+
+fn property_key_name(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.as_str().to_string()),
+        PropertyKey::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
+        _ => None,
+    }
+}
+
 fn import_source_from_expression(expression: &Expression<'_>) -> Option<String> {
     match expression {
         Expression::ImportExpression(import) => match &import.source {
             Expression::StringLiteral(source) => Some(source.value.as_str().to_string()),
             _ => None,
         },
+        Expression::CallExpression(call) if is_require_call(call) => {
+            call.arguments.first().and_then(argument_string_literal)
+        }
         Expression::AwaitExpression(await_expression) => {
             import_source_from_expression(&await_expression.argument)
         }
@@ -1384,6 +1515,77 @@ fn import_source_from_expression(expression: &Expression<'_>) -> Option<String> 
         }
         _ => None,
     }
+}
+
+fn is_require_call(call: &CallExpression<'_>) -> bool {
+    matches!(&call.callee, Expression::Identifier(identifier) if identifier.name == "require")
+}
+
+fn argument_string_literal(argument: &Argument<'_>) -> Option<String> {
+    match argument {
+        Argument::StringLiteral(source) => Some(source.value.as_str().to_string()),
+        _ => None,
+    }
+}
+
+fn import_meta_glob_patterns(call: &CallExpression<'_>) -> Vec<String> {
+    if !is_import_meta_glob_callee(&call.callee) {
+        return Vec::new();
+    }
+
+    call.arguments
+        .first()
+        .map(import_meta_glob_argument_patterns)
+        .unwrap_or_default()
+}
+
+fn import_meta_glob_argument_patterns(argument: &Argument<'_>) -> Vec<String> {
+    match argument {
+        Argument::StringLiteral(source) => vec![source.value.as_str().to_string()],
+        Argument::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .filter_map(|element| match element {
+                ArrayExpressionElement::StringLiteral(source) => {
+                    Some(source.value.as_str().to_string())
+                }
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn is_import_meta_glob_callee(callee: &Expression<'_>) -> bool {
+    match callee {
+        Expression::StaticMemberExpression(member) if member.property.name == "glob" => {
+            matches!(
+                &member.object,
+                Expression::MetaProperty(meta)
+                    if meta.meta.name == "import" && meta.property.name == "meta"
+            )
+        }
+        _ => false,
+    }
+}
+
+fn project_glob_from_import(file_relative: &str, pattern: &str) -> Option<String> {
+    if pattern.starts_with('!') {
+        return None;
+    }
+
+    let path = if let Some(pattern) = pattern.strip_prefix('/') {
+        PathBuf::from(pattern)
+    } else if is_relative_alias_path(pattern) {
+        Path::new(file_relative)
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(pattern)
+    } else {
+        return None;
+    };
+
+    Some(normalize_path(&path).to_string_lossy().replace('\\', "/"))
 }
 
 fn module_export_name(name: &ModuleExportName<'_>) -> String {
@@ -1744,6 +1946,34 @@ mod tests {
             vec!["./missing".to_string()]
         );
         assert_eq!(analysis.counters.unresolved, 1);
+    }
+
+    #[test]
+    fn only_import_meta_glob_marks_globbed_files_reachable() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            r#"const holder = { meta: { glob: (_pattern: string) => ({}) } };
+holder.meta.glob("./routes/*.ts");
+"#,
+        );
+        write_file(cwd, "src/routes/home.ts", "export const route = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert!(analysis.issues.files.contains_key("src/routes/home.ts"));
     }
 
     #[test]
