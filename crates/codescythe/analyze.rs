@@ -2,11 +2,13 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     env, fs,
     path::{Component, Path, PathBuf},
+    sync::Arc,
     thread,
 };
 
 use anyhow::{Context, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use ignore::{DirEntry, WalkBuilder};
 use oxc::ast_visit::{Visit, walk};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
@@ -15,7 +17,6 @@ use oxc_resolver::{AliasValue, ResolveError, ResolveOptions, Resolver, TsconfigD
 use oxc_span::{GetSpan, SourceType, Span};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use walkdir::{DirEntry, WalkDir};
 
 use crate::{CodescytheConfig, UnresolvedImportsMode};
 
@@ -375,16 +376,26 @@ pub fn analyze_path(
 
 fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<PathBuf>> {
     let include = build_glob_set(&config.project)?;
-    let ignore = build_glob_set(&config.ignore)?;
+    let ignore = Arc::new(build_glob_set(&config.ignore)?);
     let mut files = Vec::new();
 
-    for entry in WalkDir::new(cwd)
+    let mut walker = WalkBuilder::new(cwd);
+    walker
         .follow_links(true)
-        .into_iter()
-        .filter_entry(|entry| should_enter(cwd, entry, &ignore))
-    {
+        .standard_filters(false)
+        .git_ignore(true)
+        .require_git(false);
+
+    let filter_cwd = cwd.to_path_buf();
+    let filter_ignore = Arc::clone(&ignore);
+    walker.filter_entry(move |entry| should_enter(&filter_cwd, entry, &filter_ignore));
+
+    for entry in walker.build() {
         let entry = entry?;
-        if !entry.path().is_file() {
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
             continue;
         }
         let relative = relative_path(cwd, entry.path());
@@ -489,7 +500,10 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet> {
 }
 
 fn should_enter(cwd: &Path, entry: &DirEntry, ignore: &GlobSet) -> bool {
-    if !entry.path().is_dir() {
+    if !entry
+        .file_type()
+        .is_some_and(|file_type| file_type.is_dir())
+    {
         return true;
     }
     if ignore.is_match(relative_path(cwd, entry.path())) {
@@ -1675,6 +1689,7 @@ fn has_glob_meta(pattern: &str) -> bool {
 mod tests {
     use super::*;
     use std::{env, fs};
+    use walkdir::WalkDir;
 
     #[test]
     fn finds_unused_exports_and_files_in_knip_style_fixture() {
@@ -1757,6 +1772,71 @@ mod tests {
 
         assert_eq!(analysis.counters.total, 1);
         assert!(analysis.issues.files.is_empty());
+    }
+
+    #[test]
+    fn applies_gitignore_to_project_discovery_by_default() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+              "entry": "src/main.ts",
+              "project": ["src/**/*.ts", "generated/**/*.ts"]
+            }"#,
+        );
+        write_file(
+            cwd,
+            ".gitignore",
+            "generated/\n*.dead.ts\n!src/local.dead.ts\n",
+        );
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import { used } from './used';\nconsole.log(used);\n",
+        );
+        write_file(cwd, "src/used.ts", "export const used = 1;\n");
+        write_file(cwd, "src/local.dead.ts", "export const dead = 1;\n");
+        write_file(cwd, "generated/client.ts", "export const client = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(analysis.counters.total, 3);
+        assert!(analysis.issues.files.contains_key("src/local.dead.ts"));
+        assert!(!analysis.issues.files.contains_key("generated/client.ts"));
+    }
+
+    #[test]
+    fn discovers_nested_gitignore_files_by_default() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+        );
+        write_file(cwd, "src/feature/.gitignore", "ignored.ts\n!kept.ts\n");
+        write_file(
+            cwd,
+            "src/main.ts",
+            "import { kept } from './feature/kept';\nconsole.log(kept);\n",
+        );
+        write_file(cwd, "src/feature/kept.ts", "export const kept = 1;\n");
+        write_file(cwd, "src/feature/ignored.ts", "export const ignored = 1;\n");
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(analysis.counters.total, 2);
+        assert!(!analysis.issues.files.contains_key("src/feature/kept.ts"));
+        assert!(!analysis.issues.files.contains_key("src/feature/ignored.ts"));
     }
 
     #[test]

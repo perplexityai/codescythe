@@ -70,6 +70,11 @@ to:
 The loader always adds built-in ignores for `.git`, Bazel symlink trees,
 `node_modules`, `dist`, `build`, and `coverage`.
 
+Project discovery uses Rust's `ignore` crate to automatically discover
+`.gitignore` files in every traversed directory. Configured `ignore` globs and
+built-in ignores remain exclude-only, while gitignore matchers preserve
+gitignore parsing and negation semantics.
+
 `aliases` config is passed into `oxc_resolver` and overrides package-level
 imports for matching specifiers. `unresolvedImports` controls whether actionable
 unresolved imports are reported, ignored, or treated as errors, with optional

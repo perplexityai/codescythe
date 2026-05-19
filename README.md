@@ -54,8 +54,10 @@ core crate. Config can be provided as:
 - A `codescythe` object in `package.json`.
 - An explicit `.json` or `.jsonc` path passed with `--config`.
 
-Supported config fields are `entry`, `project`, `ignore`,
-`includeEntryExports`, and `ignoreExportsUsedInFile`.
+Supported config fields are `entry`, `project`, `ignore`, `aliases`,
+`unresolvedImports`, `includeEntryExports`, and `ignoreExportsUsedInFile`.
+Codescythe automatically discovers `.gitignore` files in every traversed
+directory.
 
 ## Contributing
 
