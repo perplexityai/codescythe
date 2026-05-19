@@ -22,6 +22,7 @@ type Options = {
   fixtureRoot?: string;
   skipBuild: boolean;
   fuzzFiles: number;
+  fuzzExports: number;
   seed: number;
   keepTemp: boolean;
   help: boolean;
@@ -40,6 +41,12 @@ type Tool = {
 type ImportRef = {
   importer: string;
   specifier: string;
+};
+
+type SyntheticExportModule = {
+  file: string;
+  used: string;
+  unused: string[];
 };
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -91,6 +98,7 @@ try {
   const sourceFixtureRoot = resolveFixtureRoot(options);
   const fixtureRoot = prepareMutableFixture(sourceFixtureRoot, tempRoot, options);
   const fuzzFiles = writeSyntheticUnusedFiles(fixtureRoot, options.fuzzFiles, options.seed);
+  const fuzzExports = writeSyntheticUnusedExports(fixtureRoot, options.fuzzExports, options.seed);
   prepareKibanaFixture(fixtureRoot);
 
   const codescytheBin = resolveCodescytheBin(options);
@@ -120,6 +128,7 @@ try {
   ], [0], fixtureRoot);
 
   const codescytheUnused = extractCodescytheUnusedFiles(codescythe.value);
+  const codescytheUnusedExports = extractCodescytheUnusedExports(codescythe.value);
   const knipUnused = extractKnipUnusedFiles(knip.value, fixtureRoot);
   const missingFromCodescythe = difference(knipUnused, codescytheUnused);
   const extraInCodescythe = difference(codescytheUnused, knipUnused);
@@ -136,6 +145,12 @@ try {
   );
   const missingFuzzFiles = fuzzFiles.filter(file => !codescytheUnused.has(file) || !knipUnused.has(file));
   const unexpectedFuzzFiles = fuzzFiles.filter(file => codescytheUnused.has(file) !== knipUnused.has(file));
+  const missingFuzzExports = fuzzExports
+    .flatMap(module => module.unused.map(symbol => formatExportRef(module.file, symbol)))
+    .filter(ref => !codescytheUnusedExports.has(ref));
+  const unexpectedUsedFuzzExports = fuzzExports
+    .map(module => formatExportRef(module.file, module.used))
+    .filter(ref => codescytheUnusedExports.has(ref));
 
   printSummary({
     sourceFixtureRoot,
@@ -144,20 +159,26 @@ try {
     codescythe,
     knip,
     codescytheUnused,
+    codescytheUnusedExports,
     knipUnused,
     missingFromCodescythe,
     extraInCodescythe,
     extraReachableImporters,
     fuzzFiles,
+    fuzzExports,
     missingFuzzFiles,
     unexpectedFuzzFiles,
+    missingFuzzExports,
+    unexpectedUsedFuzzExports,
   });
 
   if (
     missingFromCodescythe.length > 0 ||
     extraReachableImporters.length > 0 ||
     missingFuzzFiles.length > 0 ||
-    unexpectedFuzzFiles.length > 0
+    unexpectedFuzzFiles.length > 0 ||
+    missingFuzzExports.length > 0 ||
+    unexpectedUsedFuzzExports.length > 0
   ) {
     process.exitCode = 1;
   }
@@ -175,6 +196,7 @@ function parseArgs(args: string[]): Options {
     fixtureRoot: process.env.KIBANA_FIXTURE_ROOT,
     skipBuild: false,
     fuzzFiles: 16,
+    fuzzExports: 8,
     seed: 0xC0DEC7,
     keepTemp: false,
     help: false,
@@ -196,6 +218,8 @@ function parseArgs(args: string[]): Options {
       parsed.skipBuild = true;
     } else if (arg === '--fuzz-files') {
       parsed.fuzzFiles = parseNonNegativeInt(args[++index], arg);
+    } else if (arg === '--fuzz-exports') {
+      parsed.fuzzExports = parseNonNegativeInt(args[++index], arg);
     } else if (arg === '--seed') {
       parsed.seed = parseSeed(args[++index], arg);
     } else if (arg === '--keep-temp') {
@@ -246,6 +270,7 @@ Options:
   --fixture-root <dir>         Use a specific Kibana fixture directory
   --skip-build                 Use target/release/codescythe without rebuilding
   --fuzz-files <n>             Synthetic unused Kibana files to inject (default: 16)
+  --fuzz-exports <n>           Synthetic reachable modules with unused exports to inject (default: 8)
   --seed <n>                   Fuzz seed as decimal or 0x-prefixed hex (default: 0xC0DEC7)
   --keep-temp                  Keep the copied fixture and generated configs
   -h, --help                   Show this help text
@@ -449,6 +474,62 @@ function writeSyntheticUnusedFiles(fixtureRoot: string, count: number, seed: num
   return files.sort();
 }
 
+function writeSyntheticUnusedExports(
+  fixtureRoot: string,
+  count: number,
+  seed: number,
+): SyntheticExportModule[] {
+  if (count === 0) {
+    return [];
+  }
+
+  const importer = 'src/core/server/index.ts';
+  const importerPath = path.join(fixtureRoot, importer);
+  assertPath(importerPath, 'Kibana server entry');
+
+  let state = (seed ^ 0x9E3779B9) >>> 0;
+  const importLines: string[] = [];
+  const useLines: string[] = [];
+  const modules: SyntheticExportModule[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    const suffix = `${index}_${state.toString(16)}`;
+    const baseName = `codescythe_conformance_export_${suffix}`;
+    const file = `src/core/server/${baseName}.ts`;
+    const used = `usedFuzzExport_${suffix}`;
+    const unused = [
+      `unusedValueFuzzExport_${suffix}`,
+      `UnusedTypeFuzzExport_${suffix}`,
+    ];
+
+    writeFileSync(
+      path.join(fixtureRoot, file),
+      [
+        `export const ${used} = ${state};`,
+        `export const ${unused[0]} = ${state + 1};`,
+        `export type ${unused[1]} = { value: number };`,
+        '',
+      ].join('\n'),
+    );
+    importLines.push(`import { ${used} } from './${baseName}';`);
+    useLines.push(`void ${used};`);
+    modules.push({ file, used, unused });
+  }
+
+  const original = readFileSync(importerPath, 'utf8');
+  writeFileSync(
+    importerPath,
+    [
+      ...importLines,
+      ...useLines,
+      '',
+      original,
+    ].join('\n'),
+  );
+  return modules;
+}
+
 function prepareKibanaFixture(fixtureRoot: string) {
   const tsconfigBaseDir = path.join(
     fixtureRoot,
@@ -538,6 +619,16 @@ function extractCodescytheUnusedFiles(analysis: any): Set<string> {
   return new Set(Object.keys(analysis?.issues?.files ?? {}).map(normalizeFixturePath));
 }
 
+function extractCodescytheUnusedExports(analysis: any): Set<string> {
+  const exports = new Set<string>();
+  for (const [file, symbols] of Object.entries(analysis?.issues?.exports ?? {})) {
+    for (const symbol of Object.keys(symbols as Record<string, unknown>)) {
+      exports.add(formatExportRef(normalizeFixturePath(file), symbol));
+    }
+  }
+  return exports;
+}
+
 function extractKnipUnusedFiles(report: any, fixtureRoot: string): Set<string> {
   const files = new Set<string>();
   for (const issue of report?.issues ?? []) {
@@ -559,6 +650,10 @@ function normalizeFixturePath(filePath: string, fixtureRoot?: string): string {
     ? path.relative(fixtureRoot, filePath)
     : filePath;
   return relative.split(path.sep).join('/').replace(/^\.\//, '');
+}
+
+function formatExportRef(file: string, symbol: string): string {
+  return `${normalizeFixturePath(file)}#${symbol}`;
 }
 
 function difference(left: Set<string>, right: Set<string>): string[] {
@@ -769,13 +864,17 @@ function printSummary(summary: {
   codescythe: JsonRun;
   knip: JsonRun;
   codescytheUnused: Set<string>;
+  codescytheUnusedExports: Set<string>;
   knipUnused: Set<string>;
   missingFromCodescythe: string[];
   extraInCodescythe: string[];
   extraReachableImporters: Array<{ file: string; importers: ImportRef[] }>;
   fuzzFiles: string[];
+  fuzzExports: SyntheticExportModule[];
   missingFuzzFiles: string[];
   unexpectedFuzzFiles: string[];
+  missingFuzzExports: string[];
+  unexpectedUsedFuzzExports: string[];
 }) {
   const analysisCounters = summary.codescythe.value.counters ?? {};
 
@@ -784,8 +883,10 @@ function printSummary(summary: {
   console.log(`Working root: ${summary.fixtureRoot}`);
   console.log(`Runs: codescythe ${formatMs(summary.codescythe.elapsedMs)}, knip ${formatMs(summary.knip.elapsedMs)}`);
   console.log(`Codescythe files: ${summary.codescytheUnused.size} unused / ${analysisCounters.total ?? 'unknown'} total`);
+  console.log(`Codescythe exports: ${summary.codescytheUnusedExports.size} unused`);
   console.log(`Knip files: ${summary.knipUnused.size} unused`);
   console.log(`Synthetic unused files: ${summary.fuzzFiles.length}`);
+  console.log(`Synthetic export modules: ${summary.fuzzExports.length}`);
   console.log('');
   console.log(`Conformance:`);
   console.log(`  Knip unused files missing from Codescythe: ${summary.missingFromCodescythe.length}`);
@@ -793,6 +894,8 @@ function printSummary(summary: {
   console.log(`  Codescythe-only files imported by reachable files: ${summary.extraReachableImporters.length}`);
   console.log(`  Synthetic files missing from either tool: ${summary.missingFuzzFiles.length}`);
   console.log(`  Synthetic files with mismatched reports: ${summary.unexpectedFuzzFiles.length}`);
+  console.log(`  Synthetic unused exports missing from Codescythe: ${summary.missingFuzzExports.length}`);
+  console.log(`  Synthetic used exports reported by Codescythe: ${summary.unexpectedUsedFuzzExports.length}`);
 
   printExamples('Missing from Codescythe', summary.missingFromCodescythe);
   printExamples('Codescythe-only unused files', summary.extraInCodescythe);
@@ -809,9 +912,19 @@ function printSummary(summary: {
   }
   printExamples('Missing synthetic file reports', summary.missingFuzzFiles);
   printExamples('Mismatched synthetic file reports', summary.unexpectedFuzzFiles);
+  printExamples('Missing synthetic export reports', summary.missingFuzzExports);
+  printExamples('Unexpected synthetic export reports', summary.unexpectedUsedFuzzExports);
 
   if (summary.fuzzFiles.length > 0) {
     printExamples('Synthetic unused sample', summary.fuzzFiles.slice(0, 20));
+  }
+  if (summary.fuzzExports.length > 0) {
+    printExamples(
+      'Synthetic unused export sample',
+      summary.fuzzExports
+        .flatMap(module => module.unused.map(symbol => formatExportRef(module.file, symbol)))
+        .slice(0, 20),
+    );
   }
   if (options.keepTemp) {
     console.log('');

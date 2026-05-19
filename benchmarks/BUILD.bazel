@@ -36,6 +36,8 @@ js_test(
         "$(rootpath @benchmark_kibana//:package_json)",
         "--fuzz-files",
         "16",
+        "--fuzz-exports",
+        "8",
         "--skip-build",
     ],
     data = [
