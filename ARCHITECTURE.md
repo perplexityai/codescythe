@@ -49,13 +49,15 @@ supported export removals.
 `load_config` accepts an analysis root and an optional config path.
 
 When a config path is passed, Codescythe reads that file. If the file is named
-`package.json`, it reads the nested `codescythe` object from it.
+`package.json`, it reads the nested `codescythe` object from it. Paths ending in
+`.jsonc` are parsed as JSONC.
 
 Without an explicit config path, Codescythe checks:
 
 1. `codescythe.json` in the analysis root.
-2. A `codescythe` object in `package.json`.
-3. The default config.
+2. `codescythe.jsonc` in the analysis root.
+3. A `codescythe` object in `package.json`.
+4. The default config.
 
 Config is validated against the bundled `codescythe.schema.json`. Pattern fields
 accept either a string or an array of strings. If `project` is empty, it defaults

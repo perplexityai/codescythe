@@ -30,11 +30,11 @@ package root instead of hidden under `src/` folders.
 
 ### Core Crate
 
-`crates/codescythe` owns the analyzer. It loads `codescythe.json` or the
-`codescythe` key in `package.json`, validates that config with the bundled JSON
-Schema, walks the configured project globs, parses TypeScript/JavaScript with
-Oxc, builds the import/export graph, and reports unused files, unused exports,
-and unresolved imports.
+`crates/codescythe` owns the analyzer. It loads `codescythe.json`,
+`codescythe.jsonc`, or the `codescythe` key in `package.json`, validates that
+config with the bundled JSON Schema, walks the configured project globs, parses
+TypeScript/JavaScript with Oxc, builds the import/export graph, and reports
+unused files, unused exports, and unresolved imports.
 
 The public Rust API is intentionally narrow:
 

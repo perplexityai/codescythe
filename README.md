@@ -50,8 +50,9 @@ The config schema lives at `codescythe.schema.json` and is compiled into the
 core crate. Config can be provided as:
 
 - `codescythe.json` in the project root.
+- `codescythe.jsonc` in the project root, when `codescythe.json` is absent.
 - A `codescythe` object in `package.json`.
-- An explicit path passed with `--config`.
+- An explicit `.json` or `.jsonc` path passed with `--config`.
 
 Supported config fields are `entry`, `project`, `ignore`,
 `includeEntryExports`, and `ignoreExportsUsedInFile`.
