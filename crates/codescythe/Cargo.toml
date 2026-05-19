@@ -13,6 +13,7 @@ path = "lib.rs"
 [dependencies]
 anyhow.workspace = true
 globset.workspace = true
+ignore.workspace = true
 jsonschema.workspace = true
 jsonc-parser.workspace = true
 oxc.workspace = true
