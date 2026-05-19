@@ -17,6 +17,7 @@
     "benchmark": "node --experimental-transform-types benchmarks/run.ts",
     "benchmark:grafana": "node --experimental-transform-types benchmarks/run.ts --fixture grafana",
     "benchmark:kibana": "node --experimental-transform-types benchmarks/run.ts --fixture kibana",
+    "benchmark:renovate": "node --experimental-transform-types benchmarks/run.ts --fixture renovate",
     "benchmark:vscode": "node --experimental-transform-types benchmarks/run.ts --fixture vscode",
     "conformance:kibana": "node --experimental-transform-types benchmarks/kibana_conformance.ts"
   },

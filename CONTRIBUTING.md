@@ -131,22 +131,23 @@ pnpm test:npm
 ## Benchmarks
 
 The benchmark harness in `benchmarks/` uses pinned real-world source snapshots
-from `microsoft/vscode`, `grafana/grafana`, and `elastic/kibana`. The fixtures
-are declared as Bazel external repositories in `MODULE.bazel`, and the harness
-uses the `benchmark` npm package to time a release Codescythe CLI build and,
-when available, Knip with issue reporting limited to files and exports.
+from `microsoft/vscode`, `grafana/grafana`, `elastic/kibana`, and
+`renovatebot/renovate`. The fixtures are declared as Bazel external
+repositories in `MODULE.bazel`, and the harness uses the `benchmark` npm
+package to time a release Codescythe CLI build and, when available, Knip with
+issue reporting limited to files and exports.
 
 ```sh
 pnpm benchmark
 ```
 
-By default the benchmark fetches both fixtures through Bazel, builds
+By default the benchmark fetches all fixtures through Bazel, builds
 `codescythe` with Cargo before measuring, and compares against the workspace's
 Knip dev dependency. Use `--fixture vscode`, `--fixture grafana`, or
-`--fixture kibana` to run one fixture. Set `CODESCYTHE_BIN=/path/to/codescythe`
-or `KNIP_BIN=/path/to/knip` to benchmark a specific binary. Pass `--skip-build`
-when `target/release/codescythe` already exists, or `--skip-knip` to run only
-Codescythe.
+`--fixture kibana`, or `--fixture renovate` to run one fixture. Set
+`CODESCYTHE_BIN=/path/to/codescythe` or `KNIP_BIN=/path/to/knip` to benchmark a
+specific binary. Pass `--skip-build` when `target/release/codescythe` already
+exists, or `--skip-knip` to run only Codescythe.
 
 Codescythe discovers the full project file set up front, then parses files in
 parallel graph-frontier batches from the configured entries. Benchmarks whose

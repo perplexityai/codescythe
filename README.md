@@ -34,11 +34,12 @@ The benchmark suite runs Codescythe and Knip against pinned real-world
 TypeScript-heavy repositories fetched through Bazel. Representative local runs
 produced:
 
-| Fixture | Benchmarked TS-family files | Codescythe | Knip |
+| Fixture | Benchmarked files | Codescythe | Knip |
 | --- | ---: | ---: | ---: |
 | `microsoft/vscode` | 9,537 | 738.0ms | 5.76s |
 | `grafana/grafana` | 8,701 | 771.0ms | 9.29s |
 | `elastic/kibana` | 86,056 | 2.10s | 40.82s |
+| `renovatebot/renovate` | 2,488 | 118.5ms | 846.1ms |
 
 Counts reflect each fixture's generated benchmark config after excludes. Run
 `pnpm benchmark` to measure the same fixtures locally.

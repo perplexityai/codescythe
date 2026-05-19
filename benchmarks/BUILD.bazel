@@ -1,6 +1,31 @@
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load(":fixture_tests.bzl", "fixture_functional_test")
 
 package(default_visibility = ["//visibility:public"])
+
+fixture_functional_test(
+    name = "vscode_fixture_test",
+    fixture = "vscode",
+    fixture_repo = "@benchmark_vscode",
+)
+
+fixture_functional_test(
+    name = "grafana_fixture_test",
+    fixture = "grafana",
+    fixture_repo = "@benchmark_grafana",
+)
+
+fixture_functional_test(
+    name = "kibana_fixture_test",
+    fixture = "kibana",
+    fixture_repo = "@benchmark_kibana",
+)
+
+fixture_functional_test(
+    name = "renovate_fixture_test",
+    fixture = "renovate",
+    fixture_repo = "@benchmark_renovate",
+)
 
 js_test(
     name = "kibana_conformance_test",

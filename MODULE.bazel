@@ -67,6 +67,16 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "benchmark_renovate",
+    build_file_content = benchmark_fixture_build_file,
+    sha256 = "28d089dc9f30ed6a730b83b07edb216eb722d7a031970f095b8c6e9b40bd9b01",
+    strip_prefix = "renovate-b42bb1dc25287ab0b2b328559674e442d3290da9",
+    urls = [
+        "https://github.com/renovatebot/renovate/archive/b42bb1dc25287ab0b2b328559674e442d3290da9.tar.gz",
+    ],
+)
+
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
 node.toolchain(node_version = "24.14.0")
 
