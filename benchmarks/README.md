@@ -58,17 +58,18 @@ respected when the Codescythe-specific variable is unset.
 
 ## Current Kibana Numbers
 
-Local run on May 18, 2026:
+Local run on May 19, 2026 with the Kibana source-root entry/project config:
 
 ```sh
-node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples 3 --warmups 1 --skip-build
+bazel build -c opt //crates/codescythe_cli:codescythe
+node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples 3 --warmups 1 --codescythe-bin bazel-bin/crates/codescythe_cli/codescythe
 ```
 
 ```text
-tool        mean       rme        samples  ops/sec
-----------  ---------  ---------  -------  -------
-codescythe  2170.2ms   +/-11.95%  4        0.46
-knip        48742.7ms  +/-30.00%  3        0.02
+tool        mean       rme       samples  ops/sec
+----------  ---------  --------  -------  -------
+codescythe  11635.5ms  +/-3.24%  3        0.09
+knip        45354.5ms  +/-9.01%  3        0.02
 ```
 
 The matching conformance run covers every Knip unused file, requires both tools
