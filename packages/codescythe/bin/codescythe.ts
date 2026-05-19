@@ -20,6 +20,7 @@ type AnalysisResult = {
 
 type FixResult = {
   changedFiles: string[];
+  removedFiles: string[];
   removedExports: number;
 };
 
@@ -54,7 +55,9 @@ if (json) {
   console.log(JSON.stringify(result));
 } else if (shouldFix) {
   const fixResult = result as FixResult;
-  console.log(`Removed ${fixResult.removedExports} unused exports from ${fixResult.changedFiles.length} files`);
+  console.log(
+    `Removed ${fixResult.removedExports} unused exports from ${fixResult.changedFiles.length} files and ${fixResult.removedFiles.length} unused files`,
+  );
 } else if (result.counters.files === 0 && result.counters.exports === 0 && result.counters.unresolved === 0) {
   console.log('No dead TypeScript code found');
 } else {

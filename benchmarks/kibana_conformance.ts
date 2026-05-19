@@ -50,9 +50,28 @@ type SyntheticExportModule = {
   unused: string[];
 };
 
+type FixConformance = {
+  codescytheFix: JsonRun;
+  postFixCodescythe: JsonRun;
+  syntheticFilesMissingFromFixResult: string[];
+  syntheticFilesStillOnDisk: string[];
+  syntheticExportModulesMissingFromFixResult: string[];
+  syntheticExportModulesMissingOnDisk: string[];
+  syntheticUnusedExportsStillInSource: string[];
+  syntheticUsedExportsMissingFromSource: string[];
+  syntheticFilesReportedAfterFix: string[];
+  syntheticUnusedExportsReportedAfterFix: string[];
+  syntheticUsedExportsReportedAfterFix: string[];
+};
+
 type Snapshot = {
   fixture: 'kibana';
   seed: string;
+  config: {
+    entry: string[];
+    project: string[];
+    includeEntryExports: boolean;
+  };
   fuzz: {
     unusedFiles: string[];
     exportModules: Array<{
@@ -69,6 +88,29 @@ type Snapshot = {
     };
     knip: {
       unusedFiles: number;
+    };
+  };
+  fix: {
+    counters: {
+      removedFiles: number;
+      changedFiles: number;
+      removedExports: number;
+    };
+    postFixCounters: {
+      totalFiles: number | 'unknown';
+      unusedFiles: number;
+      unusedExports: number;
+    };
+    conformance: {
+      syntheticFilesMissingFromFixResult: string[];
+      syntheticFilesStillOnDisk: string[];
+      syntheticExportModulesMissingFromFixResult: string[];
+      syntheticExportModulesMissingOnDisk: string[];
+      syntheticUnusedExportsStillInSource: string[];
+      syntheticUsedExportsMissingFromSource: string[];
+      syntheticFilesReportedAfterFix: string[];
+      syntheticUnusedExportsReportedAfterFix: string[];
+      syntheticUsedExportsReportedAfterFix: string[];
     };
   };
   conformance: {
@@ -92,7 +134,6 @@ const defaultCodescytheBin = path.join(
   'release',
   process.platform === 'win32' ? 'codescythe.exe' : 'codescythe',
 );
-const sourcePatterns = ['**/*.{ts,tsx,mts,cts}'];
 const benchmarkIgnorePatterns = [
   '**/*.d.ts',
   '**/__fixtures__/**',
@@ -108,19 +149,27 @@ const benchmarkIgnorePatterns = [
   '**/.git/**',
   '**/*.gen.ts',
 ];
-const kibanaEntry = [
-  'src/core/server/index.ts',
-  'src/core/public/index.ts',
-  'src/platform/packages/shared/kbn-config-schema/index.ts',
-  'x-pack/platform/plugins/shared/security/server/index.ts',
-];
-
 const kibanaMarkerTarget = '@benchmark_kibana//:package_json';
 const fuzzDirectory = 'codescythe-conformance-fuzz';
+const fuzzExportDirectory = `${fuzzDirectory}/exports`;
+const kibanaSourceRoots = [
+  'src',
+  'x-pack',
+  'packages',
+  'examples',
+  'oas_docs',
+];
+const kibanaEntryPatterns = patternsForRoots(kibanaSourceRoots);
+const kibanaProjectRoots = [...kibanaSourceRoots, fuzzDirectory];
+const kibanaProjectPatterns = patternsForRoots(kibanaProjectRoots);
 const maxJsonBuffer = 1024 * 1024 * 1024;
 
 let executionRoot: string | undefined;
 let outputBase: string | undefined;
+
+function patternsForRoots(roots: string[]): string[] {
+  return roots.map(root => `${root}/**/*.{ts,tsx,mts,cts}`);
+}
 
 const options = parseArgs(process.argv.slice(2));
 if (options.help) {
@@ -140,8 +189,8 @@ try {
   const codescytheBin = resolveCodescytheBin(options);
   const knipBin = resolveKnipBin(options);
   const pluginNames = readKnipPluginNames(knipBin);
-  const codescytheConfig = writeConfig(tempRoot, 'codescythe.json', kibanaEntry);
-  const knipConfig = writeConfig(tempRoot, 'knip.json', kibanaEntry, pluginNames);
+  const codescytheConfig = writeConfig(tempRoot, 'codescythe.json');
+  const knipConfig = writeConfig(tempRoot, 'knip.json', pluginNames);
 
   const codescythe = runJson('codescythe', toolForExecutable(codescytheBin), [
     '--json',
@@ -186,6 +235,13 @@ try {
   const unexpectedUsedFuzzExports = fuzzExports
     .map(module => formatExportRef(module.file, module.used))
     .filter(ref => codescytheUnusedExports.has(ref));
+  const fixConformance = runFixConformance({
+    codescytheBin,
+    fixtureRoot,
+    codescytheConfig,
+    fuzzFiles,
+    fuzzExports,
+  });
 
   const snapshot = createSnapshot({
     codescythe,
@@ -201,6 +257,7 @@ try {
     unexpectedFuzzFiles,
     missingFuzzExports,
     unexpectedUsedFuzzExports,
+    fixConformance,
   });
 
   if (options.snapshotOutput) {
@@ -225,6 +282,7 @@ try {
     unexpectedFuzzFiles,
     missingFuzzExports,
     unexpectedUsedFuzzExports,
+    fixConformance,
   });
 
   if (
@@ -233,7 +291,16 @@ try {
     missingFuzzFiles.length > 0 ||
     unexpectedFuzzFiles.length > 0 ||
     missingFuzzExports.length > 0 ||
-    unexpectedUsedFuzzExports.length > 0
+    unexpectedUsedFuzzExports.length > 0 ||
+    fixConformance.syntheticFilesMissingFromFixResult.length > 0 ||
+    fixConformance.syntheticFilesStillOnDisk.length > 0 ||
+    fixConformance.syntheticExportModulesMissingFromFixResult.length > 0 ||
+    fixConformance.syntheticExportModulesMissingOnDisk.length > 0 ||
+    fixConformance.syntheticUnusedExportsStillInSource.length > 0 ||
+    fixConformance.syntheticUsedExportsMissingFromSource.length > 0 ||
+    fixConformance.syntheticFilesReportedAfterFix.length > 0 ||
+    fixConformance.syntheticUnusedExportsReportedAfterFix.length > 0 ||
+    fixConformance.syntheticUsedExportsReportedAfterFix.length > 0
   ) {
     process.exitCode = 1;
   }
@@ -632,6 +699,7 @@ function writeSyntheticUnusedExports(
   const importer = 'src/core/server/index.ts';
   const importerPath = path.join(fixtureRoot, importer);
   assertPath(importerPath, 'Kibana server entry');
+  mkdirSync(path.join(fixtureRoot, fuzzExportDirectory), { recursive: true });
 
   let state = (seed ^ 0x9E3779B9) >>> 0;
   const importLines: string[] = [];
@@ -642,7 +710,7 @@ function writeSyntheticUnusedExports(
     state = (state * 1664525 + 1013904223) >>> 0;
     const suffix = `${index}_${state.toString(16)}`;
     const baseName = `codescythe_conformance_export_${suffix}`;
-    const file = `src/core/server/${baseName}.ts`;
+    const file = `${fuzzExportDirectory}/${baseName}.ts`;
     const used = `usedFuzzExport_${suffix}`;
     const unused = [
       `unusedValueFuzzExport_${suffix}`,
@@ -658,7 +726,7 @@ function writeSyntheticUnusedExports(
         '',
       ].join('\n'),
     );
-    importLines.push(`import { ${used} } from './${baseName}';`);
+    importLines.push(`import { ${used} } from '../../../${fuzzExportDirectory}/${baseName}';`);
     useLines.push(`void ${used};`);
     modules.push({ file, used, unused });
   }
@@ -692,15 +760,14 @@ function prepareKibanaFixture(fixtureRoot: string) {
 function writeConfig(
   directory: string,
   fileName: string,
-  entry: string[],
   disabledKnipPlugins: string[] = [],
 ): string {
   const configPath = path.join(directory, fileName);
   const config: Record<string, unknown> = {
-    entry,
-    project: sourcePatterns,
+    entry: kibanaEntryPatterns,
+    project: kibanaProjectPatterns,
     ignore: benchmarkIgnorePatterns,
-    includeEntryExports: true,
+    includeEntryExports: false,
     ignoreExportsUsedInFile: false,
   };
   for (const pluginName of disabledKnipPlugins) {
@@ -762,8 +829,107 @@ function runJson(
   }
 }
 
+function runFixConformance(options: {
+  codescytheBin: string;
+  fixtureRoot: string;
+  codescytheConfig: string;
+  fuzzFiles: string[];
+  fuzzExports: SyntheticExportModule[];
+}): FixConformance {
+  const codescytheTool = toolForExecutable(options.codescytheBin);
+  const codescytheFix = runJson('codescythe --fix', codescytheTool, [
+    '--fix',
+    '--json',
+    '--directory',
+    options.fixtureRoot,
+    '--config',
+    options.codescytheConfig,
+  ], [0, 1]);
+  const removedFiles = new Set(
+    (codescytheFix.value?.removedFiles ?? []).map((file: string) => normalizeFixturePath(file)),
+  );
+  const changedFiles = new Set(
+    (codescytheFix.value?.changedFiles ?? []).map((file: string) => normalizeFixturePath(file)),
+  );
+
+  const syntheticFilesMissingFromFixResult = options.fuzzFiles
+    .filter(file => !removedFiles.has(file));
+  const syntheticFilesStillOnDisk = options.fuzzFiles
+    .filter(file => existsSync(path.join(options.fixtureRoot, file)));
+  const syntheticExportModulesMissingFromFixResult = options.fuzzExports
+    .map(module => module.file)
+    .filter(file => !changedFiles.has(file));
+  const sourceChecks = inspectFixedSyntheticExports(options.fixtureRoot, options.fuzzExports);
+
+  const postFixCodescythe = runJson('codescythe after --fix', codescytheTool, [
+    '--json',
+    '--directory',
+    options.fixtureRoot,
+    '--config',
+    options.codescytheConfig,
+  ], [0, 1]);
+  const postFixUnusedFiles = extractCodescytheUnusedFiles(postFixCodescythe.value);
+  const postFixUnusedExports = extractCodescytheUnusedExports(postFixCodescythe.value);
+
+  return {
+    codescytheFix,
+    postFixCodescythe,
+    syntheticFilesMissingFromFixResult,
+    syntheticFilesStillOnDisk,
+    syntheticExportModulesMissingFromFixResult,
+    syntheticExportModulesMissingOnDisk: sourceChecks.syntheticExportModulesMissingOnDisk,
+    syntheticUnusedExportsStillInSource: sourceChecks.syntheticUnusedExportsStillInSource,
+    syntheticUsedExportsMissingFromSource: sourceChecks.syntheticUsedExportsMissingFromSource,
+    syntheticFilesReportedAfterFix: options.fuzzFiles
+      .filter(file => postFixUnusedFiles.has(file)),
+    syntheticUnusedExportsReportedAfterFix: options.fuzzExports
+      .flatMap(module => module.unused.map(symbol => formatExportRef(module.file, symbol)))
+      .filter(ref => postFixUnusedExports.has(ref)),
+    syntheticUsedExportsReportedAfterFix: options.fuzzExports
+      .map(module => formatExportRef(module.file, module.used))
+      .filter(ref => postFixUnusedExports.has(ref)),
+  };
+}
+
+function inspectFixedSyntheticExports(
+  fixtureRoot: string,
+  modules: SyntheticExportModule[],
+): {
+  syntheticExportModulesMissingOnDisk: string[];
+  syntheticUnusedExportsStillInSource: string[];
+  syntheticUsedExportsMissingFromSource: string[];
+} {
+  const syntheticExportModulesMissingOnDisk: string[] = [];
+  const syntheticUnusedExportsStillInSource: string[] = [];
+  const syntheticUsedExportsMissingFromSource: string[] = [];
+
+  for (const module of modules) {
+    const filePath = path.join(fixtureRoot, module.file);
+    if (!existsSync(filePath)) {
+      syntheticExportModulesMissingOnDisk.push(module.file);
+      continue;
+    }
+
+    const source = readFileSync(filePath, 'utf8');
+    for (const symbol of module.unused) {
+      if (source.includes(symbol)) {
+        syntheticUnusedExportsStillInSource.push(formatExportRef(module.file, symbol));
+      }
+    }
+    if (!source.includes(module.used)) {
+      syntheticUsedExportsMissingFromSource.push(formatExportRef(module.file, module.used));
+    }
+  }
+
+  return {
+    syntheticExportModulesMissingOnDisk,
+    syntheticUnusedExportsStillInSource,
+    syntheticUsedExportsMissingFromSource,
+  };
+}
+
 function extractCodescytheUnusedFiles(analysis: any): Set<string> {
-  return new Set(Object.keys(analysis?.issues?.files ?? {}).map(normalizeFixturePath));
+  return new Set(Object.keys(analysis?.issues?.files ?? {}).map(file => normalizeFixturePath(file)));
 }
 
 function extractCodescytheUnusedExports(analysis: any): Set<string> {
@@ -825,7 +991,11 @@ function discoverProjectFiles(fixtureRoot: string): {
         } catch {}
       }
 
-      if (isProjectSourceFile(relative) && !isIgnoredPath(relative)) {
+      if (
+        isProjectSourceFile(relative) &&
+        isConfiguredProjectPath(relative) &&
+        !isIgnoredPath(relative)
+      ) {
         files.push(relative);
       }
     },
@@ -855,6 +1025,10 @@ function walkFixture(
 
 function isProjectSourceFile(relative: string): boolean {
   return /\.(ts|tsx|mts|cts)$/.test(relative) && !relative.endsWith('.d.ts');
+}
+
+function isConfiguredProjectPath(relative: string): boolean {
+  return kibanaProjectRoots.some(root => relative === root || relative.startsWith(`${root}/`));
 }
 
 function isIgnoredDirectory(name: string): boolean {
@@ -1018,11 +1192,19 @@ function createSnapshot(summary: {
   unexpectedFuzzFiles: string[];
   missingFuzzExports: string[];
   unexpectedUsedFuzzExports: string[];
+  fixConformance: FixConformance;
 }): Snapshot {
   const analysisCounters = summary.codescythe.value.counters ?? {};
+  const fixCounters = summary.fixConformance.codescytheFix.value ?? {};
+  const postFixCounters = summary.fixConformance.postFixCodescythe.value.counters ?? {};
   return {
     fixture: 'kibana',
     seed: `0x${options.seed.toString(16)}`,
+    config: {
+      entry: kibanaEntryPatterns,
+      project: kibanaProjectPatterns,
+      includeEntryExports: false,
+    },
     fuzz: {
       unusedFiles: summary.fuzzFiles,
       exportModules: summary.fuzzExports.map(module => ({
@@ -1039,6 +1221,29 @@ function createSnapshot(summary: {
       },
       knip: {
         unusedFiles: summary.knipUnused.size,
+      },
+    },
+    fix: {
+      counters: {
+        removedFiles: fixCounters.removedFiles?.length ?? 0,
+        changedFiles: fixCounters.changedFiles?.length ?? 0,
+        removedExports: fixCounters.removedExports ?? 0,
+      },
+      postFixCounters: {
+        totalFiles: postFixCounters.total ?? 'unknown',
+        unusedFiles: postFixCounters.files ?? 0,
+        unusedExports: postFixCounters.exports ?? 0,
+      },
+      conformance: {
+        syntheticFilesMissingFromFixResult: summary.fixConformance.syntheticFilesMissingFromFixResult,
+        syntheticFilesStillOnDisk: summary.fixConformance.syntheticFilesStillOnDisk,
+        syntheticExportModulesMissingFromFixResult: summary.fixConformance.syntheticExportModulesMissingFromFixResult,
+        syntheticExportModulesMissingOnDisk: summary.fixConformance.syntheticExportModulesMissingOnDisk,
+        syntheticUnusedExportsStillInSource: summary.fixConformance.syntheticUnusedExportsStillInSource,
+        syntheticUsedExportsMissingFromSource: summary.fixConformance.syntheticUsedExportsMissingFromSource,
+        syntheticFilesReportedAfterFix: summary.fixConformance.syntheticFilesReportedAfterFix,
+        syntheticUnusedExportsReportedAfterFix: summary.fixConformance.syntheticUnusedExportsReportedAfterFix,
+        syntheticUsedExportsReportedAfterFix: summary.fixConformance.syntheticUsedExportsReportedAfterFix,
       },
     },
     conformance: {
@@ -1084,16 +1289,33 @@ function printSummary(summary: {
   unexpectedFuzzFiles: string[];
   missingFuzzExports: string[];
   unexpectedUsedFuzzExports: string[];
+  fixConformance: FixConformance;
 }) {
   const analysisCounters = summary.codescythe.value.counters ?? {};
+  const fixCounters = summary.fixConformance.codescytheFix.value ?? {};
+  const postFixCounters = summary.fixConformance.postFixCodescythe.value.counters ?? {};
 
   console.log(`Fixture: Kibana`);
   console.log(`Source root: ${summary.sourceFixtureRoot}`);
   console.log(`Working root: ${summary.fixtureRoot}`);
-  console.log(`Runs: codescythe ${formatMs(summary.codescythe.elapsedMs)}, knip ${formatMs(summary.knip.elapsedMs)}`);
+  console.log(
+    `Runs: codescythe ${formatMs(summary.codescythe.elapsedMs)}, ` +
+    `codescythe --fix ${formatMs(summary.fixConformance.codescytheFix.elapsedMs)}, ` +
+    `post-fix codescythe ${formatMs(summary.fixConformance.postFixCodescythe.elapsedMs)}, ` +
+    `knip ${formatMs(summary.knip.elapsedMs)}`,
+  );
   console.log(`Codescythe files: ${summary.codescytheUnused.size} unused / ${analysisCounters.total ?? 'unknown'} total`);
   console.log(`Codescythe exports: ${summary.codescytheUnusedExports.size} unused`);
   console.log(`Knip files: ${summary.knipUnused.size} unused`);
+  console.log(`Config entry: ${formatPatterns(kibanaEntryPatterns)}`);
+  console.log(`Config project: ${formatPatterns(kibanaProjectPatterns)}`);
+  console.log(
+    `Fix: ${fixCounters.removedFiles?.length ?? 0} files removed, ` +
+    `${fixCounters.removedExports ?? 0} exports removed from ` +
+    `${fixCounters.changedFiles?.length ?? 0} files`,
+  );
+  console.log(`Post-fix Codescythe files: ${postFixCounters.files ?? 0} unused / ${postFixCounters.total ?? 'unknown'} total`);
+  console.log(`Post-fix Codescythe exports: ${postFixCounters.exports ?? 0} unused`);
   console.log(`Synthetic unused files: ${summary.fuzzFiles.length}`);
   console.log(`Synthetic export modules: ${summary.fuzzExports.length}`);
   console.log('');
@@ -1105,6 +1327,15 @@ function printSummary(summary: {
   console.log(`  Synthetic files with mismatched reports: ${summary.unexpectedFuzzFiles.length}`);
   console.log(`  Synthetic unused exports missing from Codescythe: ${summary.missingFuzzExports.length}`);
   console.log(`  Synthetic used exports reported by Codescythe: ${summary.unexpectedUsedFuzzExports.length}`);
+  console.log(`  Synthetic files missing from fix result: ${summary.fixConformance.syntheticFilesMissingFromFixResult.length}`);
+  console.log(`  Synthetic files still on disk after fix: ${summary.fixConformance.syntheticFilesStillOnDisk.length}`);
+  console.log(`  Synthetic export modules missing from fix result: ${summary.fixConformance.syntheticExportModulesMissingFromFixResult.length}`);
+  console.log(`  Synthetic export modules missing on disk after fix: ${summary.fixConformance.syntheticExportModulesMissingOnDisk.length}`);
+  console.log(`  Synthetic unused exports still in source after fix: ${summary.fixConformance.syntheticUnusedExportsStillInSource.length}`);
+  console.log(`  Synthetic used exports missing from source after fix: ${summary.fixConformance.syntheticUsedExportsMissingFromSource.length}`);
+  console.log(`  Synthetic files reported after fix: ${summary.fixConformance.syntheticFilesReportedAfterFix.length}`);
+  console.log(`  Synthetic unused exports reported after fix: ${summary.fixConformance.syntheticUnusedExportsReportedAfterFix.length}`);
+  console.log(`  Synthetic used exports reported after fix: ${summary.fixConformance.syntheticUsedExportsReportedAfterFix.length}`);
 
   printExamples('Missing from Codescythe', summary.missingFromCodescythe);
   printExamples('Codescythe-only unused files', summary.extraInCodescythe);
@@ -1123,6 +1354,15 @@ function printSummary(summary: {
   printExamples('Mismatched synthetic file reports', summary.unexpectedFuzzFiles);
   printExamples('Missing synthetic export reports', summary.missingFuzzExports);
   printExamples('Unexpected synthetic export reports', summary.unexpectedUsedFuzzExports);
+  printExamples('Synthetic files missing from fix result', summary.fixConformance.syntheticFilesMissingFromFixResult);
+  printExamples('Synthetic files still on disk after fix', summary.fixConformance.syntheticFilesStillOnDisk);
+  printExamples('Synthetic export modules missing from fix result', summary.fixConformance.syntheticExportModulesMissingFromFixResult);
+  printExamples('Synthetic export modules missing on disk after fix', summary.fixConformance.syntheticExportModulesMissingOnDisk);
+  printExamples('Synthetic unused exports still in source after fix', summary.fixConformance.syntheticUnusedExportsStillInSource);
+  printExamples('Synthetic used exports missing from source after fix', summary.fixConformance.syntheticUsedExportsMissingFromSource);
+  printExamples('Synthetic files reported after fix', summary.fixConformance.syntheticFilesReportedAfterFix);
+  printExamples('Synthetic unused exports reported after fix', summary.fixConformance.syntheticUnusedExportsReportedAfterFix);
+  printExamples('Synthetic used exports reported after fix', summary.fixConformance.syntheticUsedExportsReportedAfterFix);
 
   if (summary.fuzzFiles.length > 0) {
     printExamples('Synthetic unused sample', summary.fuzzFiles.slice(0, 20));
@@ -1154,4 +1394,11 @@ function printExamples(label: string, examples: string[]) {
 
 function formatMs(value: number): string {
   return `${value.toLocaleString('en-US')}ms`;
+}
+
+function formatPatterns(patterns: string[]): string {
+  if (patterns.length <= 3) {
+    return patterns.join(', ');
+  }
+  return `${patterns.slice(0, 3).join(', ')}, ... (${patterns.length} total)`;
 }

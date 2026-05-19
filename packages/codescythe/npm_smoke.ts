@@ -14,12 +14,19 @@ type Analysis = {
   };
 };
 
+type FixResult = {
+  changedFiles: string[];
+  removedFiles: string[];
+  removedExports: number;
+};
+
 type NativeBinding = {
   analyze(options: {config?: string; cwd?: string}): string;
 };
 
 type Codescythe = {
   analyze(options: {config?: string; cwd?: string}): Analysis;
+  fix(options: {config?: string; cwd?: string}): FixResult;
 };
 
 const repoRoot = process.cwd();
@@ -57,6 +64,22 @@ describe('@perplexity/codescythe npm package', () => {
     const codescythe = smokeRequire('@perplexity/codescythe') as Codescythe;
     const analysis = codescythe.analyze({config: path.join(fixture, 'codescythe.json')});
     assertFixtureAnalysis(analysis);
+  });
+
+  it('fixes unused files and exports through the public package', () => {
+    const codescythe = smokeRequire('@perplexity/codescythe') as Codescythe;
+    const fixFixture = path.join(smokeRoot, 'fix-fixture');
+    fs.cpSync(fixture, fixFixture, {recursive: true});
+
+    const result = codescythe.fix({cwd: fixFixture});
+
+    assert.deepEqual(result.removedFiles, ['dangling.ts']);
+    assert.deepEqual(result.changedFiles, ['my-module.ts', 'my-namespace.ts', 'types.ts']);
+    assert.equal(result.removedExports, 6);
+    assert.equal(fs.existsSync(path.join(fixFixture, 'dangling.ts')), false);
+    const fixedAnalysis = codescythe.analyze({cwd: fixFixture});
+    assert.deepEqual(fixedAnalysis.issues.files, {});
+    assert.deepEqual(fixedAnalysis.issues.exports, {});
   });
 
   it('runs the public package bin', () => {

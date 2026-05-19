@@ -21,6 +21,7 @@ export interface Analysis {
 
 export interface FixResult {
   changedFiles: string[];
+  removedFiles: string[];
   removedExports: number;
   analysis: Analysis;
 }
