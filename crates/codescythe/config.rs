@@ -6,13 +6,18 @@ use serde_json::Value;
 
 const SCHEMA: &str = include_str!("../../codescythe.schema.json");
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CodescytheConfig {
     #[serde(deserialize_with = "deserialize_patterns")]
     pub entry: Vec<String>,
     #[serde(deserialize_with = "deserialize_patterns")]
     pub project: Vec<String>,
+    #[serde(
+        default = "default_test_file_patterns",
+        deserialize_with = "deserialize_patterns"
+    )]
+    pub test_file_patterns: Vec<String>,
     #[serde(deserialize_with = "deserialize_patterns")]
     pub ignore: Vec<String>,
     #[serde(deserialize_with = "deserialize_aliases")]
@@ -20,6 +25,21 @@ pub struct CodescytheConfig {
     pub unresolved_imports: UnresolvedImportsConfig,
     pub include_entry_exports: bool,
     pub ignore_exports_used_in_file: bool,
+}
+
+impl Default for CodescytheConfig {
+    fn default() -> Self {
+        Self {
+            entry: Vec::new(),
+            project: Vec::new(),
+            test_file_patterns: default_test_file_patterns(),
+            ignore: Vec::new(),
+            aliases: BTreeMap::new(),
+            unresolved_imports: UnresolvedImportsConfig::default(),
+            include_entry_exports: false,
+            ignore_exports_used_in_file: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -186,6 +206,10 @@ enum StringOrVec {
     Vec(Vec<String>),
 }
 
+fn default_test_file_patterns() -> Vec<String> {
+    vec!["**/*.test.*".to_string(), "**/*.spec.*".to_string()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,6 +299,34 @@ mod tests {
 
         assert!(message.contains("invalid Codescythe configuration"));
         assert!(message.contains("unknown"));
+    }
+
+    #[test]
+    fn defaults_test_file_patterns() {
+        let tempdir = tempfile::tempdir().unwrap();
+
+        let config = load_config(tempdir.path(), None).unwrap();
+
+        assert_eq!(
+            config.test_file_patterns,
+            vec!["**/*.test.*".to_string(), "**/*.spec.*".to_string()]
+        );
+    }
+
+    #[test]
+    fn explicit_empty_test_file_patterns_disable_test_classification() {
+        let tempdir = tempfile::tempdir().unwrap();
+        write_file(
+            tempdir.path(),
+            "codescythe.json",
+            r#"{
+              "testFilePatterns": []
+            }"#,
+        );
+
+        let config = load_config(tempdir.path(), None).unwrap();
+
+        assert!(config.test_file_patterns.is_empty());
     }
 
     fn write_file(root: &Path, relative: &str, contents: &str) {

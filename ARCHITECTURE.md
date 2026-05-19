@@ -70,6 +70,11 @@ to:
 The loader always adds built-in ignores for `.git`, Bazel symlink trees,
 `node_modules`, `dist`, `build`, and `coverage`.
 
+If `testFilePatterns` is omitted, it defaults to `**/*.test.*` and
+`**/*.spec.*`. Matching files stay in the project file set, but Codescythe
+treats them as leaf files: their imports do not mark production files or exports
+used.
+
 Project discovery uses Rust's `ignore` crate to automatically discover
 `.gitignore` files in every traversed directory. Configured `ignore` globs and
 built-in ignores remain exclude-only, while gitignore matchers preserve
@@ -225,11 +230,12 @@ unresolved.
 - `used_exports`: a per-file set of module export names used by reachable code.
 - `unresolved`: importer-relative paths mapped to unresolved specifiers.
 
-It also keeps a FIFO queue of newly reachable file indexes. Entry files are
-inserted into `used_files` and queued first. Each loop drains the current queue
-as a graph frontier, batch-parses that frontier through `FileCache`, then
-processes the parsed files. Newly discovered project files become the next
-frontier.
+It also keeps a FIFO queue of newly reachable file indexes. Test files are
+inserted into `used_files` as leaf files and are not queued. Entry files are then
+inserted into `used_files`; non-test entries are queued first. Each loop drains
+the current queue as a graph frontier, batch-parses that frontier through
+`FileCache`, then processes the parsed files. Newly discovered non-test project
+files become the next frontier.
 
 For each queued file, Codescythe:
 
@@ -270,6 +276,12 @@ which keeps output focused on the larger dead file and avoids reading or parsing
 that file at all. The internal `AnalysisOptions::include_unreachable_exports`
 option can include those export issues when callers need the extra detail; that
 mode parses otherwise unreachable files during issue generation.
+
+Test files are skipped for export reporting. After production file/export issues
+are known, Codescythe parses matching test files and reports tests that directly
+import a project file or export scheduled for removal. That keeps tests from
+counting as production usage while letting `--fix` remove tests attached to the
+dead code being removed.
 
 An export is reported under `issues.exports` when:
 

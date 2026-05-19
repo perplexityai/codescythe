@@ -17,6 +17,11 @@
       "description": "Project source files or glob patterns to analyze for unused files and exports.",
       "$ref": "#/$defs/stringOrStringArray"
     },
+    "testFilePatterns": {
+      "description": "Test files or glob patterns. Matching files are treated as leaf files: their imports do not count as production usage, and fixes remove tests that reference removed project files or exports.",
+      "$ref": "#/$defs/stringOrStringArray",
+      "default": ["**/*.test.*", "**/*.spec.*"]
+    },
     "ignore": {
       "description": "Glob patterns to exclude from analysis.",
       "$ref": "#/$defs/stringOrStringArray"

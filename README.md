@@ -54,10 +54,15 @@ core crate. Config can be provided as:
 - A `codescythe` object in `package.json`.
 - An explicit `.json` or `.jsonc` path passed with `--config`.
 
-Supported config fields are `entry`, `project`, `ignore`, `aliases`,
-`unresolvedImports`, `includeEntryExports`, and `ignoreExportsUsedInFile`.
-Codescythe automatically discovers `.gitignore` files in every traversed
-directory.
+Supported config fields are `entry`, `project`, `testFilePatterns`, `ignore`,
+`aliases`, `unresolvedImports`, `includeEntryExports`, and
+`ignoreExportsUsedInFile`. Codescythe automatically discovers `.gitignore` files
+in every traversed directory.
+
+Files matching `testFilePatterns` are treated as leaf files. By default this
+includes `**/*.test.*` and `**/*.spec.*`: those files are kept out of production
+usage marking, but `--fix` can remove them when they import a project file or
+export that Codescythe is removing.
 
 ## Fixing
 

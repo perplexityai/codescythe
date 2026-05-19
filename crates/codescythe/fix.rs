@@ -194,4 +194,45 @@ mod tests {
         assert_eq!(result.removed_exports, 0);
         assert!(!cwd.join("dead.ts").exists());
     }
+
+    #[test]
+    fn removes_tests_that_reference_removed_exports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": ["src/main.ts", "src/**/*.spec.ts"],
+              "project": ["src/**/*.ts"]
+            }"#,
+        )
+        .unwrap();
+        fs::create_dir(cwd.join("src")).unwrap();
+        fs::write(
+            cwd.join("src/main.ts"),
+            "import { used } from './module';\nconsole.log(used);\n",
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("src/module.ts"),
+            "export const used = 1;\nexport const onlyForTest = 2;\n",
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("src/module.spec.ts"),
+            "import { onlyForTest } from './module';\nconsole.log(onlyForTest);\n",
+        )
+        .unwrap();
+
+        let result = run_and_fix(cwd, None).unwrap();
+
+        assert_eq!(result.changed_files, vec!["src/module.ts"]);
+        assert_eq!(result.removed_files, vec!["src/module.spec.ts"]);
+        assert_eq!(result.removed_exports, 1);
+        assert!(!cwd.join("src/module.spec.ts").exists());
+        assert_eq!(
+            fs::read_to_string(cwd.join("src/module.ts")).unwrap(),
+            "export const used = 1;\n"
+        );
+    }
 }

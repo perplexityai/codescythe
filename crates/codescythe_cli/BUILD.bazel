@@ -45,6 +45,7 @@ rust_test(
     data = [
         ":codescythe",
         "//tests/fixtures/oxc-resolution:fixtures",
+        "//tests/fixtures/test-file-usage:fixtures",
     ],
     edition = "2024",
     deps = [
