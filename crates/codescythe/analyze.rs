@@ -25,6 +25,7 @@ const RAYON_THREADS_ENV: &str = "RAYON_NUM_THREADS";
 
 type UsedFiles = HashSet<usize>;
 type UsedExports = HashMap<usize, HashSet<String>>;
+type QueuedFiles = HashSet<usize>;
 type UnresolvedImports = HashMap<String, HashSet<String>>;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -110,18 +111,20 @@ pub fn analyze_path(
     let mut used_exports = UsedExports::new();
     let mut unresolved = UnresolvedImports::new();
     let mut queue = VecDeque::<usize>::new();
+    let mut queued_files = QueuedFiles::new();
 
     for entry in &entry_set {
         if let Some(index) = index_by_path.get(&normalize_path(entry)) {
             entry_indexes.insert(*index);
             if used_files.insert(*index) {
-                queue.push_back(*index);
+                enqueue_file(*index, &mut queue, &mut queued_files);
             }
         }
     }
 
     while !queue.is_empty() {
         let batch = queue.drain(..).collect::<Vec<_>>();
+        queued_files.clear();
         files.parse_many(&batch)?;
 
         for index in batch {
@@ -131,11 +134,17 @@ pub fn analyze_path(
             for import in &file.imports {
                 match module_resolver.resolve(&file, &import.source)? {
                     ImportResolution::Project(target) => {
-                        if used_files.insert(target) {
-                            queue.push_back(target);
-                        }
                         if let Some(name) = &import.imported {
-                            used_exports.entry(target).or_default().insert(name.clone());
+                            mark_used_export(
+                                target,
+                                name.clone(),
+                                &mut used_files,
+                                &mut used_exports,
+                                &mut queue,
+                                &mut queued_files,
+                            );
+                        } else if used_files.insert(target) {
+                            enqueue_file(target, &mut queue, &mut queued_files);
                         }
                     }
                     ImportResolution::Unresolved => {
@@ -153,7 +162,7 @@ pub fn analyze_path(
                 match module_resolver.resolve(&file, source)? {
                     ImportResolution::Project(target) => {
                         if used_files.insert(target) {
-                            queue.push_back(target);
+                            enqueue_file(target, &mut queue, &mut queued_files);
                         }
                     }
                     ImportResolution::Unresolved => {
@@ -172,6 +181,7 @@ pub fn analyze_path(
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
+                    &mut queued_files,
                     &mut unresolved,
                     &unresolved_policy,
                 )?;
@@ -185,6 +195,7 @@ pub fn analyze_path(
                     &mut used_files,
                     &mut used_exports,
                     &mut queue,
+                    &mut queued_files,
                 )?;
             }
 
@@ -199,6 +210,7 @@ pub fn analyze_path(
                         &mut used_files,
                         &mut used_exports,
                         &mut queue,
+                        &mut queued_files,
                         &mut unresolved,
                         &unresolved_policy,
                         &file.relative,
@@ -225,6 +237,7 @@ pub fn analyze_path(
                                 &mut used_files,
                                 &mut used_exports,
                                 &mut queue,
+                                &mut queued_files,
                                 &mut unresolved,
                                 &unresolved_policy,
                                 &file.relative,
@@ -241,6 +254,7 @@ pub fn analyze_path(
                     &module_resolver,
                     &mut used_files,
                     &mut queue,
+                    &mut queued_files,
                     &mut unresolved,
                     &unresolved_policy,
                 )?;
@@ -252,6 +266,7 @@ pub fn analyze_path(
                     &module_resolver,
                     &mut used_files,
                     &mut queue,
+                    &mut queued_files,
                     &mut unresolved,
                     &unresolved_policy,
                 )?;
@@ -266,6 +281,7 @@ pub fn analyze_path(
                         &mut used_files,
                         &mut used_exports,
                         &mut queue,
+                        &mut queued_files,
                         &mut unresolved,
                         &unresolved_policy,
                     )?;
@@ -279,6 +295,7 @@ pub fn analyze_path(
                         &mut used_files,
                         &mut used_exports,
                         &mut queue,
+                        &mut queued_files,
                         &mut unresolved,
                         &unresolved_policy,
                     )?;
@@ -295,6 +312,7 @@ pub fn analyze_path(
                         &mut used_files,
                         &mut used_exports,
                         &mut queue,
+                        &mut queued_files,
                         &mut unresolved,
                         &unresolved_policy,
                     )?;
@@ -838,19 +856,21 @@ fn mark_member_import(
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
     unresolved: &mut UnresolvedImports,
     unresolved_policy: &UnresolvedImportPolicy,
     importer_relative: &str,
 ) -> Result<()> {
     match resolver.resolve(from_file, source)? {
         ImportResolution::Project(target) => {
-            if used_files.insert(target) {
-                queue.push_back(target);
-            }
-            used_exports
-                .entry(target)
-                .or_default()
-                .insert(member.to_string());
+            mark_used_export(
+                target,
+                member.to_string(),
+                used_files,
+                used_exports,
+                queue,
+                queued_files,
+            );
             let namespace_source = files
                 .get(target)?
                 .exports
@@ -867,6 +887,7 @@ fn mark_member_import(
                     used_files,
                     used_exports,
                     queue,
+                    queued_files,
                     unresolved,
                     unresolved_policy,
                     importer_relative,
@@ -881,6 +902,28 @@ fn mark_member_import(
     Ok(())
 }
 
+fn mark_used_export(
+    target: usize,
+    name: String,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
+) {
+    let file_was_new = used_files.insert(target);
+    let export_was_new = used_exports.entry(target).or_default().insert(name);
+
+    if file_was_new || export_was_new {
+        enqueue_file(target, queue, queued_files);
+    }
+}
+
+fn enqueue_file(target: usize, queue: &mut VecDeque<usize>, queued_files: &mut QueuedFiles) {
+    if queued_files.insert(target) {
+        queue.push_back(target);
+    }
+}
+
 fn mark_reexport(
     file: &FileData,
     export: &ExportInfo,
@@ -888,16 +931,21 @@ fn mark_reexport(
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
     unresolved: &mut UnresolvedImports,
     unresolved_policy: &UnresolvedImportPolicy,
 ) -> Result<()> {
     if let (Some(source), Some(name)) = (&export.reexport_source, &export.reexport_name) {
         match resolver.resolve(file, source)? {
             ImportResolution::Project(target) => {
-                if used_files.insert(target) {
-                    queue.push_back(target);
-                }
-                used_exports.entry(target).or_default().insert(name.clone());
+                mark_used_export(
+                    target,
+                    name.clone(),
+                    used_files,
+                    used_exports,
+                    queue,
+                    queued_files,
+                );
             }
             ImportResolution::Unresolved => {
                 unresolved_policy.record(unresolved, &file.relative, source)?;
@@ -910,7 +958,7 @@ fn mark_reexport(
         match resolver.resolve(file, source)? {
             ImportResolution::Project(target) => {
                 if used_files.insert(target) {
-                    queue.push_back(target);
+                    enqueue_file(target, queue, queued_files);
                 }
             }
             ImportResolution::Unresolved => {
@@ -928,6 +976,7 @@ fn mark_reexport_source_file(
     resolver: &ModuleResolver,
     used_files: &mut UsedFiles,
     queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
     unresolved: &mut UnresolvedImports,
     unresolved_policy: &UnresolvedImportPolicy,
 ) -> Result<()> {
@@ -938,6 +987,7 @@ fn mark_reexport_source_file(
             resolver,
             used_files,
             queue,
+            queued_files,
             unresolved,
             unresolved_policy,
         )?;
@@ -950,6 +1000,7 @@ fn mark_reexport_source_file(
             resolver,
             used_files,
             queue,
+            queued_files,
             unresolved,
             unresolved_policy,
         )?;
@@ -964,13 +1015,14 @@ fn mark_source_file(
     resolver: &ModuleResolver,
     used_files: &mut UsedFiles,
     queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
     unresolved: &mut UnresolvedImports,
     unresolved_policy: &UnresolvedImportPolicy,
 ) -> Result<()> {
     match resolver.resolve(file, source)? {
         ImportResolution::Project(target) => {
             if used_files.insert(target) {
-                queue.push_back(target);
+                enqueue_file(target, queue, queued_files);
             }
         }
         ImportResolution::Unresolved => {
@@ -988,23 +1040,24 @@ fn mark_glob_import(
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
 ) -> Result<()> {
     let Some(pattern) = project_glob_from_import(&file.relative, pattern) else {
         return Ok(());
     };
 
     for target in files.matching_relative_glob(&pattern)? {
-        if used_files.insert(target) {
-            queue.push_back(target);
-        }
         let export_names = files
             .get(target)?
             .exports
             .keys()
             .cloned()
             .collect::<Vec<_>>();
+        if export_names.is_empty() && used_files.insert(target) {
+            enqueue_file(target, queue, queued_files);
+        }
         for name in export_names {
-            used_exports.entry(target).or_default().insert(name);
+            mark_used_export(target, name, used_files, used_exports, queue, queued_files);
         }
     }
 
@@ -1019,22 +1072,23 @@ fn mark_all_exports(
     used_files: &mut UsedFiles,
     used_exports: &mut UsedExports,
     queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
     unresolved: &mut UnresolvedImports,
     unresolved_policy: &UnresolvedImportPolicy,
 ) -> Result<()> {
     match resolver.resolve(file, source)? {
         ImportResolution::Project(target) => {
-            if used_files.insert(target) {
-                queue.push_back(target);
-            }
             let export_names = files
                 .get(target)?
                 .exports
                 .keys()
                 .cloned()
                 .collect::<Vec<_>>();
+            if export_names.is_empty() && used_files.insert(target) {
+                enqueue_file(target, queue, queued_files);
+            }
             for name in export_names {
-                used_exports.entry(target).or_default().insert(name.clone());
+                mark_used_export(target, name, used_files, used_exports, queue, queued_files);
             }
         }
         ImportResolution::Unresolved => {
@@ -1905,6 +1959,110 @@ mod tests {
     }
 
     #[test]
+    fn propagates_used_export_through_already_reached_barrel() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "import './form';\nimport './feature';\n"),
+            (
+                "src/feature.ts",
+                "import { FormCheckbox } from './form';\nconsole.log(FormCheckbox);\n",
+            ),
+            (
+                "src/form/index.ts",
+                "export { FormCheckbox } from './FormCheckbox';\n",
+            ),
+            (
+                "src/form/FormCheckbox.ts",
+                "export const FormCheckbox = () => null;\n",
+            ),
+        ]);
+
+        assert_no_unused_export(&analysis, "src/form/index.ts", "FormCheckbox");
+        assert_no_unused_export(&analysis, "src/form/FormCheckbox.ts", "FormCheckbox");
+    }
+
+    #[test]
+    fn propagates_used_export_through_multi_hop_barrels() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "import './ui';\nimport './feature';\n"),
+            (
+                "src/feature.ts",
+                "import { FormCheckbox } from './ui';\nconsole.log(FormCheckbox);\n",
+            ),
+            ("src/ui.ts", "export { FormCheckbox } from './form';\n"),
+            (
+                "src/form/index.ts",
+                "export { FormCheckbox } from './FormCheckbox';\n",
+            ),
+            (
+                "src/form/FormCheckbox.ts",
+                "export const FormCheckbox = () => null;\n",
+            ),
+        ]);
+
+        assert_no_unused_export(&analysis, "src/ui.ts", "FormCheckbox");
+        assert_no_unused_export(&analysis, "src/form/index.ts", "FormCheckbox");
+        assert_no_unused_export(&analysis, "src/form/FormCheckbox.ts", "FormCheckbox");
+    }
+
+    #[test]
+    fn propagates_used_export_through_reexport_alias() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "import './form';\nimport './feature';\n"),
+            (
+                "src/feature.ts",
+                "import { Checkbox } from './form';\nconsole.log(Checkbox);\n",
+            ),
+            (
+                "src/form/index.ts",
+                "export { FormCheckbox as Checkbox } from './FormCheckbox';\n",
+            ),
+            (
+                "src/form/FormCheckbox.ts",
+                "export const FormCheckbox = () => null;\n",
+            ),
+        ]);
+
+        assert_no_unused_export(&analysis, "src/form/index.ts", "Checkbox");
+        assert_no_unused_export(&analysis, "src/form/FormCheckbox.ts", "FormCheckbox");
+    }
+
+    #[test]
+    fn reachable_reexport_stays_unused_without_named_usage() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "import './form';\n"),
+            (
+                "src/form/index.ts",
+                "export { FormCheckbox } from './FormCheckbox';\n",
+            ),
+            (
+                "src/form/FormCheckbox.ts",
+                "export const FormCheckbox = () => null;\n",
+            ),
+        ]);
+
+        assert_unused_export(&analysis, "src/form/index.ts", "FormCheckbox");
+        assert_unused_export(&analysis, "src/form/FormCheckbox.ts", "FormCheckbox");
+    }
+
+    #[test]
+    fn unreachable_reexport_files_stay_unused() {
+        let analysis = analyze_inline_project(&[
+            ("src/entry.ts", "console.log('entry');\n"),
+            (
+                "src/form/index.ts",
+                "export { FormCheckbox } from './FormCheckbox';\n",
+            ),
+            (
+                "src/form/FormCheckbox.ts",
+                "export const FormCheckbox = () => null;\n",
+            ),
+        ]);
+
+        assert_unused_file(&analysis, "src/form/index.ts");
+        assert_unused_file(&analysis, "src/form/FormCheckbox.ts");
+    }
+
+    #[test]
     fn entry_reexports_keep_source_files_reachable_when_entry_exports_are_reported() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
@@ -2145,6 +2303,57 @@ console.log(missingExternal, missingExternalSubpath);
 
         let config = crate::load_config(cwd, None).unwrap();
         analyze_path(cwd, &config, AnalysisOptions::default())
+    }
+
+    fn analyze_inline_project(files: &[(&str, &str)]) -> Analysis {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+              "entry": "src/entry.ts",
+              "project": "src/**/*.ts"
+            }"#,
+        );
+        for (relative, contents) in files {
+            write_file(cwd, relative, contents);
+        }
+
+        let config = crate::load_config(cwd, None).unwrap();
+        analyze_path(cwd, &config, AnalysisOptions::default()).unwrap()
+    }
+
+    fn assert_no_unused_export(analysis: &Analysis, path: &str, name: &str) {
+        assert!(
+            !analysis
+                .issues
+                .exports
+                .get(path)
+                .is_some_and(|exports| exports.contains_key(name)),
+            "expected {path}:{name} to be used, got {:?}",
+            analysis.issues.exports.get(path)
+        );
+    }
+
+    fn assert_unused_export(analysis: &Analysis, path: &str, name: &str) {
+        assert!(
+            analysis
+                .issues
+                .exports
+                .get(path)
+                .is_some_and(|exports| exports.contains_key(name)),
+            "expected {path}:{name} to be unused, got {:?}",
+            analysis.issues.exports.get(path)
+        );
+    }
+
+    fn assert_unused_file(analysis: &Analysis, path: &str) {
+        assert!(
+            analysis.issues.files.contains_key(path),
+            "expected {path} to be unused, got {:?}",
+            analysis.issues.files
+        );
     }
 
     fn write_file(root: &Path, relative: &str, contents: &str) {
