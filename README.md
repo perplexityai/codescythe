@@ -38,7 +38,7 @@ produced:
 | --- | ---: | ---: | ---: |
 | `microsoft/vscode` | 9,537 | 738.0ms | 5.76s |
 | `grafana/grafana` | 8,701 | 771.0ms | 9.29s |
-| `elastic/kibana` | 86,056 | 2.10s | 40.82s |
+| `elastic/kibana` | 86,056 | 11.64s | 45.35s |
 | `renovatebot/renovate` | 2,488 | 118.5ms | 846.1ms |
 
 Counts reflect each fixture's generated benchmark config after excludes. Run
