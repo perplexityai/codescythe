@@ -70,21 +70,23 @@ codescythe  2170.2ms   +/-11.95%  4        0.46
 knip        48742.7ms  +/-30.00%  3        0.02
 ```
 
-The matching conformance run with 16 injected unused files reported
-82,969 unused files for Codescythe and 82,965 for Knip out of 86,072
-benchmarked files. Codescythe covered every Knip unused file, both tools found
-all synthetic files, and the 4 Codescythe-only files were imported only by other
-unused files.
+The matching conformance run covers every Knip unused file, requires both tools
+to find the synthetic unused-file controls, requires Codescythe to find the
+synthetic unused-export controls, and allows Codescythe-only files only when
+they are imported by other unused files.
 
 ## Kibana Conformance
 
 `pnpm conformance:kibana` copies the Kibana fixture to a temporary directory,
-injects synthetic unused TypeScript files, then runs a shared core-graph config
-through Codescythe and Knip. The comparison disables Knip framework plugins so
-the file-level result checks the configured TypeScript graph:
+injects synthetic unused TypeScript files and reachable modules with unused
+exports, then runs a shared core-graph config through Codescythe and Knip. The
+comparison disables Knip framework plugins so the file-level result checks the
+configured TypeScript graph:
 
 - Every file Knip reports unused must also be reported unused by Codescythe.
 - Every synthetic fuzz file must be reported unused by both tools.
+- Every synthetic unused export must be reported unused by Codescythe, while
+  the synthetic export used by a reachable Kibana entrypoint must stay clean.
 - Codescythe-only unused files are allowed only when every importer found in
   the project graph is also unused. This preserves Codescythe's more complete
   dead-subgraph reporting while guarding against reachable false positives.
@@ -95,9 +97,9 @@ The pinned real-repo fixtures are also covered by Bazel functional tests:
 Each fixture test runs the benchmark harness once against the Bazel-fetched
 source tree using the checked-in entry/project config. The deeper Kibana
 comparison lives at `//benchmarks:kibana_conformance_test`. These targets are
-tagged `functional_test` so CI can run the normal test lane with
-`bazel test //... --build_tests_only --test_tag_filters=-functional_test` and
-the slower functional lane separately with
-`bazel test //... --build_tests_only --test_tag_filters=functional_test`. Use
-`--skip-build`, `--codescythe-bin`, `--knip-bin`, `--fuzz-files`, and `--seed`
-to control local runs.
+tagged `functional_test` so CI can keep the normal test lane on pull requests
+with `bazel test //... --build_tests_only --test_tag_filters=-functional_test`
+and run the slower functional lane from the main-only `test functional`
+workflow with `bazel test //... --build_tests_only --test_tag_filters=functional_test`.
+Use `--skip-build`, `--codescythe-bin`, `--knip-bin`, `--fuzz-files`,
+`--fuzz-exports`, and `--seed` to control local runs.
