@@ -147,22 +147,26 @@ if [[ -s "${{stderr}}" ]]; then
 fi
 
 must_contain=({must_contain})
-for needle in "${{must_contain[@]}}"; do
-  if ! grep -F -- "${{needle}}" "${{stdout}}" >/dev/null; then
-    echo "expected Codescythe output to contain: ${{needle}}" >&2
-    cat "${{stdout}}" >&2
-    exit 1
-  fi
-done
+if (("${{#must_contain[@]}}")); then
+  for needle in "${{must_contain[@]}}"; do
+    if ! grep -F -- "${{needle}}" "${{stdout}}" >/dev/null; then
+      echo "expected Codescythe output to contain: ${{needle}}" >&2
+      cat "${{stdout}}" >&2
+      exit 1
+    fi
+  done
+fi
 
 must_not_contain=({must_not_contain})
-for needle in "${{must_not_contain[@]}}"; do
-  if grep -F -- "${{needle}}" "${{stdout}}" >/dev/null; then
-    echo "expected Codescythe output not to contain: ${{needle}}" >&2
-    cat "${{stdout}}" >&2
-    exit 1
-  fi
-done
+if (("${{#must_not_contain[@]}}")); then
+  for needle in "${{must_not_contain[@]}}"; do
+    if grep -F -- "${{needle}}" "${{stdout}}" >/dev/null; then
+      echo "expected Codescythe output not to contain: ${{needle}}" >&2
+      cat "${{stdout}}" >&2
+      exit 1
+    fi
+  done
+fi
 """.format(
         codescythe = _shell_quote(codescythe),
         config = _shell_quote(config),
