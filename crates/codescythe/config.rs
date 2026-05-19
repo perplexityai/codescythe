@@ -47,12 +47,17 @@ pub fn load_config(cwd: &Path, config_path: Option<&Path>) -> Result<CodescytheC
             if codescythe_json.exists() {
                 Some(read_config_file(&codescythe_json)?)
             } else {
-                let package_json = cwd.join("package.json");
-                if package_json.exists() {
-                    let package_value = read_json_file(&package_json)?;
-                    package_value.get("codescythe").cloned()
+                let codescythe_jsonc = cwd.join("codescythe.jsonc");
+                if codescythe_jsonc.exists() {
+                    Some(read_config_file(&codescythe_jsonc)?)
                 } else {
-                    None
+                    let package_json = cwd.join("package.json");
+                    if package_json.exists() {
+                        let package_value = read_json_file(&package_json)?;
+                        package_value.get("codescythe").cloned()
+                    } else {
+                        None
+                    }
                 }
             }
         }
@@ -84,14 +89,14 @@ pub fn load_config(cwd: &Path, config_path: Option<&Path>) -> Result<CodescytheC
 }
 
 fn read_config_file(path: &Path) -> Result<Value> {
-    let value = read_json_file(path)?;
     if path.file_name().and_then(|name| name.to_str()) == Some("package.json") {
+        let value = read_json_file(path)?;
         value
             .get("codescythe")
             .cloned()
             .context("package.json does not contain a codescythe config object")
     } else {
-        Ok(value)
+        read_config_value(path)
     }
 }
 
@@ -100,6 +105,33 @@ fn read_json_file(path: &Path) -> Result<Value> {
         .with_context(|| format!("failed to read config file {}", path.display()))?;
     serde_json::from_str(&source)
         .with_context(|| format!("failed to parse JSON config file {}", path.display()))
+}
+
+fn read_config_value(path: &Path) -> Result<Value> {
+    if path.extension().and_then(|extension| extension.to_str()) == Some("jsonc") {
+        return read_jsonc_file(path);
+    }
+
+    read_json_file(path)
+}
+
+fn read_jsonc_file(path: &Path) -> Result<Value> {
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("failed to read config file {}", path.display()))?;
+    jsonc_parser::parse_to_serde_value::<Value>(&source, &jsonc_parse_options())
+        .with_context(|| format!("failed to parse JSONC config file {}", path.display()))
+}
+
+fn jsonc_parse_options() -> jsonc_parser::ParseOptions {
+    jsonc_parser::ParseOptions {
+        allow_comments: true,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: true,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+    }
 }
 
 fn validate_config_value(value: &Value) -> Result<()> {
@@ -152,4 +184,104 @@ where
 enum StringOrVec {
     String(String),
     Vec(Vec<String>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn discovers_codescythe_jsonc_config() {
+        let tempdir = tempfile::tempdir().unwrap();
+        write_file(
+            tempdir.path(),
+            "codescythe.jsonc",
+            r#"{
+              // JSONC config is allowed for project-local settings.
+              "entry": "src/index.ts",
+              "project": "src/**/*.ts",
+            }"#,
+        );
+
+        let config = load_config(tempdir.path(), None).unwrap();
+
+        assert_eq!(config.entry, vec!["src/index.ts"]);
+        assert_eq!(config.project, vec!["src/**/*.ts"]);
+    }
+
+    #[test]
+    fn explicit_jsonc_config_path_allows_comments_and_trailing_commas() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let config_path = tempdir.path().join("custom.jsonc");
+        write_file(
+            tempdir.path(),
+            "custom.jsonc",
+            r#"{
+              "entry": ["app/main.ts"],
+              /* Keep this broad because fixtures generate nested source. */
+              "project": ["app/**/*.ts"],
+              "ignore": [
+                "app/generated/**",
+              ],
+            }"#,
+        );
+
+        let config = load_config(tempdir.path(), Some(&config_path)).unwrap();
+
+        assert_eq!(config.entry, vec!["app/main.ts"]);
+        assert_eq!(config.project, vec!["app/**/*.ts"]);
+        assert!(config.ignore.contains(&"app/generated/**".to_string()));
+    }
+
+    #[test]
+    fn codescythe_json_takes_precedence_over_jsonc() {
+        let tempdir = tempfile::tempdir().unwrap();
+        write_file(
+            tempdir.path(),
+            "codescythe.json",
+            r#"{
+              "entry": "json.ts"
+            }"#,
+        );
+        write_file(
+            tempdir.path(),
+            "codescythe.jsonc",
+            r#"{
+              "entry": "jsonc.ts"
+            }"#,
+        );
+
+        let config = load_config(tempdir.path(), None).unwrap();
+
+        assert_eq!(config.entry, vec!["json.ts"]);
+    }
+
+    #[test]
+    fn validates_jsonc_config_against_schema() {
+        let tempdir = tempfile::tempdir().unwrap();
+        write_file(
+            tempdir.path(),
+            "codescythe.jsonc",
+            r#"{
+              // Unknown fields should still be rejected after JSONC parsing.
+              "entry": "src/index.ts",
+              "unknown": true,
+            }"#,
+        );
+
+        let error = load_config(tempdir.path(), None).unwrap_err();
+        let message = format!("{error:#}");
+
+        assert!(message.contains("invalid Codescythe configuration"));
+        assert!(message.contains("unknown"));
+    }
+
+    fn write_file(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, contents).unwrap();
+    }
 }

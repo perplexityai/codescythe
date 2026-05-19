@@ -5,6 +5,7 @@ COMMON_DEPS = [
     "@crates//:anyhow",
     "@crates//:globset",
     "@crates//:jsonschema",
+    "@crates//:jsonc-parser",
     "@crates//:oxc",
     "@crates//:oxc_allocator",
     "@crates//:oxc_ast",

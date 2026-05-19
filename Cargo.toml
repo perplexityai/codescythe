@@ -11,24 +11,25 @@ version = "0.3.1"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/perplexityai/codescythe"
-rust-version = "1.92"
+rust-version = "1.93"
 
 [workspace.dependencies]
-anyhow = "1.0"
-clap = { version = "4.5", features = ["derive", "env"] }
-globset = "0.4"
+anyhow = { version = "1.0.102" }
+clap = { version = "4.6.1", features = ["derive", "env"] }
+globset = { version = "0.4.18" }
 jsonschema = { version = "0.46.5", default-features = false }
-napi = { version = "3.8.6", default-features = false, features = ["napi4"] }
-napi-derive = "3.5"
-oxc = { version = "0.126", features = ["ast_visit"] }
-oxc_allocator = "0.126"
-oxc_ast = "0.126"
-oxc_parser = "0.126"
-oxc_resolver = "11.19.1"
-oxc_span = "0.126"
-rayon = "1.11"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["preserve_order"] }
-tempfile = "3.23"
-thiserror = "2.0"
-walkdir = "2.5"
+jsonc-parser = { version = "0.32.4", features = ["serde"] }
+napi = { version = "3.9.0", default-features = false, features = ["napi4"] }
+napi-derive = { version = "3.5.6" }
+oxc = { version = "0.132.0", features = ["ast_visit"] }
+oxc_allocator = { version = "0.132.0" }
+oxc_ast = { version = "0.132.0" }
+oxc_parser = { version = "0.132.0" }
+oxc_resolver = { version = "11.19.1" }
+oxc_span = { version = "0.132.0" }
+rayon = { version = "1.12.0" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.149", features = ["preserve_order"] }
+tempfile = { version = "3.27.0" }
+thiserror = { version = "2.0.18" }
+walkdir = { version = "2.5.0" }
