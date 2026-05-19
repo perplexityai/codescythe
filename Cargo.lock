@@ -205,7 +205,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "codescythe"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "globset",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "codescythe_cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -238,7 +238,7 @@ dependencies = [
 
 [[package]]
 name = "codescythe_napi"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "codescythe",
  "napi",

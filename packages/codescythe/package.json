@@ -1,6 +1,6 @@
 {
   "name": "@perplexity/codescythe",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Focused TypeScript dead-code analysis and removal",
   "license": "Apache-2.0",
   "repository": {
