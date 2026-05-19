@@ -84,7 +84,9 @@ otherwise the current process directory is used.
 `discover_project_files` walks the analysis root with `walkdir` and follows
 links. Directory traversal is pruned early for common non-project directories:
 `.git`, `node_modules`, `target`, `dist`, `build`, `coverage`, and any directory
-whose name starts with `bazel-`.
+whose name starts with `bazel-`. Directories matching the configured `ignore`
+globs are also pruned before links are followed, so ignored cache or generated
+trees cannot fail discovery through stale symlinks.
 
 For each regular file, Codescythe computes a slash-normalized relative path and
 keeps the file when:

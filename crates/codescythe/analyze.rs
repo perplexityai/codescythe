@@ -381,7 +381,7 @@ fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<P
     for entry in WalkDir::new(cwd)
         .follow_links(true)
         .into_iter()
-        .filter_entry(|entry| should_enter(entry))
+        .filter_entry(|entry| should_enter(cwd, entry, &ignore))
     {
         let entry = entry?;
         if !entry.path().is_file() {
@@ -488,9 +488,12 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet> {
     Ok(builder.build()?)
 }
 
-fn should_enter(entry: &DirEntry) -> bool {
+fn should_enter(cwd: &Path, entry: &DirEntry, ignore: &GlobSet) -> bool {
     if !entry.path().is_dir() {
         return true;
+    }
+    if ignore.is_match(relative_path(cwd, entry.path())) {
+        return false;
     }
     !matches!(
         entry.file_name().to_str(),
@@ -1723,6 +1726,37 @@ mod tests {
         assert_eq!(analysis.counters.total, 3);
         assert!(analysis.issues.files.contains_key("app/dead.ts"));
         assert!(!analysis.issues.files.contains_key("app/used.ts"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prunes_configured_ignored_directories_before_following_links() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": ["src/main.ts"],
+              "project": ["src/**/*.ts"],
+              "ignore": [".pnpm", ".pnpm/**"]
+            }"#,
+        )
+        .unwrap();
+        fs::create_dir(cwd.join("src")).unwrap();
+        fs::write(cwd.join("src/main.ts"), "console.log('entry');\n").unwrap();
+        fs::create_dir_all(cwd.join(".pnpm/store/v10/projects")).unwrap();
+        std::os::unix::fs::symlink(
+            cwd.join("missing-worktree"),
+            cwd.join(".pnpm/store/v10/projects/stale"),
+        )
+        .unwrap();
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+        assert_eq!(analysis.counters.total, 1);
+        assert!(analysis.issues.files.is_empty());
     }
 
     #[test]
