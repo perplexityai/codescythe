@@ -1,41 +1,24 @@
-load("//tests/bazel:codescythe_test.bzl", "codescythe_test", "source_group")
+load("//tests/bazel:codescythe_test.bzl", "codescythe_test")
 
-source_group(
-    name = "app_sources",
-    srcs = [
-        "src/main.ts",
-    ],
-    deps = [
-        ":generated_sources",
-        ":library_sources",
-    ],
-)
-
-source_group(
-    name = "generated_sources",
-    srcs = [
-        "generated/client.ts",
-    ],
-)
-
-source_group(
-    name = "library_sources",
-    srcs = [
-        "src/used.ts",
-    ],
-)
-
-source_group(
-    name = "all_sources",
-    deps = [
-        ":app_sources",
-    ],
+filegroup(
+    name = "fixture_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+    ),
 )
 
 codescythe_test(
     name = "codescythe_false_positive_test",
-    config = "codescythe.json",
-    data = ["package.json"],
+    args = [
+        "--config",
+        "$(location codescythe.json)",
+        "--json",
+    ],
+    data = [
+        ":fixture_files",
+        "codescythe.json",
+    ],
     expected_exit_code = 0,
     must_contain = [
         "\"processed\":3",
@@ -44,5 +27,4 @@ codescythe_test(
     must_not_contain = [
         "#virtual_generated/api/foo",
     ],
-    targets = [":all_sources"],
 )
