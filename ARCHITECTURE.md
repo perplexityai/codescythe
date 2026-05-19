@@ -322,7 +322,8 @@ package/workspace entry metadata. The test asserts that every Knip unused file
 is reported by Codescythe, every injected synthetic unused file is reported by
 both tools, every injected synthetic unused export in a reachable file is
 reported by Codescythe, and each Codescythe-only file is imported only by files
-that are also unused.
+that are also unused. Its stable conformance summary is checked against
+`benchmarks/kibana_conformance.snapshot.json`.
 
 ## Fixing
 

@@ -1,4 +1,5 @@
-load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_bazel_lib//lib:write_source_files.bzl", "write_source_file")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
 load(":fixture_tests.bzl", "fixture_functional_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -27,19 +28,8 @@ fixture_functional_test(
     fixture_repo = "@benchmark_renovate",
 )
 
-js_test(
-    name = "kibana_conformance_test",
-    args = [
-        "--codescythe-bin",
-        "$(rootpath //crates/codescythe_cli:codescythe)",
-        "--fixture-package-json",
-        "$(rootpath @benchmark_kibana//:package_json)",
-        "--fuzz-files",
-        "16",
-        "--fuzz-exports",
-        "8",
-        "--skip-build",
-    ],
+js_binary(
+    name = "kibana_conformance_snapshot_bin",
     data = [
         "//:node_modules/knip",
         "//crates/codescythe_cli:codescythe",
@@ -49,6 +39,38 @@ js_test(
     copy_data_to_bin = False,
     entry_point = "kibana_conformance.ts",
     node_options = ["--experimental-transform-types"],
+)
+
+js_run_binary(
+    name = "kibana_conformance_snapshot",
+    args = [
+        "--codescythe-bin",
+        "$(location //crates/codescythe_cli:codescythe)",
+        "--fixture-package-json",
+        "$(location @benchmark_kibana//:package_json)",
+        "--fuzz-files",
+        "16",
+        "--fuzz-exports",
+        "8",
+        "--skip-build",
+        "--snapshot-output",
+        "$(location kibana_conformance.snapshot.generated.json)",
+    ],
+    outs = ["kibana_conformance.snapshot.generated.json"],
+    copy_srcs_to_bin = False,
+    use_execroot_entry_point = False,
+    srcs = [
+        "//crates/codescythe_cli:codescythe",
+        "@benchmark_kibana//:all_files",
+        "@benchmark_kibana//:package_json",
+    ],
+    tool = ":kibana_conformance_snapshot_bin",
+)
+
+write_source_file(
+    name = "kibana_conformance",
+    in_file = ":kibana_conformance_snapshot",
+    out_file = "kibana_conformance.snapshot.json",
+    diff_test_failure_message = "{{DEFAULT_MESSAGE}}\n\nThe Kibana conformance snapshot changed. Review the generated JSON, then run:\n\n    bazel run //benchmarks:kibana_conformance\n",
     tags = ["functional_test"],
-    timeout = "long",
 )

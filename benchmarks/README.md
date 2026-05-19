@@ -73,7 +73,8 @@ knip        48742.7ms  +/-30.00%  3        0.02
 The matching conformance run covers every Knip unused file, requires both tools
 to find the synthetic unused-file controls, requires Codescythe to find the
 synthetic unused-export controls, and allows Codescythe-only files only when
-they are imported by other unused files.
+they are imported by other unused files. The stable output is checked against
+`kibana_conformance.snapshot.json`.
 
 ## Kibana Conformance
 
@@ -101,5 +102,8 @@ tagged `functional_test` so CI can keep the normal test lane on pull requests
 with `bazel test //... --build_tests_only --test_tag_filters=-functional_test`
 and run the slower functional lane from the main-only `test functional`
 workflow with `bazel test //... --build_tests_only --test_tag_filters=functional_test`.
-Use `--skip-build`, `--codescythe-bin`, `--knip-bin`, `--fuzz-files`,
-`--fuzz-exports`, and `--seed` to control local runs.
+The Kibana target is a `write_source_file` snapshot check; run
+`bazel run //benchmarks:kibana_conformance` to refresh the checked-in JSON after
+reviewing an intentional conformance change. Use `--skip-build`,
+`--codescythe-bin`, `--knip-bin`, `--fuzz-files`, `--fuzz-exports`, `--seed`,
+and `--snapshot-output` to control local script runs.
