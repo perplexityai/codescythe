@@ -23,7 +23,7 @@ Codescythe takes a deliberately smaller slice of Knip's problem space.
 
 | | Knip | Codescythe |
 | --- | --- | --- |
-| Primary scope | Broad JavaScript and TypeScript project hygiene: unused files, exports, dependencies, binaries, unresolved imports, and related issue types. | Focused TypeScript dead-code analysis: unused project files, unused exports, unresolved imports, and supported export removals. |
+| Primary scope | Broad JavaScript and TypeScript project hygiene: unused files, exports, dependencies, binaries, unresolved imports, and related issue types. | Focused TypeScript dead-code analysis: unused project files, unused exports, unresolved imports, and supported removals. |
 | Project discovery | Infers more from package metadata, workspaces, scripts, framework config, and built-in plugins. | Starts from explicit `entry` and `project` config, then follows the import/export graph. |
 | Framework awareness | Designed for framework and tool integrations through plugins and compilers. | Intentionally avoids a framework plugin surface. |
 | Best fit | Comprehensive audits where framework config, dependency hygiene, and workspace conventions matter. | Deterministic cleanup jobs where the TypeScript boundary is already known and repeatable graph behavior matters more than integration breadth. |
@@ -58,6 +58,17 @@ Supported config fields are `entry`, `project`, `ignore`, `aliases`,
 `unresolvedImports`, `includeEntryExports`, and `ignoreExportsUsedInFile`.
 Codescythe automatically discovers `.gitignore` files in every traversed
 directory.
+
+## Fixing
+
+Run Codescythe with `--fix` to apply supported removals. The fix pass removes
+unused project files and removes unused export declarations from reachable files.
+The JSON fix report includes `removedFiles`, `changedFiles`, `removedExports`,
+and the original analysis result.
+
+Fixing is a single analysis-and-edit pass. Removing a dead file can make more
+files or exports unreachable, so repeated cleanup jobs should run Codescythe
+again after a fix pass when a completely stable tree is required.
 
 ## Contributing
 

@@ -1,6 +1,24 @@
 {
   "fixture": "kibana",
   "seed": "0xc0dec7",
+  "config": {
+    "entry": [
+      "src/**/*.{ts,tsx,mts,cts}",
+      "x-pack/**/*.{ts,tsx,mts,cts}",
+      "packages/**/*.{ts,tsx,mts,cts}",
+      "examples/**/*.{ts,tsx,mts,cts}",
+      "oas_docs/**/*.{ts,tsx,mts,cts}"
+    ],
+    "project": [
+      "src/**/*.{ts,tsx,mts,cts}",
+      "x-pack/**/*.{ts,tsx,mts,cts}",
+      "packages/**/*.{ts,tsx,mts,cts}",
+      "examples/**/*.{ts,tsx,mts,cts}",
+      "oas_docs/**/*.{ts,tsx,mts,cts}",
+      "codescythe-conformance-fuzz/**/*.{ts,tsx,mts,cts}"
+    ],
+    "includeEntryExports": false
+  },
   "fuzz": {
     "unusedFiles": [
       "codescythe-conformance-fuzz/unused_0_e06c8d7a.ts",
@@ -22,7 +40,7 @@
     ],
     "exportModules": [
       {
-        "file": "src/core/server/codescythe_conformance_export_0_570ca8c5.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_0_570ca8c5.ts",
         "usedExport": "usedFuzzExport_0_570ca8c5",
         "unusedExports": [
           "unusedValueFuzzExport_0_570ca8c5",
@@ -30,7 +48,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_1_2e8f0360.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_1_2e8f0360.ts",
         "usedExport": "usedFuzzExport_1_2e8f0360",
         "unusedExports": [
           "unusedValueFuzzExport_1_2e8f0360",
@@ -38,7 +56,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_2_e96a5f3f.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_2_e96a5f3f.ts",
         "usedExport": "usedFuzzExport_2_e96a5f3f",
         "unusedExports": [
           "unusedValueFuzzExport_2_e96a5f3f",
@@ -46,7 +64,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_3_c5efe392.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_3_c5efe392.ts",
         "usedExport": "usedFuzzExport_3_c5efe392",
         "unusedExports": [
           "unusedValueFuzzExport_3_c5efe392",
@@ -54,7 +72,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_4_178badc9.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_4_178badc9.ts",
         "usedExport": "usedFuzzExport_4_178badc9",
         "unusedExports": [
           "unusedValueFuzzExport_4_178badc9",
@@ -62,7 +80,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_5_e65dc94.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_5_e65dc94.ts",
         "usedExport": "usedFuzzExport_5_e65dc94",
         "unusedExports": [
           "unusedValueFuzzExport_5_e65dc94",
@@ -70,7 +88,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_6_17f21ee3.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_6_17f21ee3.ts",
         "usedExport": "usedFuzzExport_6_17f21ee3",
         "unusedExports": [
           "unusedValueFuzzExport_6_17f21ee3",
@@ -78,7 +96,7 @@
         ]
       },
       {
-        "file": "src/core/server/codescythe_conformance_export_7_f033f6e6.ts",
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_7_f033f6e6.ts",
         "usedExport": "usedFuzzExport_7_f033f6e6",
         "unusedExports": [
           "unusedValueFuzzExport_7_f033f6e6",
@@ -89,22 +107,40 @@
   },
   "counters": {
     "codescythe": {
-      "totalFiles": 86072,
-      "unusedFiles": 82961,
-      "unusedExports": 6295
+      "totalFiles": 85952,
+      "unusedFiles": 16,
+      "unusedExports": 16
     },
     "knip": {
-      "unusedFiles": 82957
+      "unusedFiles": 16
+    }
+  },
+  "fix": {
+    "counters": {
+      "removedFiles": 16,
+      "changedFiles": 8,
+      "removedExports": 8
+    },
+    "postFixCounters": {
+      "totalFiles": 85936,
+      "unusedFiles": 0,
+      "unusedExports": 0
+    },
+    "conformance": {
+      "syntheticFilesMissingFromFixResult": [],
+      "syntheticFilesStillOnDisk": [],
+      "syntheticExportModulesMissingFromFixResult": [],
+      "syntheticExportModulesMissingOnDisk": [],
+      "syntheticUnusedExportsStillInSource": [],
+      "syntheticUsedExportsMissingFromSource": [],
+      "syntheticFilesReportedAfterFix": [],
+      "syntheticUnusedExportsReportedAfterFix": [],
+      "syntheticUsedExportsReportedAfterFix": []
     }
   },
   "conformance": {
     "knipUnusedFilesMissingFromCodescythe": [],
-    "codescytheOnlyUnusedFiles": [
-      "packages/kbn-find-used-node-modules/src/find_used_node_modules.test.ts",
-      "packages/kbn-find-used-node-modules/src/find_used_node_modules.ts",
-      "src/platform/packages/private/kbn-repo-packages/modern/types.ts",
-      "src/platform/packages/shared/kbn-repo-info/types.ts"
-    ],
+    "codescytheOnlyUnusedFiles": [],
     "codescytheOnlyFilesImportedByReachableFiles": [],
     "syntheticFilesMissingFromEitherTool": [],
     "syntheticFilesWithMismatchedReports": [],

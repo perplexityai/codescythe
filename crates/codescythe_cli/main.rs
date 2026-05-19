@@ -50,9 +50,10 @@ fn run() -> Result<bool> {
             println!("{}", serde_json::to_string(&result)?);
         } else {
             println!(
-                "Removed {} unused exports from {} files",
+                "Removed {} unused exports from {} files and {} unused files",
                 result.removed_exports,
-                result.changed_files.len()
+                result.changed_files.len(),
+                result.removed_files.len()
             );
         }
         return Ok(!result.analysis.issues.files.is_empty()

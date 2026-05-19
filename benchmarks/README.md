@@ -35,10 +35,11 @@ reporting limited to file, value-export, and type-export issues so the
 comparison stays close to Codescythe's scope. The generated config is shared by
 Codescythe and Knip. By default it treats all TypeScript-family source files as
 both `entry` and `project`; fixtures can override `entry` and `project` when a
-realistic graph is more useful. The Kibana benchmark uses explicit
-core/security entrypoints against the full project set. The Renovate benchmark
-uses the source-side CLI, config-validator, TypeScript tooling scripts, and
-JavaScript/MJS tooling entrypoints instead of generated `dist/` package bins.
+realistic graph is more useful. The Kibana benchmark uses source-root
+entry/project globs for `src`, `x-pack`, `packages`, `examples`, and `oas_docs`
+instead of a tiny hand-written entrypoint list. The Renovate benchmark uses the
+source-side CLI, config-validator, TypeScript tooling scripts, and JavaScript/MJS
+tooling entrypoints instead of generated `dist/` package bins.
 The repo installs Knip as a dev dependency; set `KNIP_BIN` to compare against a
 different Knip binary.
 
@@ -72,37 +73,42 @@ knip        48742.7ms  +/-30.00%  3        0.02
 
 The matching conformance run covers every Knip unused file, requires both tools
 to find the synthetic unused-file controls, requires Codescythe to find the
-synthetic unused-export controls, and allows Codescythe-only files only when
-they are imported by other unused files. The stable output is checked against
+synthetic unused-export controls, and verifies `codescythe --fix` removes those
+synthetic files and unused exports. The stable output is checked against
 `kibana_conformance.snapshot.json`.
 
 ## Kibana Conformance
 
 `pnpm conformance:kibana` copies the Kibana fixture to a temporary directory,
 injects synthetic unused TypeScript files and reachable modules with unused
-exports, then runs a shared core-graph config through Codescythe and Knip. The
-comparison disables Knip framework plugins so the file-level result checks the
-configured TypeScript graph:
+exports, runs a shared core-graph config through Codescythe and Knip, then runs
+`codescythe --fix` followed by a post-fix Codescythe analysis. The comparison
+uses the same Kibana source-root entry globs as the benchmark, treats real entry
+exports as public, and adds only the synthetic fuzz directory to `project`.
+Synthetic unused files stay outside the entry set, while synthetic export
+modules are imported by a real Kibana entry so only the fuzzed exports are
+eligible for `--fix`. Knip framework plugins are disabled so the file-level
+result checks the configured TypeScript graph:
 
 - Every file Knip reports unused must also be reported unused by Codescythe.
 - Every synthetic fuzz file must be reported unused by both tools.
 - Every synthetic unused export must be reported unused by Codescythe, while
   the synthetic export used by a reachable Kibana entrypoint must stay clean.
-- Codescythe-only unused files are allowed only when every importer found in
-  the project graph is also unused. This preserves Codescythe's more complete
-  dead-subgraph reporting while guarding against reachable false positives.
+- `codescythe --fix` must remove the synthetic unused files, remove the
+  synthetic unused exports from source, keep the synthetic used exports, and
+  leave no synthetic file or export issue in the post-fix analysis.
 
 The pinned real-repo fixtures are also covered by Bazel functional tests:
 `//benchmarks:vscode_fixture_test`, `//benchmarks:grafana_fixture_test`,
 `//benchmarks:kibana_fixture_test`, and `//benchmarks:renovate_fixture_test`.
 Each fixture test runs the benchmark harness once against the Bazel-fetched
 source tree using the checked-in entry/project config. The deeper Kibana
-comparison lives at `//benchmarks:kibana_conformance_test`. These targets are
-tagged `functional_test` so CI can keep the normal test lane on pull requests
-with `bazel test //... --build_tests_only --test_tag_filters=-functional_test`
-and run the slower functional lane from the main-only `test functional`
-workflow with `bazel test //... --build_tests_only --test_tag_filters=functional_test`.
-The Kibana target is a `write_source_file` snapshot check; run
+comparison lives at `//benchmarks:kibana_conformance`. The functional test
+targets are tagged `functional_test` so CI can keep the normal test lane on pull
+requests with `bazel test //... --build_tests_only --test_tag_filters=-functional_test`
+and run the slower functional lane from the main-only `test functional` workflow
+with `bazel test //... --build_tests_only --test_tag_filters=functional_test`.
+The Kibana conformance target is a `write_source_file` snapshot check; run
 `bazel run //benchmarks:kibana_conformance` to refresh the checked-in JSON after
 reviewing an intentional conformance change. Use `--skip-build`,
 `--codescythe-bin`, `--knip-bin`, `--fuzz-files`, `--fuzz-exports`, `--seed`,

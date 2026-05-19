@@ -73,6 +73,14 @@ const defaultCodescytheBin = path.join(
 
 const sourcePatterns = ['**/*.{ts,tsx,mts,cts}'];
 const javaScriptSourcePatterns = ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'];
+const kibanaSourceRoots = [
+  'src',
+  'x-pack',
+  'packages',
+  'examples',
+  'oas_docs',
+];
+const kibanaSourceRootPatterns = kibanaSourceRoots.map(root => `${root}/**/*.{ts,tsx,mts,cts}`);
 const ignorePatterns = [
   '**/*.d.ts',
   '**/__fixtures__/**',
@@ -120,12 +128,8 @@ const fixtures: Fixture[] = [
     sourceFiles: 110440,
     benchmarkedFiles: 86056,
     rawTsFiles: 87408,
-    entry: [
-      'src/core/server/index.ts',
-      'src/core/public/index.ts',
-      'src/platform/packages/shared/kbn-config-schema/index.ts',
-      'x-pack/platform/plugins/shared/security/server/index.ts',
-    ],
+    entry: kibanaSourceRootPatterns,
+    project: kibanaSourceRootPatterns,
     ignore: ['**/*.gen.ts'],
     setup: 'kibana',
   },

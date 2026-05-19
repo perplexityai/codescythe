@@ -42,7 +42,7 @@ flowchart TD
 
 `codescythe::run(cwd, config_path)` loads config and calls `analyze_path`.
 `codescythe::run_and_fix(cwd, config_path)` runs the same analysis, then applies
-supported export removals.
+supported unused-file and export removals.
 
 ## Config Loading
 
@@ -327,7 +327,14 @@ that are also unused. Its stable conformance summary is checked against
 
 ## Fixing
 
-`apply_fixes` only removes unused exports. It does not remove unused files.
+`apply_fixes` removes unused files and unused exports.
+
+Unused files come from the analysis report's `issues.files` map. The fix path
+removes those project files directly before editing reachable files that still
+have unused export issues.
+
+Fixing is intentionally one analysis-and-edit pass. Removing files can expose
+additional unreachable files or exports, which a follow-up run will report.
 
 Each export issue carries a parser span for the declaration or export statement
 that introduced it. Fixing expands each span to full lines, merges overlapping
