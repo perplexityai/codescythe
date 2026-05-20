@@ -29,6 +29,82 @@ fixture_functional_test(
 )
 
 js_binary(
+    name = "fixture_conformance_snapshot_bin",
+    data = [
+        "//:node_modules/benchmark",
+        "//:node_modules/knip",
+        "//crates/codescythe_cli:codescythe",
+    ],
+    copy_data_to_bin = False,
+    entry_point = "run.ts",
+    node_options = ["--experimental-transform-types"],
+)
+
+js_run_binary(
+    name = "vscode_conformance_snapshot",
+    args = [
+        "--fixture",
+        "vscode",
+        "--codescythe-bin",
+        "$(location //crates/codescythe_cli:codescythe)",
+        "--fixture-package-json",
+        "$(location @benchmark_vscode//:package_json)",
+        "--skip-build",
+        "--snapshot-output",
+        "$(location vscode_conformance.snapshot.generated.json)",
+    ],
+    outs = ["vscode_conformance.snapshot.generated.json"],
+    copy_srcs_to_bin = False,
+    use_execroot_entry_point = False,
+    srcs = [
+        "//crates/codescythe_cli:codescythe",
+        "@benchmark_vscode//:all_files",
+        "@benchmark_vscode//:package_json",
+    ],
+    tool = ":fixture_conformance_snapshot_bin",
+)
+
+write_source_file(
+    name = "vscode_conformance",
+    in_file = ":vscode_conformance_snapshot",
+    out_file = "vscode_conformance.snapshot.json",
+    diff_test_failure_message = "{{DEFAULT_MESSAGE}}\n\nThe VS Code conformance snapshot changed. Review the generated JSON, then run:\n\n    bazel run //benchmarks:vscode_conformance\n",
+    tags = ["functional_test"],
+)
+
+js_run_binary(
+    name = "grafana_conformance_snapshot",
+    args = [
+        "--fixture",
+        "grafana",
+        "--codescythe-bin",
+        "$(location //crates/codescythe_cli:codescythe)",
+        "--fixture-package-json",
+        "$(location @benchmark_grafana//:package_json)",
+        "--skip-build",
+        "--snapshot-output",
+        "$(location grafana_conformance.snapshot.generated.json)",
+    ],
+    outs = ["grafana_conformance.snapshot.generated.json"],
+    copy_srcs_to_bin = False,
+    use_execroot_entry_point = False,
+    srcs = [
+        "//crates/codescythe_cli:codescythe",
+        "@benchmark_grafana//:all_files",
+        "@benchmark_grafana//:package_json",
+    ],
+    tool = ":fixture_conformance_snapshot_bin",
+)
+
+write_source_file(
+    name = "grafana_conformance",
+    in_file = ":grafana_conformance_snapshot",
+    out_file = "grafana_conformance.snapshot.json",
+    diff_test_failure_message = "{{DEFAULT_MESSAGE}}\n\nThe Grafana conformance snapshot changed. Review the generated JSON, then run:\n\n    bazel run //benchmarks:grafana_conformance\n",
+    tags = ["functional_test"],
+)
+
+js_binary(
     name = "kibana_conformance_snapshot_bin",
     data = [
         "//:node_modules/knip",
@@ -72,5 +148,37 @@ write_source_file(
     in_file = ":kibana_conformance_snapshot",
     out_file = "kibana_conformance.snapshot.json",
     diff_test_failure_message = "{{DEFAULT_MESSAGE}}\n\nThe Kibana conformance snapshot changed. Review the generated JSON, then run:\n\n    bazel run //benchmarks:kibana_conformance\n",
+    tags = ["functional_test"],
+)
+
+js_run_binary(
+    name = "renovate_conformance_snapshot",
+    args = [
+        "--fixture",
+        "renovate",
+        "--codescythe-bin",
+        "$(location //crates/codescythe_cli:codescythe)",
+        "--fixture-package-json",
+        "$(location @benchmark_renovate//:package_json)",
+        "--skip-build",
+        "--snapshot-output",
+        "$(location renovate_conformance.snapshot.generated.json)",
+    ],
+    outs = ["renovate_conformance.snapshot.generated.json"],
+    copy_srcs_to_bin = False,
+    use_execroot_entry_point = False,
+    srcs = [
+        "//crates/codescythe_cli:codescythe",
+        "@benchmark_renovate//:all_files",
+        "@benchmark_renovate//:package_json",
+    ],
+    tool = ":fixture_conformance_snapshot_bin",
+)
+
+write_source_file(
+    name = "renovate_conformance",
+    in_file = ":renovate_conformance_snapshot",
+    out_file = "renovate_conformance.snapshot.json",
+    diff_test_failure_message = "{{DEFAULT_MESSAGE}}\n\nThe Renovate conformance snapshot changed. Review the generated JSON, then run:\n\n    bazel run //benchmarks:renovate_conformance\n",
     tags = ["functional_test"],
 )

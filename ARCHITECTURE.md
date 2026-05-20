@@ -335,14 +335,14 @@ static imports, dynamic string imports, and re-exports. If a framework or
 package script should be part of the graph, it needs to be modeled as an entry
 or import in Codescythe's config.
 
-The Kibana conformance test therefore runs Knip in a narrowed mode: framework
+The vendored conformance tests therefore run Knip in a narrowed mode: framework
 plugins are disabled and the copied fixture's root manifest is stripped of
-package/workspace entry metadata. The test asserts that every Knip unused file
+package/workspace entry metadata. The tests assert that every Knip unused file
 is reported by Codescythe, every injected synthetic unused file is reported by
 both tools, every injected synthetic unused export in a reachable file is
-reported by Codescythe, and each Codescythe-only file is imported only by files
-that are also unused. Its stable conformance summary is checked against
-`benchmarks/kibana_conformance.snapshot.json`.
+reported by Codescythe, and `codescythe --fix` can remove the synthetic files
+and exports without touching the original fixture checkout. Their stable
+summaries are checked against `benchmarks/*_conformance.snapshot.json`.
 
 ## Fixing
 

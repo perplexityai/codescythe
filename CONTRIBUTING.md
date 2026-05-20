@@ -157,6 +157,12 @@ entry-specific audits exercise the lazy path. Set `CODESCYTHE_PARSE_THREADS` to
 tune parse parallelism; `RAYON_NUM_THREADS` is respected when the
 Codescythe-specific variable is unset.
 
+Vendored fixture conformance snapshots live under `benchmarks/` as
+`*_conformance.snapshot.json`. Refresh them with
+`bazel run //benchmarks:<fixture>_conformance` after reviewing an intentional
+entry/config or analyzer result change, then verify the corresponding
+`//benchmarks:<fixture>_conformance_test` target.
+
 ## Tests And CI
 
 The Rust conformance test lives in `crates/codescythe` and uses the

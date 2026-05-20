@@ -25,6 +25,9 @@ node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples
 node --experimental-transform-types benchmarks/run.ts --fixture renovate --samples 7
 node --experimental-transform-types benchmarks/run.ts --skip-build --skip-knip
 pnpm conformance:kibana
+bazel run //benchmarks:vscode_conformance
+bazel run //benchmarks:grafana_conformance
+bazel run //benchmarks:renovate_conformance
 CODESCYTHE_BIN=/tmp/codescythe KNIP_BIN=/tmp/knip pnpm benchmark
 CODESCYTHE_PARSE_THREADS=4 pnpm benchmark
 ```
@@ -33,13 +36,15 @@ Codescythe is measured with `--json --directory <fixture>
 --config <generated-config>`. Knip is measured only when available, with
 reporting limited to file, value-export, and type-export issues so the
 comparison stays close to Codescythe's scope. The generated config is shared by
-Codescythe and Knip. By default it treats all TypeScript-family source files as
-both `entry` and `project`; fixtures can override `entry` and `project` when a
-realistic graph is more useful. The Kibana benchmark uses source-root
-entry/project globs for `src`, `x-pack`, `packages`, `examples`, and `oas_docs`
-instead of a tiny hand-written entrypoint list. The Renovate benchmark uses the
-source-side CLI, config-validator, TypeScript tooling scripts, and JavaScript/MJS
-tooling entrypoints instead of generated `dist/` package bins.
+Codescythe and Knip, except Codescythe disables its default test-file leaf
+patterns for these whole-corpus benchmark configs. VS Code uses source-root
+entry/project globs for `src`, `build`, and `extensions`. Grafana uses
+source-root entry/project globs for `public`, `packages`, `scripts`, and the
+root TypeScript config files. Kibana uses source-root entry/project globs for
+`src`, `x-pack`, `packages`, `examples`, and `oas_docs`. Renovate uses the
+source-side CLI, config-validator, `tsdown` package entries, TypeScript tooling
+scripts, JavaScript/MJS tooling entrypoints, and test entrypoints instead of
+generated `dist/` package bins.
 The repo installs Knip as a dev dependency; set `KNIP_BIN` to compare against a
 different Knip binary.
 
@@ -50,51 +55,49 @@ that matches Kibana's `@kbn/tsconfig-base` package by extending the root
 `tsconfig.base.json` before running either tool.
 
 Codescythe discovers the full project file set up front, then parses files in
-parallel graph-frontier batches from the configured entries. Because the default
-benchmark config makes every TypeScript-family file an entry, it still measures
-whole-corpus parsing rather than the lazy path's best case. Set
-`CODESCYTHE_PARSE_THREADS` to tune parse parallelism; `RAYON_NUM_THREADS` is
-respected when the Codescythe-specific variable is unset.
+parallel graph-frontier batches from the configured entries. The source-root
+fixture configs still measure whole-corpus parsing rather than the lazy path's
+best case. Set `CODESCYTHE_PARSE_THREADS` to tune parse parallelism;
+`RAYON_NUM_THREADS` is respected when the Codescythe-specific variable is
+unset.
 
-## Current Kibana Numbers
+## Current Numbers
 
-Local run on May 19, 2026 with the Kibana source-root entry/project config:
+Local run on May 20, 2026 with the checked-in fixture configs:
 
 ```sh
 bazel build -c opt //crates/codescythe_cli:codescythe
-node --experimental-transform-types benchmarks/run.ts --fixture kibana --samples 3 --warmups 1 --codescythe-bin bazel-bin/crates/codescythe_cli/codescythe
+node --experimental-transform-types benchmarks/run.ts --samples 3 --warmups 1 --codescythe-bin bazel-bin/crates/codescythe_cli/codescythe --skip-build
 ```
 
 ```text
-tool        mean       rme       samples  ops/sec
-----------  ---------  --------  -------  -------
-codescythe  11635.5ms  +/-3.24%  3        0.09
-knip        45354.5ms  +/-9.01%  3        0.02
+fixture    tool        mean       rme        samples  ops/sec
+---------  ----------  ---------  ---------  -------  -------
+vscode     codescythe  1468.2ms   +/-4.42%   4        0.68
+vscode     knip        4669.8ms   +/-27.79%  3        0.21
+grafana    codescythe  1031.1ms   +/-3.69%   5        0.97
+grafana    knip        10302.1ms  +/-28.43%  3        0.10
+kibana     codescythe  15932.2ms  +/-10.85%  3        0.06
+kibana     knip        61479.6ms  +/-14.43%  3        0.02
+renovate   codescythe  176.3ms    +/-2.92%   17       5.67
+renovate   knip        954.5ms    +/-18.01%  5        1.05
 ```
 
-The matching conformance run covers every Knip unused file, requires both tools
-to find the synthetic unused-file controls, requires Codescythe to find the
-synthetic unused-export controls, and verifies `codescythe --fix` removes those
-synthetic files and unused exports. The stable output is checked against
-`kibana_conformance.snapshot.json`.
+## Vendored Conformance
 
-## Kibana Conformance
-
-`pnpm conformance:kibana` copies the Kibana fixture to a temporary directory,
-injects synthetic unused TypeScript files and reachable modules with unused
-exports, runs a shared core-graph config through Codescythe and Knip, then runs
-`codescythe --fix` followed by a post-fix Codescythe analysis. The comparison
-uses the same Kibana source-root entry globs as the benchmark, treats real entry
-exports as public, and adds only the synthetic fuzz directory to `project`.
-Synthetic unused files stay outside the entry set, while synthetic export
-modules are imported by a real Kibana entry so only the fuzzed exports are
-eligible for `--fix`. Knip framework plugins are disabled so the file-level
-result checks the configured TypeScript graph:
+The conformance snapshots copy each fixture to a temporary directory, inject
+synthetic unused TypeScript files and reachable modules with unused exports, run
+the configured graph through Codescythe and Knip, then run a fuzz-only
+`codescythe --fix` pass followed by a post-fix Codescythe analysis. Synthetic
+unused files stay outside the entry set, while synthetic export modules are
+imported by a real fixture entry so only the fuzzed exports are eligible for
+`--fix`. Knip framework plugins are disabled so the file-level result checks the
+configured TypeScript graph:
 
 - Every file Knip reports unused must also be reported unused by Codescythe.
 - Every synthetic fuzz file must be reported unused by both tools.
 - Every synthetic unused export must be reported unused by Codescythe, while
-  the synthetic export used by a reachable Kibana entrypoint must stay clean.
+  the synthetic export used by a reachable fixture entrypoint must stay clean.
 - `codescythe --fix` must remove the synthetic unused files, remove the
   synthetic unused exports from source, keep the synthetic used exports, and
   leave no synthetic file or export issue in the post-fix analysis.
@@ -103,14 +106,16 @@ The pinned real-repo fixtures are also covered by Bazel functional tests:
 `//benchmarks:vscode_fixture_test`, `//benchmarks:grafana_fixture_test`,
 `//benchmarks:kibana_fixture_test`, and `//benchmarks:renovate_fixture_test`.
 Each fixture test runs the benchmark harness once against the Bazel-fetched
-source tree using the checked-in entry/project config. The deeper Kibana
-comparison lives at `//benchmarks:kibana_conformance`. The functional test
-targets are tagged `functional_test` so CI can keep the normal test lane on pull
-requests with `bazel test //... --build_tests_only --test_tag_filters=-functional_test`
-and run the slower functional lane from the main-only `test functional` workflow
+source tree using the checked-in entry/project config. The snapshot checks live
+at `//benchmarks:vscode_conformance`, `//benchmarks:grafana_conformance`,
+`//benchmarks:kibana_conformance`, and `//benchmarks:renovate_conformance`.
+The functional test targets are tagged `functional_test` so CI can keep the
+normal test lane on pull requests with
+`bazel test //... --build_tests_only --test_tag_filters=-functional_test` and
+run the slower functional lane from the main-only `test functional` workflow
 with `bazel test //... --build_tests_only --test_tag_filters=functional_test`.
-The Kibana conformance target is a `write_source_file` snapshot check; run
-`bazel run //benchmarks:kibana_conformance` to refresh the checked-in JSON after
+The conformance targets are `write_source_file` snapshot checks; run
+`bazel run //benchmarks:<fixture>_conformance` to refresh checked-in JSON after
 reviewing an intentional conformance change. Use `--skip-build`,
 `--codescythe-bin`, `--knip-bin`, `--fuzz-files`, `--fuzz-exports`, `--seed`,
 and `--snapshot-output` to control local script runs.
