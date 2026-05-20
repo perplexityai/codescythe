@@ -60,9 +60,10 @@ Supported config fields are `entry`, `project`, `testFilePatterns`, `ignore`,
 in every traversed directory.
 
 Files matching `testFilePatterns` are treated as leaf files. By default this
-includes `**/*.test.*` and `**/*.spec.*`: those files are kept out of production
-usage marking, but `--fix` can remove them when they import a project file or
-export that Codescythe is removing.
+includes `**/*.test.*`: those files are kept out of production usage marking,
+but `--fix` can remove them when they import a project file or export that
+Codescythe is removing. `.spec.*` files are not matched by default; model
+detached end-to-end specs as entries instead.
 
 ## Fixing
 

@@ -20,7 +20,7 @@
     "testFilePatterns": {
       "description": "Test files or glob patterns. Matching files are treated as leaf files: their imports do not count as production usage, and fixes remove tests that reference removed project files or exports.",
       "$ref": "#/$defs/stringOrStringArray",
-      "default": ["**/*.test.*", "**/*.spec.*"]
+      "default": ["**/*.test.*"]
     },
     "ignore": {
       "description": "Glob patterns to exclude from analysis.",

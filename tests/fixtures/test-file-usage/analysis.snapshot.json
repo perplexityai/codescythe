@@ -1,17 +1,14 @@
 {
   "issues": {
     "files": {
-      "src/dead-wrapper.spec.ts": {
-        "path": "src/dead-wrapper.spec.ts"
+      "src/dead-wrapper.test.ts": {
+        "path": "src/dead-wrapper.test.ts"
       },
       "src/dead.test.ts": {
         "path": "src/dead.test.ts"
       },
       "src/dead.ts": {
         "path": "src/dead.ts"
-      },
-      "src/module.spec.ts": {
-        "path": "src/module.spec.ts"
       },
       "src/namespace.test.ts": {
         "path": "src/namespace.test.ts"
@@ -21,14 +18,6 @@
       }
     },
     "exports": {
-      "src/module.ts": {
-        "onlyForTest": {
-          "symbol": "onlyForTest",
-          "kind": "value",
-          "line": 2,
-          "col": 14
-        }
-      },
       "src/namespace.ts": {
         "onlyForNamespaceTest": {
           "symbol": "onlyForNamespaceTest",
@@ -48,8 +37,8 @@
     }
   },
   "counters": {
-    "files": 6,
-    "exports": 3,
+    "files": 5,
+    "exports": 2,
     "unresolved": 0,
     "processed": 12,
     "total": 12

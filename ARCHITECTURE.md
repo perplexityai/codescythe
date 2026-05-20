@@ -70,10 +70,11 @@ to:
 The loader always adds built-in ignores for `.git`, Bazel symlink trees,
 `node_modules`, `dist`, `build`, and `coverage`.
 
-If `testFilePatterns` is omitted, it defaults to `**/*.test.*` and
-`**/*.spec.*`. Matching files stay in the project file set, but Codescythe
-treats them as leaf files: their imports do not mark production files or exports
-used.
+If `testFilePatterns` is omitted, it defaults to `**/*.test.*`. Matching files
+stay in the project file set, but Codescythe treats them as leaf files: their
+imports do not mark production files or exports used. Detached end-to-end specs
+should be modeled as entries, so `.spec.*` files are intentionally not included
+in the default test-file pattern.
 
 Project discovery uses Rust's `ignore` crate to automatically discover
 `.gitignore` files in every traversed directory. Configured `ignore` globs and
