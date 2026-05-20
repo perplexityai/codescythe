@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{Analysis, SymbolIssue};
+use crate::{Analysis, ImportRewrite, SymbolIssue};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +19,7 @@ pub struct FixResult {
 }
 
 pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
-    let mut changed_files = Vec::new();
+    let mut changed_files = BTreeSet::new();
     let mut removed_files = Vec::new();
     let mut removed_exports = 0;
     let files_to_remove = analysis
@@ -35,6 +35,13 @@ pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
             .with_context(|| format!("failed to remove unused file {}", path.display()))?;
         removed_files.push(relative.clone());
     }
+
+    apply_import_rewrites(
+        cwd,
+        &analysis.import_rewrites,
+        &files_to_remove,
+        &mut changed_files,
+    )?;
 
     for (relative, exports) in &analysis.issues.exports {
         if files_to_remove.contains(relative) {
@@ -57,15 +64,73 @@ pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
 
         fs::write(&path, output)
             .with_context(|| format!("failed to write fixed file {}", path.display()))?;
-        changed_files.push(relative.clone());
+        changed_files.insert(relative.clone());
     }
 
     Ok(FixResult {
-        changed_files,
+        changed_files: changed_files.into_iter().collect(),
         removed_files,
         removed_exports,
         analysis: analysis.clone(),
     })
+}
+
+fn apply_import_rewrites(
+    cwd: &Path,
+    rewrites: &[ImportRewrite],
+    removed_files: &BTreeSet<String>,
+    changed_files: &mut BTreeSet<String>,
+) -> Result<()> {
+    let mut rewrites_by_file = BTreeMap::<String, Vec<&ImportRewrite>>::new();
+    for rewrite in rewrites {
+        if !removed_files.contains(&rewrite.file) {
+            rewrites_by_file
+                .entry(rewrite.file.clone())
+                .or_default()
+                .push(rewrite);
+        }
+    }
+
+    for (relative, mut rewrites) in rewrites_by_file {
+        let path = cwd.join(&relative);
+        let source = fs::read_to_string(&path).with_context(|| {
+            format!(
+                "failed to read {} while applying import rewrites",
+                path.display()
+            )
+        })?;
+        let mut output = source.clone();
+        rewrites.sort_by_key(|rewrite| rewrite.source_span.0);
+        for rewrite in rewrites.into_iter().rev() {
+            let start = rewrite.source_span.0 as usize;
+            let end = rewrite.source_span.1 as usize;
+            if start >= end || end > output.len() {
+                continue;
+            }
+            let quote = output[start..end]
+                .chars()
+                .next()
+                .filter(|ch| *ch == '"' || *ch == '\'')
+                .unwrap_or('\'');
+            output.replace_range(
+                start..end,
+                &quoted_module_source(&rewrite.replacement_source, quote),
+            );
+        }
+
+        if output != source {
+            fs::write(&path, output)
+                .with_context(|| format!("failed to write fixed file {}", path.display()))?;
+            changed_files.insert(relative);
+        }
+    }
+
+    Ok(())
+}
+
+fn quoted_module_source(source: &str, quote: char) -> String {
+    let escaped = source.replace(quote, &format!("\\{quote}"));
+    format!("{quote}{escaped}{quote}")
 }
 
 fn removal_ranges<'a>(
@@ -171,6 +236,8 @@ mod tests {
                 line: 1,
                 col: 14,
                 span: (0, 23),
+                reexport_source: None,
+                reexport_name: None,
             },
         );
         let mut exports = BTreeMap::new();
@@ -185,6 +252,7 @@ mod tests {
                     unresolved: BTreeMap::new(),
                 },
                 counters: Default::default(),
+                import_rewrites: Vec::new(),
             },
         )
         .unwrap();
@@ -235,5 +303,59 @@ mod tests {
             fs::read_to_string(cwd.join("src/module.ts")).unwrap(),
             "export const used = 1;\n"
         );
+    }
+
+    #[test]
+    fn rewrites_test_type_imports_for_removed_type_reexports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": ["src/main.ts"],
+              "project": ["src/**/*.ts"]
+            }"#,
+        )
+        .unwrap();
+        fs::create_dir(cwd.join("src")).unwrap();
+        fs::write(
+            cwd.join("src/main.ts"),
+            "import { useT } from './a.js';\nconsole.log(useT({ id: 'x' }));\n",
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("src/types.ts"),
+            "export type T = { id: string };\n",
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("src/a.ts"),
+            "import type { T } from './types.js';\n\nexport type { T } from './types.js';\n\nexport function useT(value: T): string {\n  return value.id;\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("src/a.test.ts"),
+            "import { useT } from './a.js';\nimport type { T } from './a.js';\n\nconst value: T = { id: 'x' };\nuseT(value);\n",
+        )
+        .unwrap();
+
+        let result = run_and_fix(cwd, None).unwrap();
+
+        assert_eq!(result.removed_exports, 1);
+        assert!(result.removed_files.is_empty());
+        assert!(result.changed_files.contains(&"src/a.ts".to_string()));
+        assert!(result.changed_files.contains(&"src/a.test.ts".to_string()));
+        assert_eq!(
+            fs::read_to_string(cwd.join("src/a.test.ts")).unwrap(),
+            "import { useT } from './a.js';\nimport type { T } from './types.js';\n\nconst value: T = { id: 'x' };\nuseT(value);\n"
+        );
+        let a_source = fs::read_to_string(cwd.join("src/a.ts")).unwrap();
+        assert!(!a_source.contains("export type { T }"));
+        assert!(a_source.contains("export function useT(value: T): string"));
+        assert!(cwd.join("src/a.test.ts").exists());
+
+        let post_fix = crate::run(cwd, None).unwrap();
+        assert!(post_fix.issues.files.is_empty());
+        assert!(post_fix.issues.exports.is_empty());
     }
 }

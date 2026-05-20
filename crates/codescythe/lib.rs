@@ -3,7 +3,8 @@ mod config;
 mod fix;
 
 pub use analyze::{
-    Analysis, AnalysisOptions, Counters, FileIssue, Issues, SymbolIssue, analyze_path,
+    Analysis, AnalysisOptions, Counters, FileIssue, ImportRewrite, Issues, SymbolIssue,
+    analyze_path,
 };
 pub use config::{CodescytheConfig, UnresolvedImportsConfig, UnresolvedImportsMode, load_config};
 pub use fix::{FixResult, apply_fixes};

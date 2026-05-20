@@ -39,6 +39,8 @@ pub struct AnalysisOptions {
 pub struct Analysis {
     pub issues: Issues,
     pub counters: Counters,
+    #[serde(skip)]
+    pub import_rewrites: Vec<ImportRewrite>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -65,6 +67,10 @@ pub struct SymbolIssue {
     pub col: usize,
     #[serde(skip)]
     pub span: (u32, u32),
+    #[serde(skip)]
+    pub reexport_source: Option<String>,
+    #[serde(skip)]
+    pub reexport_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -82,6 +88,14 @@ pub struct Counters {
     pub unresolved: usize,
     pub processed: usize,
     pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRewrite {
+    pub file: String,
+    pub source_span: (u32, u32),
+    pub replacement_source: String,
 }
 
 pub fn analyze_path(
@@ -403,6 +417,8 @@ pub fn analyze_path(
                             line: export.line,
                             col: export.col,
                             span: (export.remove_span.start, export.remove_span.end),
+                            reexport_source: export.reexport_source.clone(),
+                            reexport_name: export.reexport_name.clone(),
                         },
                     );
             }
@@ -430,8 +446,8 @@ pub fn analyze_path(
         &unused_file_indexes,
         &issues.exports,
     )?;
-    for index in removable_test_files {
-        let relative = files.relative(index);
+    for index in &removable_test_files {
+        let relative = files.relative(*index);
         issues.files.insert(
             relative.clone(),
             FileIssue {
@@ -439,6 +455,15 @@ pub fn analyze_path(
             },
         );
     }
+    let mut removed_file_indexes = unused_file_indexes.clone();
+    removed_file_indexes.extend(removable_test_files.iter().copied());
+    let import_rewrites = discover_import_rewrites(
+        &mut files,
+        &module_resolver,
+        &test_file_indexes,
+        &removed_file_indexes,
+        &issues.exports,
+    )?;
 
     issues.unresolved = unresolved
         .into_iter()
@@ -457,7 +482,11 @@ pub fn analyze_path(
         total: total_files,
     };
 
-    Ok(Analysis { issues, counters })
+    Ok(Analysis {
+        issues,
+        counters,
+        import_rewrites,
+    })
 }
 
 fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<PathBuf>> {
@@ -713,6 +742,10 @@ impl FileCache {
 
     fn relative(&self, index: usize) -> String {
         relative_path(&self.cwd, &self.paths[index])
+    }
+
+    fn path(&self, index: usize) -> &Path {
+        &self.paths[index]
     }
 
     fn matching_relative_glob(&self, pattern: &str) -> Result<Vec<usize>> {
@@ -1339,8 +1372,12 @@ fn file_references_removed_code(
     for import in &file.imports {
         if import_references_removed_code(
             file,
-            &import.source,
-            import.imported.as_deref(),
+            ImportUse {
+                source: &import.source,
+                imported: import.imported.as_deref(),
+                source_span: Some(import.source_span),
+                type_only_declaration: import.type_only_declaration,
+            },
             files,
             resolver,
             removed_file_indexes,
@@ -1353,8 +1390,12 @@ fn file_references_removed_code(
     for source in &file.side_effect_imports {
         if import_references_removed_code(
             file,
-            source,
-            None,
+            ImportUse {
+                source,
+                imported: None,
+                source_span: None,
+                type_only_declaration: false,
+            },
             files,
             resolver,
             removed_file_indexes,
@@ -1367,8 +1408,12 @@ fn file_references_removed_code(
     for source in &file.dynamic_imports {
         if import_references_removed_code(
             file,
-            source,
-            None,
+            ImportUse {
+                source,
+                imported: None,
+                source_span: None,
+                type_only_declaration: false,
+            },
             files,
             resolver,
             removed_file_indexes,
@@ -1393,8 +1438,12 @@ fn file_references_removed_code(
         if let Some(source) = file.namespace_imports.get(local)
             && import_references_removed_code(
                 file,
-                source,
-                Some(member),
+                ImportUse {
+                    source,
+                    imported: Some(member),
+                    source_span: None,
+                    type_only_declaration: false,
+                },
                 files,
                 resolver,
                 removed_file_indexes,
@@ -1410,14 +1459,13 @@ fn file_references_removed_code(
 
 fn import_references_removed_code(
     file: &FileData,
-    source: &str,
-    imported: Option<&str>,
-    files: &FileCache,
+    import: ImportUse<'_>,
+    files: &mut FileCache,
     resolver: &ModuleResolver,
     removed_file_indexes: &HashSet<usize>,
     unused_exports: &BTreeMap<String, BTreeMap<String, SymbolIssue>>,
 ) -> Result<bool> {
-    let ImportResolution::Project(target) = resolver.resolve(file, source)? else {
+    let ImportResolution::Project(target) = resolver.resolve(file, import.source)? else {
         return Ok(false);
     };
 
@@ -1425,13 +1473,224 @@ fn import_references_removed_code(
         return Ok(true);
     }
 
-    let Some(imported) = imported else {
+    let Some(imported) = import.imported else {
         return Ok(false);
     };
     let target_relative = files.relative(target);
-    Ok(unused_exports
+    let Some(issue) = unused_exports
         .get(&target_relative)
-        .is_some_and(|exports| exports.contains_key(imported)))
+        .and_then(|exports| exports.get(imported))
+    else {
+        return Ok(false);
+    };
+
+    if import.type_only_declaration
+        && issue.kind == ExportKind::Type
+        && issue.reexport_source.is_some()
+        && let Some(source_span) = import.source_span
+    {
+        let rewriteable = type_import_rewrite_for_span(
+            file,
+            source_span,
+            files,
+            resolver,
+            removed_file_indexes,
+            unused_exports,
+        )?
+        .is_some();
+        if rewriteable {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn type_import_rewrite_for_span(
+    file: &FileData,
+    source_span: Span,
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    removed_file_indexes: &HashSet<usize>,
+    unused_exports: &BTreeMap<String, BTreeMap<String, SymbolIssue>>,
+) -> Result<Option<String>> {
+    let imports = file
+        .imports
+        .iter()
+        .filter(|import| {
+            import.type_only_declaration
+                && import.imported.is_some()
+                && import.source_span == source_span
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if imports.is_empty() {
+        return Ok(None);
+    }
+
+    let mut replacement_source = None::<String>;
+    for import in imports {
+        let Some(imported) = import.imported.as_deref() else {
+            return Ok(None);
+        };
+        let ImportResolution::Project(target) = resolver.resolve(file, &import.source)? else {
+            return Ok(None);
+        };
+        let target_relative = files.relative(target);
+        let Some(issue) = unused_exports
+            .get(&target_relative)
+            .and_then(|exports| exports.get(imported))
+        else {
+            return Ok(None);
+        };
+        let reexporter = files.get(target)?.clone();
+        let Some(next_source) = type_reexport_replacement_source(
+            file,
+            &reexporter,
+            issue,
+            files,
+            resolver,
+            removed_file_indexes,
+        )?
+        else {
+            return Ok(None);
+        };
+
+        if replacement_source
+            .as_ref()
+            .is_some_and(|source| source != &next_source)
+        {
+            return Ok(None);
+        }
+        replacement_source = Some(next_source);
+    }
+
+    Ok(replacement_source)
+}
+
+fn discover_import_rewrites(
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    test_file_indexes: &TestFiles,
+    removed_file_indexes: &HashSet<usize>,
+    unused_exports: &BTreeMap<String, BTreeMap<String, SymbolIssue>>,
+) -> Result<Vec<ImportRewrite>> {
+    let mut rewrites = Vec::new();
+
+    for index in test_file_indexes {
+        if removed_file_indexes.contains(index) {
+            continue;
+        }
+
+        let file = files.get(*index)?.clone();
+        let mut source_spans = BTreeSet::<Span>::new();
+        for import in &file.imports {
+            if import.type_only_declaration && import.imported.is_some() {
+                source_spans.insert(import.source_span);
+            }
+        }
+
+        for source_span in source_spans {
+            if let Some(replacement_source) = type_import_rewrite_for_span(
+                &file,
+                source_span,
+                files,
+                resolver,
+                removed_file_indexes,
+                unused_exports,
+            )? {
+                rewrites.push(ImportRewrite {
+                    file: file.relative.clone(),
+                    source_span: (source_span.start, source_span.end),
+                    replacement_source,
+                });
+            }
+        }
+    }
+
+    rewrites.sort_by(|left, right| {
+        (&left.file, left.source_span).cmp(&(&right.file, right.source_span))
+    });
+    Ok(rewrites)
+}
+
+fn type_reexport_replacement_source(
+    importer: &FileData,
+    reexporter: &FileData,
+    issue: &SymbolIssue,
+    files: &FileCache,
+    resolver: &ModuleResolver,
+    removed_file_indexes: &HashSet<usize>,
+) -> Result<Option<String>> {
+    if issue.kind != ExportKind::Type {
+        return Ok(None);
+    }
+    let Some(source) = &issue.reexport_source else {
+        return Ok(None);
+    };
+    if issue.reexport_name.as_deref() != Some(issue.symbol.as_str()) {
+        return Ok(None);
+    }
+    let ImportResolution::Project(source_index) = resolver.resolve(reexporter, source)? else {
+        return Ok(None);
+    };
+    if removed_file_indexes.contains(&source_index) {
+        return Ok(None);
+    }
+
+    if is_relative_alias_path(source) {
+        Ok(Some(relative_module_specifier(
+            importer.path.parent().unwrap_or_else(|| Path::new("")),
+            files.path(source_index),
+            source,
+        )))
+    } else {
+        Ok(Some(source.clone()))
+    }
+}
+
+fn relative_module_specifier(from_dir: &Path, target: &Path, source_style: &str) -> String {
+    let mut relative = relative_path_between(from_dir, target);
+    match Path::new(source_style)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
+        Some(extension) => {
+            relative.set_extension(extension);
+        }
+        None => {
+            relative.set_extension("");
+        }
+    }
+
+    let mut specifier = relative.to_string_lossy().replace('\\', "/");
+    if !specifier.starts_with('.') {
+        specifier = format!("./{specifier}");
+    }
+    specifier
+}
+
+fn relative_path_between(from_dir: &Path, target: &Path) -> PathBuf {
+    let from_components = from_dir.components().collect::<Vec<_>>();
+    let target_components = target.components().collect::<Vec<_>>();
+    let mut common = 0;
+    while common < from_components.len()
+        && common < target_components.len()
+        && from_components[common] == target_components[common]
+    {
+        common += 1;
+    }
+
+    let mut output = PathBuf::new();
+    for component in &from_components[common..] {
+        if matches!(component, Component::Normal(_)) {
+            output.push("..");
+        }
+    }
+    for component in &target_components[common..] {
+        output.push(component.as_os_str());
+    }
+    output
 }
 
 #[derive(Debug, Clone)]
@@ -1467,6 +1726,8 @@ struct ExportInfo {
 struct ImportRecord {
     source: String,
     imported: Option<String>,
+    source_span: Span,
+    type_only_declaration: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1587,14 +1848,25 @@ impl FileVisitor {
             self.imports.push(ImportRecord {
                 source: source.to_string(),
                 imported: Some(name),
+                source_span: Span::new(0, 0),
+                type_only_declaration: false,
             });
         }
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ImportUse<'a> {
+    source: &'a str,
+    imported: Option<&'a str>,
+    source_span: Option<Span>,
+    type_only_declaration: bool,
+}
+
 impl<'a> Visit<'a> for FileVisitor {
     fn visit_import_declaration(&mut self, declaration: &ImportDeclaration<'a>) {
         let source = declaration.source.value.as_str().to_string();
+        let type_only_declaration = declaration.import_kind == ImportOrExportKind::Type;
         match &declaration.specifiers {
             Some(specifiers) => {
                 for specifier in specifiers {
@@ -1604,6 +1876,8 @@ impl<'a> Visit<'a> for FileVisitor {
                             self.imports.push(ImportRecord {
                                 source: source.clone(),
                                 imported: Some(imported.clone()),
+                                source_span: declaration.source.span,
+                                type_only_declaration,
                             });
                             self.named_imports.insert(
                                 specifier.local.name.as_str().to_string(),
@@ -1617,6 +1891,8 @@ impl<'a> Visit<'a> for FileVisitor {
                             self.imports.push(ImportRecord {
                                 source: source.clone(),
                                 imported: Some("default".to_string()),
+                                source_span: declaration.source.span,
+                                type_only_declaration,
                             });
                             self.named_imports.insert(
                                 specifier.local.name.as_str().to_string(),
