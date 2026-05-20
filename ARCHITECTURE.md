@@ -20,7 +20,8 @@ requiring a TypeScript type checker or framework-specific plugins.
 flowchart TD
     A["Load and validate config"] --> B["Discover project files"]
     B --> C["Discover entry files"]
-    B --> D["Build resolver and project path index"]
+    B --> T["Classify configured test files"]
+    T --> D["Build resolver and project path index"]
     C --> F["Seed used files and queue from entries"]
     D --> F
     F --> G{"Queue has a file?"}
@@ -35,8 +36,9 @@ flowchart TD
     K --> G
     L --> G
     M --> G
-    G -->|no| N["Compare project files and exports with used sets"]
-    N --> Q["Parse only files that need export reporting"]
+    G -->|no| N["Compare production files and exports with used sets"]
+    N --> U["Scan matching tests for imports of live source"]
+    U --> Q["Report tests tied to removed files or exports"]
     Q --> O["Emit issues and counters"]
 ```
 
@@ -145,7 +147,9 @@ parsed as TypeScript, JSX, ESM, or CommonJS-flavored source. Each file is parsed
 at most once per analysis run.
 
 The parse pool is capped by `CODESCYTHE_PARSE_THREADS` when set, then
-`RAYON_NUM_THREADS`, then the host's available parallelism.
+`RAYON_NUM_THREADS`, then the host's available parallelism. Test files may be
+parsed after the production graph settles so Codescythe can identify tests tied
+to removed code and project-file imports tied to tests for live code.
 
 The AST visitor stores one `FileData` record per parsed file. That record
 contains:
@@ -279,10 +283,12 @@ option can include those export issues when callers need the extra detail; that
 mode parses otherwise unreachable files during issue generation.
 
 Test files are skipped for export reporting. After production file/export issues
-are known, Codescythe parses matching test files and reports tests that directly
-import a project file or export scheduled for removal. That keeps tests from
-counting as production usage while letting `--fix` remove tests attached to the
-dead code being removed.
+are known, Codescythe parses matching test files. Tests that import reachable
+non-test project source can keep their project-file imports out of the
+unused-file report. Tests that import a project file or export still scheduled
+for removal are reported instead. That keeps tests from counting as production
+usage while letting `--fix` remove tests attached to the dead code being
+removed.
 
 An export is reported under `issues.exports` when:
 
@@ -367,6 +373,9 @@ Codescythe's analysis is deterministic and source-graph oriented:
 - It does not inspect framework config, package scripts, dependency usage, or
   generated runtime entrypoints unless those files are modeled as entries or
   imports.
+- It treats configured test files as leaves: matching tests for live code can
+  preserve their project-file imports, but they do not keep production exports
+  alive.
 - It uses AST syntax plus module resolution, not TypeScript type-checker
   symbol resolution.
 - It treats external packages and Node built-ins as outside the project graph.

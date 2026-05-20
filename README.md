@@ -62,8 +62,10 @@ in every traversed directory.
 Files matching `testFilePatterns` are treated as leaf files. By default this
 includes `**/*.test.*`: those files are kept out of production usage marking,
 but `--fix` can remove them when they import a project file or export that
-Codescythe is removing. `.spec.*` files are not matched by default; model
-detached end-to-end specs as entries instead.
+Codescythe is removing. When a matching test imports live production source, its
+project-file imports are also kept out of the unused-file report. `.spec.*`
+files are not matched by default; model detached end-to-end specs as entries
+instead.
 
 ## Fixing
 

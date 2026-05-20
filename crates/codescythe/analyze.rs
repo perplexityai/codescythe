@@ -409,6 +409,20 @@ pub fn analyze_path(
         }
     }
 
+    let live_test_support_files = discover_live_test_support_files(
+        &mut files,
+        &module_resolver,
+        &test_file_indexes,
+        &unused_file_indexes,
+        &used_files,
+    )?;
+    for index in &live_test_support_files {
+        let relative = files.relative(*index);
+        issues.files.remove(&relative);
+        issues.exports.remove(&relative);
+        unused_file_indexes.remove(index);
+    }
+
     let removable_test_files = discover_removable_test_files(
         &mut files,
         &module_resolver,
@@ -1200,6 +1214,79 @@ fn mark_all_exports(
         ImportResolution::External => {}
     }
     Ok(())
+}
+
+fn discover_live_test_support_files(
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    test_file_indexes: &TestFiles,
+    unused_file_indexes: &HashSet<usize>,
+    used_files: &UsedFiles,
+) -> Result<HashSet<usize>> {
+    let production_used_files = used_files
+        .difference(test_file_indexes)
+        .copied()
+        .collect::<HashSet<_>>();
+    let mut support = HashSet::<usize>::new();
+    let mut queue = VecDeque::<usize>::new();
+    let mut queued = HashSet::<usize>::new();
+
+    for index in test_file_indexes {
+        let file = files.get(*index)?.clone();
+        if project_import_targets(&file, resolver)?
+            .into_iter()
+            .any(|target| production_used_files.contains(&target))
+            && queued.insert(*index)
+        {
+            queue.push_back(*index);
+        }
+    }
+
+    while let Some(index) = queue.pop_front() {
+        let file = files.get(index)?.clone();
+        for target in project_import_targets(&file, resolver)? {
+            if production_used_files.contains(&target) {
+                continue;
+            }
+
+            if test_file_indexes.contains(&target) {
+                if queued.insert(target) {
+                    queue.push_back(target);
+                }
+                continue;
+            }
+
+            if unused_file_indexes.contains(&target) && support.insert(target) {
+                queue.push_back(target);
+            }
+        }
+    }
+
+    Ok(support)
+}
+
+fn project_import_targets(file: &FileData, resolver: &ModuleResolver) -> Result<Vec<usize>> {
+    let mut targets = Vec::new();
+
+    for import in &file.imports {
+        if let ImportResolution::Project(target) = resolver.resolve(file, &import.source)? {
+            targets.push(target);
+        }
+    }
+
+    for source in &file.side_effect_imports {
+        if let ImportResolution::Project(target) = resolver.resolve(file, source)? {
+            targets.push(target);
+        }
+    }
+
+    for source in &file.dynamic_imports {
+        if let ImportResolution::Project(target) = resolver.resolve(file, source)? {
+            targets.push(target);
+        }
+    }
+
+    Ok(targets)
 }
 
 fn discover_removable_test_files(
@@ -2477,6 +2564,41 @@ mod tests {
 
         assert_unused_file(&analysis, "src/form/index.ts");
         assert_unused_file(&analysis, "src/form/FormCheckbox.ts");
+    }
+
+    #[test]
+    fn companion_test_imports_keep_test_helpers_reachable() {
+        let analysis = analyze_inline_project_with_config(
+            r#"{
+              "entry": "src/entry.ts",
+              "project": "src/**/*.ts",
+              "testFilePatterns": "src/**/*.spec.ts"
+            }"#,
+            &[
+                (
+                    "src/entry.ts",
+                    "import { formatPrice } from './billing';\nconsole.log(formatPrice(1));\n",
+                ),
+                (
+                    "src/billing.ts",
+                    "export function formatPrice(value: number) { return `$${value}`; }\n",
+                ),
+                (
+                    "src/billing.spec.ts",
+                    "import { formatPrice } from './billing';\nimport { makePrice } from './factory';\nconsole.log(formatPrice(makePrice()));\n",
+                ),
+                (
+                    "src/factory.ts",
+                    "export function makePrice() { return 42; }\n",
+                ),
+                ("src/unused-helper.ts", "export const unusedHelper = 1;\n"),
+            ],
+        );
+
+        assert!(!analysis.issues.files.contains_key("src/billing.spec.ts"));
+        assert!(!analysis.issues.files.contains_key("src/factory.ts"));
+        assert_no_unused_export(&analysis, "src/factory.ts", "makePrice");
+        assert_unused_file(&analysis, "src/unused-helper.ts");
     }
 
     #[test]
