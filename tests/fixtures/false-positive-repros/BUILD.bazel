@@ -62,11 +62,32 @@ codescythe_test(
     must_not_contain = ["routes/home.ts"],
 )
 
+filegroup(
+    name = "test_helper_imports_files",
+    srcs = glob(["test_helper_imports/**"]),
+)
+
+codescythe_test(
+    name = "test_helper_imports_false_positive_repro",
+    args = [
+        "--config",
+        "$(location test_helper_imports/codescythe.json)",
+        "--json",
+    ],
+    data = [
+        ":test_helper_imports_files",
+        "test_helper_imports/codescythe.json",
+    ],
+    expected_exit_code = 0,
+    must_not_contain = ["factory.ts"],
+)
+
 test_suite(
     name = "false_positive_repros",
     tests = [
         ":commonjs_require_false_positive_repro",
         ":dynamic_import_destructuring_false_positive_repro",
         ":import_meta_glob_false_positive_repro",
+        ":test_helper_imports_false_positive_repro",
     ],
 )
