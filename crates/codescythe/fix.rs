@@ -203,7 +203,8 @@ mod tests {
             cwd.join("codescythe.json"),
             r#"{
               "entry": ["src/main.ts", "src/**/*.spec.ts"],
-              "project": ["src/**/*.ts"]
+              "project": ["src/**/*.ts"],
+              "testFilePatterns": "src/**/*.spec.ts"
             }"#,
         )
         .unwrap();

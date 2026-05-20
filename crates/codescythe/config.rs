@@ -207,7 +207,7 @@ enum StringOrVec {
 }
 
 fn default_test_file_patterns() -> Vec<String> {
-    vec!["**/*.test.*".to_string(), "**/*.spec.*".to_string()]
+    vec!["**/*.test.*".to_string()]
 }
 
 #[cfg(test)]
@@ -307,10 +307,7 @@ mod tests {
 
         let config = load_config(tempdir.path(), None).unwrap();
 
-        assert_eq!(
-            config.test_file_patterns,
-            vec!["**/*.test.*".to_string(), "**/*.spec.*".to_string()]
-        );
+        assert_eq!(config.test_file_patterns, vec!["**/*.test.*".to_string()]);
     }
 
     #[test]

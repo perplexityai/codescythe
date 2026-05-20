@@ -196,6 +196,7 @@ jobs:
           args: --latest --strip header
           github_token: ${{ secrets.GITHUB_TOKEN }}
         env:
+          GITHUB_REPO: ${{ github.repository }}
           OUTPUT: release/changelog.md
 
       - name: Prepare release notes

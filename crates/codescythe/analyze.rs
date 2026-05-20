@@ -2232,7 +2232,8 @@ mod tests {
         let analysis = analyze_inline_project_with_config(
             r#"{
               "entry": ["src/main.ts", "src/**/*.spec.ts"],
-              "project": "src/**/*.ts"
+              "project": "src/**/*.ts",
+              "testFilePatterns": "src/**/*.spec.ts"
             }"#,
             &[
                 (
@@ -2252,6 +2253,33 @@ mod tests {
 
         assert_unused_export(&analysis, "src/module.ts", "onlyForTest");
         assert_unused_file(&analysis, "src/module.spec.ts");
+    }
+
+    #[test]
+    fn spec_entries_keep_exports_alive_by_default() {
+        let analysis = analyze_inline_project_with_config(
+            r#"{
+              "entry": ["src/main.ts", "src/**/*.spec.ts"],
+              "project": "src/**/*.ts"
+            }"#,
+            &[
+                (
+                    "src/main.ts",
+                    "import { used } from './module';\nconsole.log(used);\n",
+                ),
+                (
+                    "src/module.ts",
+                    "export const used = 1;\nexport const onlyForSpec = 2;\n",
+                ),
+                (
+                    "src/module.spec.ts",
+                    "import { onlyForSpec } from './module';\nconsole.log(onlyForSpec);\n",
+                ),
+            ],
+        );
+
+        assert_no_unused_export(&analysis, "src/module.ts", "onlyForSpec");
+        assert!(!analysis.issues.files.contains_key("src/module.spec.ts"));
     }
 
     #[test]
@@ -2296,12 +2324,12 @@ mod tests {
                 "src/dead.test.ts",
                 "import { dead } from './dead';\nconsole.log(dead);\n",
             ),
-            ("src/dead-wrapper.spec.ts", "import './dead.test';\n"),
+            ("src/dead-wrapper.test.ts", "import './dead.test';\n"),
         ]);
 
         assert_unused_file(&analysis, "src/dead.ts");
         assert_unused_file(&analysis, "src/dead.test.ts");
-        assert_unused_file(&analysis, "src/dead-wrapper.spec.ts");
+        assert_unused_file(&analysis, "src/dead-wrapper.test.ts");
     }
 
     #[test]
