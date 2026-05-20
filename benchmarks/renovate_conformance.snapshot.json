@@ -1,0 +1,222 @@
+{
+  "fixture": "renovate",
+  "repo": "renovatebot/renovate",
+  "commit": "b42bb1dc25287ab0b2b328559674e442d3290da9",
+  "seed": "0xc0dec7",
+  "config": {
+    "entry": [
+      "lib/config-validator.ts",
+      "lib/config/defaults.ts",
+      "lib/config/global.ts",
+      "lib/config/options/env-options.ts",
+      "lib/config/options/index.ts",
+      "lib/config/types.ts",
+      "lib/config/utils.ts",
+      "lib/constants/error-messages.ts",
+      "lib/instrumentation/types.ts",
+      "lib/logger/err-serializer.ts",
+      "lib/logger/index.ts",
+      "lib/logger/renovate-logger.ts",
+      "lib/logger/types.ts",
+      "lib/modules/datasource/common.ts",
+      "lib/modules/datasource/index.ts",
+      "lib/modules/datasource/npm/types.ts",
+      "lib/modules/datasource/types.ts",
+      "lib/modules/manager/index.ts",
+      "lib/modules/manager/types.ts",
+      "lib/modules/platform/bitbucket-server/index.ts",
+      "lib/modules/platform/bitbucket/index.ts",
+      "lib/modules/platform/gitlab/index.ts",
+      "lib/modules/platform/index.ts",
+      "lib/modules/platform/types.ts",
+      "lib/modules/versioning/generic.ts",
+      "lib/modules/versioning/index.ts",
+      "lib/modules/versioning/ubuntu/index.ts",
+      "lib/proxy.ts",
+      "lib/renovate.ts",
+      "lib/types/index.ts",
+      "lib/util/cache/package/backend.ts",
+      "lib/util/cache/package/index.ts",
+      "lib/util/cache/repository/types.ts",
+      "lib/util/compress.ts",
+      "lib/util/exec/common.ts",
+      "lib/util/exec/exec-error.ts",
+      "lib/util/exec/types.ts",
+      "lib/util/git/index.ts",
+      "lib/util/host-rules.ts",
+      "lib/util/http/github.ts",
+      "lib/util/http/gitlab.ts",
+      "lib/util/http/types.ts",
+      "lib/util/s3.ts",
+      "lib/util/string-match.ts",
+      "lib/util/timestamp.ts",
+      "lib/util/url.ts",
+      "lib/workers/global/autodiscover.ts",
+      "lib/workers/global/config/parse/index.ts",
+      "lib/workers/repository/result.ts",
+      "lib/workers/types.ts",
+      ".markdownlint-cli2.mjs",
+      "**/*.spec.ts",
+      "__mocks__/**/*.ts",
+      "test/setup.ts",
+      "test/to-migrate.ts",
+      "tools/check-fenced-code.ts",
+      "tools/check-git-version.mjs",
+      "tools/check/index.ts",
+      "tools/clean-cache.mjs",
+      "tools/docker.ts",
+      "tools/docs/test/**/*.mjs",
+      "tools/generate-docs.ts",
+      "tools/generate-imports.mjs",
+      "tools/generate-schema.ts",
+      "tools/mkdocs.ts",
+      "tools/prepare-deps.mjs",
+      "tools/prepare-release.ts",
+      "tools/publish-release.ts",
+      "tools/static-data/generate-distro-info.mjs",
+      "tools/static-data/generate-lambda-node-schedule.mjs",
+      "tools/static-data/generate-mise-registry.ts",
+      "tools/static-data/generate-node-schedule.mjs",
+      "tools/sync-module-labels.ts",
+      "tools/sync-org-issue-fields.ts",
+      "tools/lint/**/*.js",
+      "tools/test-shards.ts",
+      "tools/validate-schema.ts",
+      "tsdown.config.mts",
+      "vitest.config.mts"
+    ],
+    "project": [
+      "**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}",
+      "codescythe-conformance-fuzz/**/*.{ts,tsx,mts,cts}"
+    ],
+    "testFilePatterns": [],
+    "includeEntryExports": true
+  },
+  "fuzz": {
+    "unusedFiles": [
+      "codescythe-conformance-fuzz/unused_0_e06c8d7a.ts",
+      "codescythe-conformance-fuzz/unused_10_21239de4.ts",
+      "codescythe-conformance-fuzz/unused_11_876acff3.ts",
+      "codescythe-conformance-fuzz/unused_12_fa7154b6.ts",
+      "codescythe-conformance-fuzz/unused_13_61b6c49d.ts",
+      "codescythe-conformance-fuzz/unused_14_38627d58.ts",
+      "codescythe-conformance-fuzz/unused_15_94f860d7.ts",
+      "codescythe-conformance-fuzz/unused_1_b33abe91.ts",
+      "codescythe-conformance-fuzz/unused_2_5a8166bc.ts",
+      "codescythe-conformance-fuzz/unused_3_6c4c12eb.ts",
+      "codescythe-conformance-fuzz/unused_4_e4c88b4e.ts",
+      "codescythe-conformance-fuzz/unused_5_5cbd1a55.ts",
+      "codescythe-conformance-fuzz/unused_6_dcd427b0.ts",
+      "codescythe-conformance-fuzz/unused_7_db35174f.ts",
+      "codescythe-conformance-fuzz/unused_8_cc219c62.ts",
+      "codescythe-conformance-fuzz/unused_9_4404f059.ts"
+    ],
+    "exportModules": [
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_0_570ca8c5.ts",
+        "usedExport": "usedFuzzExport_0_570ca8c5",
+        "unusedExports": [
+          "unusedValueFuzzExport_0_570ca8c5",
+          "UnusedTypeFuzzExport_0_570ca8c5"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_1_2e8f0360.ts",
+        "usedExport": "usedFuzzExport_1_2e8f0360",
+        "unusedExports": [
+          "unusedValueFuzzExport_1_2e8f0360",
+          "UnusedTypeFuzzExport_1_2e8f0360"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_2_e96a5f3f.ts",
+        "usedExport": "usedFuzzExport_2_e96a5f3f",
+        "unusedExports": [
+          "unusedValueFuzzExport_2_e96a5f3f",
+          "UnusedTypeFuzzExport_2_e96a5f3f"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_3_c5efe392.ts",
+        "usedExport": "usedFuzzExport_3_c5efe392",
+        "unusedExports": [
+          "unusedValueFuzzExport_3_c5efe392",
+          "UnusedTypeFuzzExport_3_c5efe392"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_4_178badc9.ts",
+        "usedExport": "usedFuzzExport_4_178badc9",
+        "unusedExports": [
+          "unusedValueFuzzExport_4_178badc9",
+          "UnusedTypeFuzzExport_4_178badc9"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_5_e65dc94.ts",
+        "usedExport": "usedFuzzExport_5_e65dc94",
+        "unusedExports": [
+          "unusedValueFuzzExport_5_e65dc94",
+          "UnusedTypeFuzzExport_5_e65dc94"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_6_17f21ee3.ts",
+        "usedExport": "usedFuzzExport_6_17f21ee3",
+        "unusedExports": [
+          "unusedValueFuzzExport_6_17f21ee3",
+          "UnusedTypeFuzzExport_6_17f21ee3"
+        ]
+      },
+      {
+        "file": "codescythe-conformance-fuzz/exports/codescythe_conformance_export_7_f033f6e6.ts",
+        "usedExport": "usedFuzzExport_7_f033f6e6",
+        "unusedExports": [
+          "unusedValueFuzzExport_7_f033f6e6",
+          "UnusedTypeFuzzExport_7_f033f6e6"
+        ]
+      }
+    ]
+  },
+  "counters": {
+    "codescythe": {
+      "totalFiles": 2480,
+      "unusedFiles": 19,
+      "unusedExports": 1514
+    },
+    "knip": {
+      "unusedFiles": 19
+    }
+  },
+  "fix": {
+    "counters": {
+      "removedFiles": 16,
+      "changedFiles": 8,
+      "removedExports": 8
+    },
+    "postFixCounters": {
+      "totalFiles": 9,
+      "unusedFiles": 0,
+      "unusedExports": 0
+    },
+    "conformance": {
+      "syntheticFilesMissingFromFixResult": [],
+      "syntheticFilesStillOnDisk": [],
+      "syntheticExportModulesMissingFromFixResult": [],
+      "syntheticExportModulesMissingOnDisk": [],
+      "syntheticUnusedExportsStillInSource": [],
+      "syntheticUsedExportsMissingFromSource": [],
+      "syntheticFilesReportedAfterFix": [],
+      "syntheticUnusedExportsReportedAfterFix": [],
+      "syntheticUsedExportsReportedAfterFix": []
+    }
+  },
+  "conformance": {
+    "knipUnusedFilesMissingFromCodescythe": [],
+    "codescytheOnlyUnusedFiles": [],
+    "syntheticFilesMissingFromEitherTool": [],
+    "syntheticFilesWithMismatchedReports": [],
+    "syntheticUnusedExportsMissingFromCodescythe": [],
+    "syntheticUsedExportsReportedByCodescythe": []
+  }
+}

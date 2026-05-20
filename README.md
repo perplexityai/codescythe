@@ -36,10 +36,10 @@ produced:
 
 | Fixture | Benchmarked files | Codescythe | Knip |
 | --- | ---: | ---: | ---: |
-| `microsoft/vscode` | 9,537 | 738.0ms | 5.76s |
-| `grafana/grafana` | 8,701 | 771.0ms | 9.29s |
-| `elastic/kibana` | 86,056 | 11.64s | 45.35s |
-| `renovatebot/renovate` | 2,488 | 118.5ms | 846.1ms |
+| `microsoft/vscode` | 9,398 | 1.47s | 4.67s |
+| `grafana/grafana` | 8,358 | 1.03s | 10.30s |
+| `elastic/kibana` | 85,928 | 15.93s | 61.48s |
+| `renovatebot/renovate` | 2,456 | 176.3ms | 954.5ms |
 
 Counts reflect each fixture's generated benchmark config after excludes. Run
 `pnpm benchmark` to measure the same fixtures locally.
