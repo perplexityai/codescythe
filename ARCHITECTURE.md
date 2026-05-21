@@ -88,6 +88,18 @@ imports for matching specifiers. `unresolvedImports` controls whether actionable
 unresolved imports are reported, ignored, or treated as errors, with optional
 specifier globs for suppressing known virtual imports.
 
+Ignored unresolved imports are recorded after resolver attempts complete. In
+verbose output, `ignoredUnresolvedImportsByPattern` groups each ignore pattern
+with counts and sample importer/specifier pairs. This keeps generated namespace
+suppressions visible and prevents ignored unresolved edges from looking like the
+same confidence level as proved-unused code.
+
+Codescythe treats unresolved-ignore patterns that overlap local source aliases
+from `package.json#imports` or `aliases` as risky. Normal analysis emits a
+warning, `--fix` refuses that config unless `--force` is used, and export edits
+are skipped when retained ignored-unresolved diagnostics match an exporting
+file's alias namespace.
+
 The CLI and N-API adapter both derive the analysis root the same way: an explicit
 directory or `cwd` option wins, otherwise a config file's parent directory wins,
 otherwise the current process directory is used.

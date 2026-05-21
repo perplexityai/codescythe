@@ -23,6 +23,7 @@ rust_shared_library(
     visibility = ["//visibility:public"],
     deps = [
         "//crates/codescythe",
+        "@crates//:anyhow",
         "@crates//:napi",
         "@crates//:serde_json",
     ],

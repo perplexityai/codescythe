@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -66,55 +62,29 @@ pub enum UnresolvedImportsMode {
 #[derive(Debug, Clone)]
 pub struct LoadedConfig {
     pub config: CodescytheConfig,
-    pub source: ConfigSource,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConfigSource {
-    pub kind: ConfigSourceKind,
-    pub path: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigSourceKind {
-    Cli,
-    Discovered,
-    PackageJson,
-    Default,
+    pub path: Option<std::path::PathBuf>,
 }
 
 pub fn load_config(cwd: &Path, config_path: Option<&Path>) -> Result<CodescytheConfig> {
-    Ok(load_config_with_source(cwd, config_path)?.config)
+    Ok(load_config_with_metadata(cwd, config_path)?.config)
 }
 
-pub fn load_config_with_source(cwd: &Path, config_path: Option<&Path>) -> Result<LoadedConfig> {
-    let (value, source) = match config_path {
-        Some(path) => (
-            Some(read_config_file(path)?),
-            ConfigSource {
-                kind: ConfigSourceKind::Cli,
-                path: Some(path.to_path_buf()),
-            },
-        ),
+pub fn load_config_with_metadata(cwd: &Path, config_path: Option<&Path>) -> Result<LoadedConfig> {
+    let (value, path) = match config_path {
+        Some(path) => (Some(read_config_file(path)?), Some(path.to_path_buf())),
         None => {
             let codescythe_json = cwd.join("codescythe.json");
             if codescythe_json.exists() {
                 (
                     Some(read_config_file(&codescythe_json)?),
-                    ConfigSource {
-                        kind: ConfigSourceKind::Discovered,
-                        path: Some(codescythe_json),
-                    },
+                    Some(codescythe_json),
                 )
             } else {
                 let codescythe_jsonc = cwd.join("codescythe.jsonc");
                 if codescythe_jsonc.exists() {
                     (
                         Some(read_config_file(&codescythe_jsonc)?),
-                        ConfigSource {
-                            kind: ConfigSourceKind::Discovered,
-                            path: Some(codescythe_jsonc),
-                        },
+                        Some(codescythe_jsonc),
                     )
                 } else {
                     let package_json = cwd.join("package.json");
@@ -122,19 +92,13 @@ pub fn load_config_with_source(cwd: &Path, config_path: Option<&Path>) -> Result
                         let package_value = read_json_file(&package_json)?;
                         (
                             package_value.get("codescythe").cloned(),
-                            ConfigSource {
-                                kind: ConfigSourceKind::PackageJson,
-                                path: Some(package_json),
-                            },
+                            package_value
+                                .get("codescythe")
+                                .is_some()
+                                .then_some(package_json),
                         )
                     } else {
-                        (
-                            None,
-                            ConfigSource {
-                                kind: ConfigSourceKind::Default,
-                                path: None,
-                            },
-                        )
+                        (None, None)
                     }
                 }
             }
@@ -163,7 +127,7 @@ pub fn load_config_with_source(cwd: &Path, config_path: Option<&Path>) -> Result
         "coverage/**".to_string(),
     ]);
 
-    Ok(LoadedConfig { config, source })
+    Ok(LoadedConfig { config, path })
 }
 
 fn read_config_file(path: &Path) -> Result<Value> {

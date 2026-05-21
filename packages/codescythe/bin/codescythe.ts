@@ -4,73 +4,9 @@
 type CliOptions = {
   config?: string;
   cwd?: string;
-  fix?: boolean;
-  json?: boolean;
+  explainExport?: string;
+  force?: boolean;
   verbose?: boolean;
-};
-
-type AnalysisDiagnostics = {
-  runtime?: {
-    version: string;
-    processCwd: string;
-    resolvedDirectory: string;
-    configSource: {
-      kind: string;
-      path?: string;
-    };
-    fix: boolean;
-    json: boolean;
-    verbose: boolean;
-  };
-  config: {
-    entry: string[];
-    project: string[];
-    ignore: string[];
-    testFilePatterns: string[];
-    unresolvedImports: {
-      mode: string;
-      ignore: string[];
-    };
-    aliases: {
-      configured: Record<string, string[]>;
-      packageJsonImports: {
-        path?: string;
-        keys: string[];
-      };
-    };
-  };
-  fileDiscovery: {
-    projectMatched: number;
-    selectedProjectFiles: number;
-    ignoredByGitignore: number;
-    ignoredByConfig: number;
-    parsed: number;
-    skippedByExtensionOrType: number;
-    entries: number;
-    testLeafFiles: number;
-  };
-  entry: {
-    zeroMatchPatterns: string[];
-    entryMatchesByPattern: Record<string, string[]>;
-    entryFiles: string[];
-  };
-  deadFiles: Record<
-    string,
-    {
-      matchedEntry: boolean;
-      matchedTestFilePatterns: boolean;
-      imported: boolean;
-      importedBy: string[];
-      onlyImportedByDeadOrTestFiles: boolean;
-      skippedFromReachabilityDueToTestLeafSemantics: boolean;
-      reason: string;
-    }
-  >;
-  fixPlan?: {
-    filesToDelete: string[];
-    filesWithExportEdits: Record<string, string[]>;
-    skippedExportsInDeletedFiles: Record<string, string[]>;
-  };
 };
 
 type AnalysisResult = {
@@ -82,28 +18,33 @@ type AnalysisResult = {
   issues: {
     exports: Record<string, Record<string, {col: number; line: number; symbol: string}>>;
     files: Record<string, unknown>;
-    unresolved?: Record<string, string[]>;
   };
-  diagnostics?: AnalysisDiagnostics;
+  explainExport?: unknown;
 };
 
 type FixResult = {
   changedFiles: string[];
   removedFiles: string[];
+  skippedExportFiles?: string[];
   removedExports: number;
   analysis: AnalysisResult;
 };
 
-const { analyze, fix } = require('@perplexity/codescythe') as {
+type DoctorResult = {
+  warnings: {code: string; message: string}[];
+};
+
+const { analyze, doctor, fix } = require('@perplexity/codescythe') as {
   analyze(options: CliOptions): AnalysisResult;
+  doctor(options: CliOptions): DoctorResult;
   fix(options: CliOptions): FixResult;
 };
 
 const args = process.argv.slice(2);
+const command = args[0] === 'doctor' ? args.shift() : undefined;
 const options: CliOptions = {};
 let json = false;
 let shouldFix = false;
-let verbose = false;
 
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
@@ -111,8 +52,12 @@ for (let i = 0; i < args.length; i += 1) {
     json = true;
   } else if (arg === '--fix') {
     shouldFix = true;
+  } else if (arg === '--force') {
+    options.force = true;
   } else if (arg === '--verbose') {
-    verbose = true;
+    options.verbose = true;
+  } else if (arg === '--explain-export') {
+    options.explainExport = args[++i];
   } else if (arg === '--config' || arg === '-c') {
     options.config = args[++i];
   } else if (arg === '--directory' || arg === '-C') {
@@ -123,170 +68,51 @@ for (let i = 0; i < args.length; i += 1) {
   }
 }
 
-options.fix = shouldFix;
-options.json = json;
-options.verbose = verbose;
-
-const result = shouldFix ? fix(options) : analyze(options);
+const result = command === 'doctor' ? doctor(options) : shouldFix ? fix(options) : analyze(options);
 if (json) {
   console.log(JSON.stringify(result));
+} else if (command === 'doctor') {
+  const doctorResult = result as DoctorResult;
+  if (doctorResult.warnings.length === 0) {
+    console.log('No risky Codescythe config found');
+  } else {
+    for (const warning of doctorResult.warnings) {
+      console.log(`${warning.code}: ${warning.message}`);
+    }
+  }
+} else if (options.explainExport) {
+  console.log(JSON.stringify((result as AnalysisResult).explainExport));
 } else if (shouldFix) {
   const fixResult = result as FixResult;
-  if (verbose) {
-    printDiagnostics(fixResult.analysis);
-  }
-  if (hasIssues(fixResult.analysis)) {
-    printTextReport(fixResult.analysis);
-    console.log('');
-  }
   console.log(
     `Removed ${fixResult.removedExports} unused exports from ${fixResult.changedFiles.length} files and ${fixResult.removedFiles.length} unused files`,
   );
+  if (fixResult.skippedExportFiles?.length) {
+    console.log(`Skipped export edits in ${fixResult.skippedExportFiles.length} files because ignored unresolved imports create alias uncertainty`);
+  }
 } else {
   const analysisResult = result as AnalysisResult;
-  if (verbose) {
-    printDiagnostics(analysisResult);
+  if (analysisResult.counters.files === 0 && analysisResult.counters.exports === 0 && analysisResult.counters.unresolved === 0) {
+    console.log('No dead TypeScript code found');
+  } else {
+    for (const filePath of Object.keys(analysisResult.issues.files)) {
+      console.log(`unused file ${filePath}`);
+    }
+    for (const [filePath, exports] of Object.entries(analysisResult.issues.exports)) {
+      for (const issue of Object.values(exports)) {
+        console.log(`unused export ${filePath}:${issue.line}:${issue.col} ${issue.symbol}`);
+      }
+    }
   }
-  printTextReport(analysisResult);
 }
 
 if (shouldFix) {
-  const fixResult = result as FixResult;
-  process.exit(hasIssues(fixResult.analysis) ? 1 : 0);
+  process.exit(0);
+}
+
+if (command === 'doctor') {
+  process.exit((result as DoctorResult).warnings.length ? 1 : 0);
 }
 
 const analysisResult = result as AnalysisResult;
-process.exit(hasIssues(analysisResult) ? 1 : 0);
-
-function printDiagnostics(analysis: AnalysisResult): void {
-  const diagnostics = analysis.diagnostics;
-  if (!diagnostics) {
-    return;
-  }
-
-  console.error('Codescythe diagnostics');
-  if (diagnostics.runtime) {
-    const runtime = diagnostics.runtime;
-    console.error('Runtime:');
-    console.error(`  version: ${runtime.version}`);
-    console.error(`  process cwd: ${runtime.processCwd}`);
-    console.error(`  resolved directory: ${runtime.resolvedDirectory}`);
-    if (runtime.configSource.path) {
-      console.error(`  config: ${runtime.configSource.path} (${runtime.configSource.kind})`);
-    } else {
-      console.error(`  config: <default> (${runtime.configSource.kind})`);
-    }
-    console.error(`  flags: fix=${runtime.fix} json=${runtime.json} verbose=${runtime.verbose}`);
-  }
-
-  console.error('Config:');
-  console.error(`  entry: ${diagnostics.config.entry.join(', ')}`);
-  console.error(`  project: ${diagnostics.config.project.join(', ')}`);
-  console.error(`  ignore: ${diagnostics.config.ignore.join(', ')}`);
-  console.error(`  testFilePatterns: ${diagnostics.config.testFilePatterns.join(', ')}`);
-  console.error(
-    `  unresolvedImports: mode=${formatMode(diagnostics.config.unresolvedImports.mode)} ignore=${diagnostics.config.unresolvedImports.ignore.join(', ')}`,
-  );
-  const configuredAliases = Object.keys(diagnostics.config.aliases.configured);
-  if (configuredAliases.length > 0) {
-    console.error(`  configured aliases: ${configuredAliases.join(', ')}`);
-  }
-  const packageImports = diagnostics.config.aliases.packageJsonImports;
-  if (packageImports.path) {
-    console.error(`  package.json#imports: ${packageImports.path} (${packageImports.keys.join(', ')})`);
-  }
-
-  const discovery = diagnostics.fileDiscovery;
-  console.error('File discovery:');
-  console.error(`  project matched: ${discovery.projectMatched}`);
-  console.error(`  selected project files: ${discovery.selectedProjectFiles}`);
-  console.error(`  ignored by .gitignore: ${discovery.ignoredByGitignore}`);
-  console.error(`  ignored by config: ${discovery.ignoredByConfig}`);
-  console.error(`  parsed: ${discovery.parsed}`);
-  console.error(`  skipped by extension/type: ${discovery.skippedByExtensionOrType}`);
-  console.error(`  entries: ${discovery.entries}`);
-  console.error(`  test leaf files: ${discovery.testLeafFiles}`);
-
-  console.error('Entry matches:');
-  for (const [pattern, matches] of Object.entries(diagnostics.entry.entryMatchesByPattern)) {
-    console.error(`  ${pattern}: ${matches.length}`);
-  }
-  if (diagnostics.entry.zeroMatchPatterns.length > 0) {
-    console.error(`  zero-match entry patterns: ${diagnostics.entry.zeroMatchPatterns.join(', ')}`);
-  }
-
-  const deadFiles = Object.entries(diagnostics.deadFiles);
-  if (deadFiles.length > 0) {
-    console.error('Dead file reasons:');
-    for (const [path, reason] of deadFiles) {
-      console.error(`  ${path}: ${reason.reason}`);
-      console.error(
-        `    entry=${reason.matchedEntry} test=${reason.matchedTestFilePatterns} imported=${reason.imported} onlyDeadOrTestImporters=${reason.onlyImportedByDeadOrTestFiles} testLeafSkipped=${reason.skippedFromReachabilityDueToTestLeafSemantics}`,
-      );
-      if (reason.importedBy.length > 0) {
-        console.error(`    imported by: ${reason.importedBy.join(', ')}`);
-      }
-    }
-  }
-
-  if (diagnostics.fixPlan) {
-    console.error('Fix plan:');
-    console.error(`  delete files: ${diagnostics.fixPlan.filesToDelete.join(', ')}`);
-    for (const [path, symbols] of Object.entries(diagnostics.fixPlan.filesWithExportEdits)) {
-      console.error(`  edit exports in ${path}: ${symbols.join(', ')}`);
-    }
-    for (const [path, symbols] of Object.entries(diagnostics.fixPlan.skippedExportsInDeletedFiles)) {
-      console.error(`  skip exports in deleted file ${path}: ${symbols.join(', ')}`);
-    }
-  }
-}
-
-function formatMode(mode: string): string {
-  return mode ? `${mode[0].toUpperCase()}${mode.slice(1)}` : mode;
-}
-
-function hasIssues(analysis: AnalysisResult): boolean {
-  return (
-    Object.keys(analysis.issues.files).length > 0 ||
-    Object.keys(analysis.issues.exports).length > 0 ||
-    Object.keys(analysis.issues.unresolved ?? {}).length > 0
-  );
-}
-
-function printTextReport(analysis: AnalysisResult): void {
-  if (!hasIssues(analysis)) {
-    console.log('No dead TypeScript code found');
-    return;
-  }
-
-  const filePaths = Object.keys(analysis.issues.files);
-  if (filePaths.length > 0) {
-    console.log(`Unused files (${filePaths.length})`);
-    for (const filePath of filePaths) {
-      console.log(`  ${filePath}`);
-    }
-  }
-
-  const exportCount = Object.values(analysis.issues.exports).reduce(
-    (count, exports) => count + Object.keys(exports).length,
-    0,
-  );
-  if (exportCount > 0) {
-    console.log(`Unused exports (${exportCount})`);
-    for (const [filePath, exports] of Object.entries(analysis.issues.exports)) {
-      for (const issue of Object.values(exports)) {
-        console.log(`  ${filePath}:${issue.line}:${issue.col} ${issue.symbol}`);
-      }
-    }
-  }
-
-  const unresolved = analysis.issues.unresolved ?? {};
-  if (Object.keys(unresolved).length > 0) {
-    console.log(`Unresolved imports (${analysis.counters.unresolved})`);
-    for (const [filePath, imports] of Object.entries(unresolved)) {
-      for (const importPath of imports) {
-        console.log(`  ${filePath}: ${importPath}`);
-      }
-    }
-  }
-}
+process.exit(analysisResult.counters.files || analysisResult.counters.exports || analysisResult.counters.unresolved ? 1 : 0);

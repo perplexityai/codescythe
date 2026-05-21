@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 path = "lib.rs"
 
 [dependencies]
+anyhow.workspace = true
 codescythe = { path = "../codescythe" }
 napi.workspace = true
 napi-derive.workspace = true
