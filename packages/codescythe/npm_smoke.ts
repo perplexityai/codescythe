@@ -16,20 +16,14 @@ type Analysis = {
   counters: {
     unresolved: number;
   };
-  diagnostics?: {
-    runtime?: {
-      fix: boolean;
-      json: boolean;
-      verbose: boolean;
-    };
-    config?: {
-      entry?: string[];
-      aliases?: {
-        packageJsonImports?: {
-          keys?: string[];
-        };
-      };
-    };
+  summary?: {
+    version: string;
+    projectCount: number;
+    entryCount: number;
+    ignoredUnresolvedCount: number;
+    ignoredUnresolvedPatterns: string[];
+    packageImportKeys: string[];
+    configuredAliasKeys: string[];
   };
 };
 
@@ -84,10 +78,10 @@ describe('@perplexity/codescythe npm package', () => {
     const codescythe = smokeRequire('@perplexity/codescythe') as Codescythe;
     const analysis = codescythe.analyze({cwd: fixture, verbose: true});
     assertFixtureAnalysis(analysis);
-    assert.equal(analysis.diagnostics?.runtime?.fix, false);
-    assert.equal(analysis.diagnostics?.runtime?.json, false);
-    assert.equal(analysis.diagnostics?.runtime?.verbose, true);
-    assert.deepEqual(analysis.diagnostics?.config?.entry, ['index.ts']);
+    assert.equal(analysis.summary?.entryCount, 1);
+    assert.equal(analysis.summary?.projectCount, 5);
+    assert.equal(analysis.summary?.ignoredUnresolvedCount, 0);
+    assert.deepEqual(analysis.summary?.ignoredUnresolvedPatterns, []);
   });
 
   it('uses the config parent as the cwd when cwd is omitted', () => {
@@ -165,6 +159,7 @@ describe('@perplexity/codescythe npm package', () => {
       [
         '--experimental-transform-types',
         path.join(mainPackageDir, 'bin/codescythe.ts'),
+        '--json',
         '--verbose',
         '-C',
         fixture,
@@ -179,10 +174,11 @@ describe('@perplexity/codescythe npm package', () => {
     );
 
     assert.equal(binResult.status, 1, binResult.stderr || binResult.stdout);
-    assert.match(binResult.stderr, /Codescythe diagnostics/);
-    assert.match(binResult.stderr, /resolved directory:/);
-    assert.match(binResult.stderr, /entry: index\.ts/);
-    assert.match(binResult.stdout, /Unused files/);
+    assert.equal(binResult.stderr, '');
+    const analysis = JSON.parse(binResult.stdout) as Analysis;
+    assertFixtureAnalysis(analysis);
+    assert.equal(analysis.summary?.entryCount, 1);
+    assert.equal(analysis.summary?.projectCount, 5);
   });
 });
 
