@@ -23,6 +23,14 @@ COMMON_DEPS = [
 rust_library(
     name = "codescythe",
     srcs = [
+        "analyze/discovery.rs",
+        "analyze/doctor.rs",
+        "analyze/explain.rs",
+        "analyze/graph.rs",
+        "analyze/parse.rs",
+        "analyze/resolver.rs",
+        "analyze/tests.rs",
+        "analyze/util.rs",
         "analyze.rs",
         "config.rs",
         "fix.rs",

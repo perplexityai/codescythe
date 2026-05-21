@@ -240,6 +240,7 @@ dependencies = [
 name = "codescythe_napi"
 version = "0.4.7"
 dependencies = [
+ "anyhow",
  "codescythe",
  "napi",
  "napi-derive",

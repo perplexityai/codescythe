@@ -7,20 +7,43 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{Analysis, FixPlanDiagnostics, SymbolIssue};
+use crate::{
+    Analysis, CodescytheConfig, SymbolIssue, analyze::ignored_unresolved_patterns_for_file,
+};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FixResult {
     pub changed_files: Vec<String>,
     pub removed_files: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skipped_export_files: Vec<String>,
     pub removed_exports: usize,
     pub analysis: Analysis,
 }
 
 pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
+    apply_fixes_internal(cwd, None, analysis, true)
+}
+
+pub fn apply_fixes_with_options(
+    cwd: &Path,
+    config: &CodescytheConfig,
+    analysis: &Analysis,
+    force: bool,
+) -> Result<FixResult> {
+    apply_fixes_internal(cwd, Some(config), analysis, force)
+}
+
+fn apply_fixes_internal(
+    cwd: &Path,
+    config: Option<&CodescytheConfig>,
+    analysis: &Analysis,
+    force: bool,
+) -> Result<FixResult> {
     let mut changed_files = Vec::new();
     let mut removed_files = Vec::new();
+    let mut skipped_export_files = Vec::new();
     let mut removed_exports = 0;
     let files_to_remove = analysis
         .issues
@@ -38,6 +61,21 @@ pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
 
     for (relative, exports) in &analysis.issues.exports {
         if files_to_remove.contains(relative) {
+            continue;
+        }
+
+        if !force
+            && let Some(config) = config
+            && !analysis.ignored_unresolved_imports_by_pattern.is_empty()
+            && !ignored_unresolved_patterns_for_file(
+                relative,
+                cwd,
+                config,
+                &analysis.ignored_unresolved_imports_by_pattern,
+            )?
+            .is_empty()
+        {
+            skipped_export_files.push(relative.clone());
             continue;
         }
 
@@ -63,34 +101,10 @@ pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
     Ok(FixResult {
         changed_files,
         removed_files,
+        skipped_export_files,
         removed_exports,
         analysis: analysis.clone(),
     })
-}
-
-pub fn fix_plan_diagnostics(analysis: &Analysis, result: &FixResult) -> FixPlanDiagnostics {
-    let removed_files = result
-        .removed_files
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let mut files_with_export_edits = BTreeMap::new();
-    let mut skipped_exports_in_deleted_files = BTreeMap::new();
-
-    for (relative, exports) in &analysis.issues.exports {
-        let symbols = exports.keys().cloned().collect::<Vec<_>>();
-        if removed_files.contains(relative) {
-            skipped_exports_in_deleted_files.insert(relative.clone(), symbols);
-        } else if !symbols.is_empty() {
-            files_with_export_edits.insert(relative.clone(), symbols);
-        }
-    }
-
-    FixPlanDiagnostics {
-        files_to_delete: result.removed_files.clone(),
-        files_with_export_edits,
-        skipped_exports_in_deleted_files,
-    }
 }
 
 fn removal_ranges<'a>(
@@ -135,7 +149,11 @@ mod tests {
     use std::{collections::BTreeMap, fs};
 
     use crate::analyze::ExportKind;
-    use crate::{Analysis, FileIssue, Issues, SymbolIssue, apply_fixes, run_and_fix};
+    use crate::{
+        Analysis, CodescytheConfig, FileIssue, IgnoredUnresolvedImportSample,
+        IgnoredUnresolvedImportsByPattern, Issues, SymbolIssue, UnresolvedImportsConfig,
+        apply_fixes, apply_fixes_with_options, run_and_fix,
+    };
 
     #[test]
     fn removes_unused_files_and_exports() {
@@ -195,6 +213,7 @@ mod tests {
                 kind: ExportKind::Value,
                 line: 1,
                 col: 14,
+                explanation: None,
                 span: (0, 23),
             },
         );
@@ -210,7 +229,10 @@ mod tests {
                     unresolved: BTreeMap::new(),
                 },
                 counters: Default::default(),
-                diagnostics: None,
+                summary: None,
+                ignored_unresolved_imports_by_pattern: BTreeMap::new(),
+                source_alias_ignore_warnings: Vec::new(),
+                explain_export: None,
             },
         )
         .unwrap();
@@ -260,6 +282,111 @@ mod tests {
         assert_eq!(
             fs::read_to_string(cwd.join("src/module.ts")).unwrap(),
             "export const used = 1;\n"
+        );
+    }
+
+    #[test]
+    fn refuses_fix_when_unresolved_ignore_overlaps_source_alias_without_force() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r##"{
+              "entry": "src/main.ts",
+              "project": ["src/**/*.ts", "pplx/**/*.ts"],
+              "unresolvedImports": {
+                "ignore": ["#pplx/frontend/**"]
+              }
+            }"##,
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("package.json"),
+            r##"{
+              "imports": {
+                "#pplx/*": "./pplx/*.ts"
+              }
+            }"##,
+        )
+        .unwrap();
+        fs::create_dir_all(cwd.join("src")).unwrap();
+        fs::write(cwd.join("src/main.ts"), "console.log('entry');\n").unwrap();
+
+        let error = run_and_fix(cwd, None).unwrap_err();
+        let message = format!("{error:#}");
+
+        assert!(message.contains("unresolvedImports.ignore overlaps local source aliases"));
+    }
+
+    #[test]
+    fn skips_export_edits_when_ignored_unresolved_import_might_point_to_file() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::create_dir_all(cwd.join("src")).unwrap();
+        fs::write(cwd.join("src/module.ts"), "export const maybeUsed = 1;\n").unwrap();
+
+        let mut aliases = BTreeMap::new();
+        aliases.insert("#app/*".to_string(), vec!["./src/*.ts".to_string()]);
+        let config = CodescytheConfig {
+            aliases,
+            unresolved_imports: UnresolvedImportsConfig {
+                ignore: vec!["#app/module".to_string()],
+                ..UnresolvedImportsConfig::default()
+            },
+            ..CodescytheConfig::default()
+        };
+
+        let mut module_exports = BTreeMap::new();
+        module_exports.insert(
+            "maybeUsed".to_string(),
+            SymbolIssue {
+                symbol: "maybeUsed".to_string(),
+                kind: ExportKind::Value,
+                line: 1,
+                col: 14,
+                explanation: None,
+                span: (0, 27),
+            },
+        );
+        let mut exports = BTreeMap::new();
+        exports.insert("src/module.ts".to_string(), module_exports);
+        let mut ignored = BTreeMap::new();
+        ignored.insert(
+            "#app/module".to_string(),
+            IgnoredUnresolvedImportsByPattern {
+                pattern: "#app/module".to_string(),
+                count: 1,
+                samples: vec![IgnoredUnresolvedImportSample {
+                    specifier: "#app/module".to_string(),
+                    importer: "src/entry.ts".to_string(),
+                }],
+            },
+        );
+
+        let result = apply_fixes_with_options(
+            cwd,
+            &config,
+            &Analysis {
+                issues: Issues {
+                    files: BTreeMap::new(),
+                    exports,
+                    unresolved: BTreeMap::new(),
+                },
+                counters: Default::default(),
+                summary: None,
+                ignored_unresolved_imports_by_pattern: ignored,
+                source_alias_ignore_warnings: Vec::new(),
+                explain_export: None,
+            },
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(result.skipped_export_files, vec!["src/module.ts"]);
+        assert!(result.changed_files.is_empty());
+        assert_eq!(
+            fs::read_to_string(cwd.join("src/module.ts")).unwrap(),
+            "export const maybeUsed = 1;\n"
         );
     }
 }

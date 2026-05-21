@@ -2,14 +2,66 @@ export interface RunOptions {
   cwd?: string;
   config?: string;
   fix?: boolean;
-  json?: boolean;
   verbose?: boolean;
+  force?: boolean;
+  explainExport?: string;
+}
+
+export interface IgnoredUnresolvedImportSample {
+  specifier: string;
+  importer: string;
+}
+
+export interface IgnoredUnresolvedImportsByPattern {
+  pattern: string;
+  count: number;
+  samples: IgnoredUnresolvedImportSample[];
+}
+
+export interface SourceAliasIgnoreWarning {
+  pattern: string;
+  alias: string;
+  source: string;
+  message: string;
+}
+
+export interface ExportExplanation {
+  exportingFile: string;
+  symbol: string;
+  fileReachable: boolean;
+  importersConsidered: { importer: string; specifier: string; reason: string }[];
+  importersSkipped: { importer: string; specifier: string; reason: string }[];
+  ignoredUnresolvedImportsThatMightHavePointedAtThisFile: IgnoredUnresolvedImportSample[];
+}
+
+export interface ExplainExportResult {
+  exportingFile: string;
+  symbol: string;
+  status: 'alive' | 'dead' | 'fileUnused' | 'fileNotFound' | 'symbolNotExported';
+  reason: string;
+  explanation?: ExportExplanation;
+}
+
+export interface AnalysisSummary {
+  version: string;
+  configPath?: string | null;
+  projectCount: number;
+  entryCount: number;
+  ignoredUnresolvedCount: number;
+  ignoredUnresolvedPatterns: string[];
+  packageImportKeys: string[];
+  configuredAliasKeys: string[];
+}
+
+export interface ConfigDoctorResult {
+  warnings: { code: string; message: string }[];
+  summary: AnalysisSummary;
 }
 
 export interface Analysis {
   issues: {
     files: Record<string, { path: string }>;
-    exports: Record<string, Record<string, { symbol: string; kind: 'value' | 'type'; line: number; col: number }>>;
+    exports: Record<string, Record<string, { symbol: string; kind: 'value' | 'type'; line: number; col: number; explanation?: ExportExplanation }>>;
     unresolved?: Record<string, string[]>;
   };
   counters: {
@@ -18,16 +70,22 @@ export interface Analysis {
     unresolved: number;
     processed: number;
     total: number;
+    ignoredUnresolved?: number;
   };
-  diagnostics?: Record<string, unknown>;
+  summary?: AnalysisSummary;
+  ignoredUnresolvedImportsByPattern?: Record<string, IgnoredUnresolvedImportsByPattern>;
+  sourceAliasIgnoreWarnings?: SourceAliasIgnoreWarning[];
+  explainExport?: ExplainExportResult;
 }
 
 export interface FixResult {
   changedFiles: string[];
   removedFiles: string[];
+  skippedExportFiles?: string[];
   removedExports: number;
   analysis: Analysis;
 }
 
 export function analyze(options?: RunOptions): Analysis;
+export function doctor(options?: RunOptions): ConfigDoctorResult;
 export function fix(options?: RunOptions): FixResult;

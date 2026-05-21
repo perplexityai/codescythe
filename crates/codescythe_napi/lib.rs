@@ -1,4 +1,4 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 
 use napi::Error;
 use napi_derive::napi;
@@ -8,8 +8,9 @@ pub struct RunOptions {
     pub cwd: Option<String>,
     pub config: Option<String>,
     pub fix: Option<bool>,
-    pub json: Option<bool>,
     pub verbose: Option<bool>,
+    pub force: Option<bool>,
+    pub explain_export: Option<String>,
 }
 
 #[napi]
@@ -17,25 +18,22 @@ pub fn analyze(options: Option<RunOptions>) -> napi::Result<String> {
     let options = options.unwrap_or_default();
     let config = options.config.as_deref().map(PathBuf::from);
     let cwd = cwd(options.cwd, config.as_deref())?;
-    let loaded_config =
-        codescythe::load_config_with_source(&cwd, config.as_deref()).map_err(to_napi_error)?;
-    let mut analysis = codescythe::analyze_path(
+    let explain_export = options
+        .explain_export
+        .as_deref()
+        .map(parse_explain_export)
+        .transpose()
+        .map_err(to_napi_error)?;
+    let analysis = codescythe::run_with_options(
         &cwd,
-        &loaded_config.config,
+        config.as_deref(),
         codescythe::AnalysisOptions {
-            diagnostics: options.verbose.unwrap_or(false),
+            verbose: options.verbose.unwrap_or(false) || explain_export.is_some(),
+            explain_export,
             ..codescythe::AnalysisOptions::default()
         },
     )
     .map_err(to_napi_error)?;
-    attach_runtime_diagnostics(
-        &mut analysis,
-        &cwd,
-        &loaded_config.source,
-        false,
-        options.json.unwrap_or(false),
-        options.verbose.unwrap_or(false),
-    )?;
     serde_json::to_string(&analysis).map_err(to_napi_error)
 }
 
@@ -44,30 +42,24 @@ pub fn fix(options: Option<RunOptions>) -> napi::Result<String> {
     let options = options.unwrap_or_default();
     let config = options.config.as_deref().map(PathBuf::from);
     let cwd = cwd(options.cwd, config.as_deref())?;
-    let loaded_config =
-        codescythe::load_config_with_source(&cwd, config.as_deref()).map_err(to_napi_error)?;
-    let analysis = codescythe::analyze_path(
+    let result = codescythe::run_and_fix_with_options(
         &cwd,
-        &loaded_config.config,
-        codescythe::AnalysisOptions {
-            diagnostics: options.verbose.unwrap_or(false),
-            ..codescythe::AnalysisOptions::default()
+        config.as_deref(),
+        codescythe::FixOptions {
+            verbose: options.verbose.unwrap_or(false),
+            force: options.force.unwrap_or(false),
         },
     )
     .map_err(to_napi_error)?;
-    let mut result = codescythe::apply_fixes(&cwd, &analysis).map_err(to_napi_error)?;
-    let fix_plan = codescythe::fix_plan_diagnostics(&analysis, &result);
-    if let Some(diagnostics) = result.analysis.diagnostics.as_mut() {
-        diagnostics.fix_plan = Some(fix_plan);
-    }
-    attach_runtime_diagnostics(
-        &mut result.analysis,
-        &cwd,
-        &loaded_config.source,
-        true,
-        options.json.unwrap_or(false),
-        options.verbose.unwrap_or(false),
-    )?;
+    serde_json::to_string(&result).map_err(to_napi_error)
+}
+
+#[napi]
+pub fn doctor(options: Option<RunOptions>) -> napi::Result<String> {
+    let options = options.unwrap_or_default();
+    let config = options.config.as_deref().map(PathBuf::from);
+    let cwd = cwd(options.cwd, config.as_deref())?;
+    let result = codescythe::doctor(&cwd, config.as_deref()).map_err(to_napi_error)?;
     serde_json::to_string(&result).map_err(to_napi_error)
 }
 
@@ -77,84 +69,24 @@ impl Default for RunOptions {
             cwd: None,
             config: None,
             fix: None,
-            json: None,
             verbose: None,
+            force: None,
+            explain_export: None,
         }
     }
 }
 
-fn attach_runtime_diagnostics(
-    analysis: &mut codescythe::Analysis,
-    cwd: &std::path::Path,
-    config_source: &codescythe::ConfigSource,
-    fix: bool,
-    json: bool,
-    verbose: bool,
-) -> napi::Result<()> {
-    let Some(diagnostics) = analysis.diagnostics.as_mut() else {
-        return Ok(());
+fn parse_explain_export(value: &str) -> anyhow::Result<codescythe::ExplainExportRequest> {
+    let Some((file, symbol)) = value.rsplit_once(':') else {
+        anyhow::bail!("explainExport must be formatted as <file>:<symbol>");
     };
-    diagnostics.runtime = Some(codescythe::RuntimeDiagnostics {
-        version: format!("codescythe {}", env!("CARGO_PKG_VERSION")),
-        process_cwd: std::env::current_dir()
-            .map_err(to_napi_error)?
-            .to_string_lossy()
-            .replace('\\', "/"),
-        resolved_directory: display_path(cwd)?,
-        config_source: codescythe::RuntimeConfigSource {
-            kind: config_source_kind(config_source.kind).to_string(),
-            path: config_source
-                .path
-                .as_ref()
-                .map(|path| display_path(path))
-                .transpose()?,
-        },
-        fix,
-        json,
-        verbose,
-    });
-    Ok(())
+    Ok(codescythe::ExplainExportRequest {
+        file: file.to_string(),
+        symbol: symbol.to_string(),
+    })
 }
 
-fn config_source_kind(kind: codescythe::ConfigSourceKind) -> &'static str {
-    match kind {
-        codescythe::ConfigSourceKind::Cli => "cli",
-        codescythe::ConfigSourceKind::Discovered => "discovered",
-        codescythe::ConfigSourceKind::PackageJson => "packageJson",
-        codescythe::ConfigSourceKind::Default => "default",
-    }
-}
-
-fn display_path(path: &Path) -> napi::Result<String> {
-    Ok(absolute_normalize_path(path)?
-        .to_string_lossy()
-        .replace('\\', "/"))
-}
-
-fn absolute_normalize_path(path: &Path) -> napi::Result<PathBuf> {
-    let path = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir().map_err(to_napi_error)?.join(path)
-    };
-    Ok(normalize_path(&path))
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                normalized.pop();
-            }
-            _ => normalized.push(component.as_os_str()),
-        }
-    }
-    normalized
-}
-
-fn cwd(value: Option<String>, config: Option<&Path>) -> napi::Result<PathBuf> {
+fn cwd(value: Option<String>, config: Option<&std::path::Path>) -> napi::Result<PathBuf> {
     match value {
         Some(path) => Ok(PathBuf::from(path)),
         None => config

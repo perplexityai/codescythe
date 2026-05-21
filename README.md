@@ -36,10 +36,10 @@ produced:
 
 | Fixture | Benchmarked files | Codescythe | Knip |
 | --- | ---: | ---: | ---: |
-| `microsoft/vscode` | 9,398 | 1.47s | 4.67s |
-| `grafana/grafana` | 8,358 | 1.03s | 10.30s |
-| `elastic/kibana` | 85,928 | 15.93s | 61.48s |
-| `renovatebot/renovate` | 2,456 | 176.3ms | 954.5ms |
+| `microsoft/vscode` | 9,537 | 738.0ms | 5.76s |
+| `grafana/grafana` | 8,701 | 771.0ms | 9.29s |
+| `elastic/kibana` | 86,056 | 11.64s | 45.35s |
+| `renovatebot/renovate` | 2,488 | 118.5ms | 846.1ms |
 
 Counts reflect each fixture's generated benchmark config after excludes. Run
 `pnpm benchmark` to measure the same fixtures locally.
@@ -67,6 +67,14 @@ project-file imports are also kept out of the unused-file report. `.spec.*`
 files are not matched by default; model detached end-to-end specs as entries
 instead.
 
+Use `--verbose --json` when validating config changes or comparing runs. Verbose
+analysis includes the Codescythe version, config path, project and entry counts,
+package import keys, ignored unresolved-import patterns, source-alias ignore
+warnings, and explanations for unused exports. Ignored unresolved imports are
+grouped under `ignoredUnresolvedImportsByPattern` with sample specifiers and
+importer files, so generated-import suppressions are visible instead of being
+silent.
+
 ## Fixing
 
 Run Codescythe with `--fix` to apply supported removals. The fix pass removes
@@ -74,17 +82,33 @@ unused project files and removes unused export declarations from reachable files
 The JSON fix report includes `removedFiles`, `changedFiles`, `removedExports`,
 and the original analysis result.
 
+`--fix` refuses unresolved-import ignore patterns that overlap package
+`imports` or configured source aliases unless `--force` is provided. When
+ignored unresolved imports create alias-namespace uncertainty for a file,
+Codescythe skips export edits for that file and reports it in
+`skippedExportFiles`.
+
 Fixing is a single analysis-and-edit pass. Removing a dead file can make more
 files or exports unreachable, so repeated cleanup jobs should run Codescythe
 again after a fix pass when a completely stable tree is required.
 
-## Diagnostics
+## Explanations And Doctor
 
-Run Codescythe with `--verbose` to print the resolved runtime context, config
-summary, file-discovery counters, entry matches, dead-file reasons, and fix plan
-preview. In text mode, diagnostics are written to stderr before the normal
-report. With `--verbose --json`, the JSON result includes a `diagnostics` object;
-plain `--json` output remains compact and unchanged.
+Use `--explain-export <file>:<symbol>` to ask why one export is dead or alive:
+
+```sh
+codescythe --explain-export src/constants.ts:getServerId
+```
+
+Use `doctor` to check config risk before running destructive fixes:
+
+```sh
+codescythe doctor --config codescythe.jsonc
+```
+
+The doctor flags broad unresolved-import ignores under local aliases, entry
+patterns with zero matches, project scopes that appear much broader than entry
+coverage, and generated ignore patterns that also match checked source files.
 
 ## Contributing
 

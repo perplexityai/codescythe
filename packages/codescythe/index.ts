@@ -1,26 +1,31 @@
 'use strict';
 
-type RunOptions = {
+type AnalyzeOptions = {
   config?: string;
   cwd?: string;
-  fix?: boolean;
-  json?: boolean;
+  explainExport?: string;
+  force?: boolean;
   verbose?: boolean;
 };
 
 type NativeBinding = {
-  analyze(options: RunOptions): string;
-  fix(options: RunOptions): string;
+  analyze(options: AnalyzeOptions): string;
+  doctor(options: AnalyzeOptions): string;
+  fix(options: AnalyzeOptions): string;
 };
 
 const native = requireNative();
 
-function analyze(options: RunOptions = {}) {
+function analyze(options: AnalyzeOptions = {}) {
   return JSON.parse(native.analyze(options));
 }
 
-function fix(options: RunOptions = {}) {
+function fix(options: AnalyzeOptions = {}) {
   return JSON.parse(native.fix(options));
+}
+
+function doctor(options: AnalyzeOptions = {}) {
+  return JSON.parse(native.doctor(options));
 }
 
 function requireNative(): NativeBinding {
@@ -51,6 +56,7 @@ function nativePackageName(): string {
 
 module.exports = {
   analyze,
+  doctor,
   fix,
   native,
 };
