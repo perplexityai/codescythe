@@ -7,6 +7,9 @@
     "type": "git",
     "url": "git+https://github.com/perplexityai/codescythe.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./index.ts",
   "types": "./index.d.ts",
   "bin": {

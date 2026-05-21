@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "_",
+  "packages": {
+    ".": {
+      "release-type": "rust",
+      "component": "codescythe_cli",
+      "package-name": "codescythe_cli",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/codescythe/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/codescythe-darwin-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/codescythe-linux-amd64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/codescythe-linux-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "crates/codescythe_cli/BUILD.bazel"
+        },
+        {
+          "type": "generic",
+          "path": "crates/codescythe_cli/e2e.rs"
+        }
+      ]
+    }
+  }
+}
