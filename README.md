@@ -82,10 +82,12 @@ unused project files and removes unused export declarations from reachable files
 The JSON fix report includes `removedFiles`, `changedFiles`, `removedExports`,
 and the original analysis result.
 
-`--fix` refuses unresolved-import ignore patterns that overlap package
-`imports` or configured source aliases unless `--force` is provided. When
-ignored unresolved imports create alias-namespace uncertainty for a file,
-Codescythe skips export edits for that file and reports it in
+`--fix` refuses source-like unresolved-import ignore patterns that overlap
+package `imports` or configured source aliases unless `--force` is provided.
+Extensionless and JS/TS-family patterns can hide real source imports, while
+non-JS/TS asset patterns such as `*.svg?raw` still warn but do not block
+`--fix`. When ignored unresolved imports create alias-namespace uncertainty for
+a file, Codescythe skips export edits for that file and reports it in
 `skippedExportFiles`.
 
 Fixing is a single analysis-and-edit pass. Removing a dead file can make more

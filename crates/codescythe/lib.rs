@@ -7,7 +7,7 @@ pub use analyze::{
     ExplainExportRequest, ExplainExportResult, ExplainExportStatus, ExportExplanation, FileIssue,
     IgnoredUnresolvedImportSample, IgnoredUnresolvedImportsByPattern, Issues,
     SourceAliasIgnoreWarning, SymbolIssue, analyze_path, doctor_config,
-    source_alias_ignore_warnings_for_config,
+    source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
 };
 pub use config::{
     CodescytheConfig, LoadedConfig, UnresolvedImportsConfig, UnresolvedImportsMode, load_config,
@@ -50,7 +50,8 @@ pub fn run_and_fix_with_options(
 ) -> anyhow::Result<FixResult> {
     let cwd = cwd.as_ref();
     let loaded = load_config_with_metadata(cwd, config_path)?;
-    let source_alias_warnings = source_alias_ignore_warnings_for_config(cwd, &loaded.config)?;
+    let source_alias_warnings =
+        source_alias_fix_blocking_ignore_warnings_for_config(cwd, &loaded.config)?;
     if !options.force && !source_alias_warnings.is_empty() {
         anyhow::bail!(
             "--fix refused because unresolvedImports.ignore overlaps local source aliases; rerun with --force to override"

@@ -11,7 +11,9 @@ mod tests;
 
 pub use doctor::doctor_config;
 pub use explain::ignored_unresolved_patterns_for_file;
-pub use resolver::source_alias_ignore_warnings_for_config;
+pub use resolver::{
+    source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
+};
 
 use discovery::{discover_entry_files, discover_project_files, discover_test_file_indexes};
 use explain::{add_export_explanations, build_export_usage_index, explain_requested_export};
@@ -182,6 +184,7 @@ pub struct SourceAliasIgnoreWarning {
     pub pattern: String,
     pub alias: String,
     pub source: String,
+    pub fix_blocking: bool,
     pub message: String,
 }
 
