@@ -1,0 +1,175 @@
+{
+  "changedFiles": [
+    "src/used.ts"
+  ],
+  "removedFiles": [
+    "src/dead.test.ts",
+    "src/dead.ts"
+  ],
+  "removedExports": 1,
+  "analysis": {
+    "issues": {
+      "files": {
+        "src/dead.test.ts": {
+          "path": "src/dead.test.ts"
+        },
+        "src/dead.ts": {
+          "path": "src/dead.ts"
+        }
+      },
+      "exports": {
+        "src/used.ts": {
+          "unused": {
+            "symbol": "unused",
+            "kind": "value",
+            "line": 2,
+            "col": 14
+          }
+        }
+      }
+    },
+    "counters": {
+      "files": 2,
+      "exports": 1,
+      "unresolved": 0,
+      "processed": 5,
+      "total": 5
+    },
+    "diagnostics": {
+      "runtime": {
+        "version": "codescythe 0.4.6",
+        "processCwd": "<cwd>",
+        "resolvedDirectory": "<fixture>",
+        "configSource": {
+          "kind": "discovered",
+          "path": "<fixture>/codescythe.json"
+        },
+        "fix": true,
+        "json": true,
+        "verbose": true
+      },
+      "config": {
+        "entry": [
+          "src/main.ts",
+          "src/missing.ts",
+          "src/entries/*.ts"
+        ],
+        "project": [
+          "src/**/*.ts",
+          "ignored/**/*.ts"
+        ],
+        "ignore": [
+          "ignored/**",
+          ".git/**",
+          "bazel-*/**",
+          "node_modules/**",
+          "dist/**",
+          "build/**",
+          "coverage/**"
+        ],
+        "testFilePatterns": [
+          "src/**/*.test.ts"
+        ],
+        "unresolvedImports": {
+          "mode": "report",
+          "ignore": [
+            "#virtual/**"
+          ]
+        },
+        "aliases": {
+          "configured": {
+            "#alias/*": [
+              "./src/*.ts"
+            ]
+          },
+          "packageJsonImports": {
+            "path": "<fixture>/package.json",
+            "keys": [
+              "#pkg/*"
+            ]
+          }
+        }
+      },
+      "fileDiscovery": {
+        "projectMatched": 7,
+        "selectedProjectFiles": 5,
+        "ignoredByGitignore": 1,
+        "ignoredByConfig": 1,
+        "parsed": 4,
+        "skippedByExtensionOrType": 4,
+        "entries": 2,
+        "testLeafFiles": 1
+      },
+      "entry": {
+        "zeroMatchPatterns": [
+          "src/missing.ts"
+        ],
+        "entryMatchesByPattern": {
+          "src/entries/*.ts": [
+            "src/entries/extra.ts"
+          ],
+          "src/main.ts": [
+            "src/main.ts"
+          ],
+          "src/missing.ts": []
+        },
+        "entryFiles": [
+          "src/entries/extra.ts",
+          "src/main.ts"
+        ]
+      },
+      "deadFiles": {
+        "src/dead.test.ts": {
+          "removable": true,
+          "matchedProject": true,
+          "matchedEntry": false,
+          "matchedTestFilePatterns": true,
+          "imported": true,
+          "importedBy": [
+            "src/main.ts"
+          ],
+          "importedByDeadFiles": [],
+          "importedByTestFiles": [],
+          "importedByLiveFiles": [
+            "src/main.ts"
+          ],
+          "onlyImportedByDeadOrTestFiles": false,
+          "skippedFromReachabilityDueToTestLeafSemantics": false,
+          "reason": "matched project files but was only reached from files that do not make it live"
+        },
+        "src/dead.ts": {
+          "removable": true,
+          "matchedProject": true,
+          "matchedEntry": false,
+          "matchedTestFilePatterns": false,
+          "imported": true,
+          "importedBy": [
+            "src/dead.test.ts"
+          ],
+          "importedByDeadFiles": [
+            "src/dead.test.ts"
+          ],
+          "importedByTestFiles": [
+            "src/dead.test.ts"
+          ],
+          "importedByLiveFiles": [],
+          "onlyImportedByDeadOrTestFiles": true,
+          "skippedFromReachabilityDueToTestLeafSemantics": true,
+          "reason": "matched project files but was only reached from files that do not make it live"
+        }
+      },
+      "fixPlan": {
+        "filesToDelete": [
+          "src/dead.test.ts",
+          "src/dead.ts"
+        ],
+        "filesWithExportEdits": {
+          "src/used.ts": [
+            "unused"
+          ]
+        },
+        "skippedExportsInDeletedFiles": {}
+      }
+    }
+  }
+}

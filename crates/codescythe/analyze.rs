@@ -32,6 +32,7 @@ type UnresolvedImports = HashMap<String, HashSet<String>>;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AnalysisOptions {
     pub include_unreachable_exports: bool,
+    pub diagnostics: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -39,6 +40,8 @@ pub struct AnalysisOptions {
 pub struct Analysis {
     pub issues: Issues,
     pub counters: Counters,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<AnalysisDiagnostics>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -84,6 +87,118 @@ pub struct Counters {
     pub total: usize,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisDiagnostics {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<RuntimeDiagnostics>,
+    pub config: ConfigDiagnostics,
+    pub file_discovery: FileDiscoveryDiagnostics,
+    pub entry: EntryDiagnostics,
+    pub dead_files: BTreeMap<String, DeadFileDiagnostics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix_plan: Option<FixPlanDiagnostics>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDiagnostics {
+    pub version: String,
+    pub process_cwd: String,
+    pub resolved_directory: String,
+    pub config_source: RuntimeConfigSource,
+    pub fix: bool,
+    pub json: bool,
+    pub verbose: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeConfigSource {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigDiagnostics {
+    pub entry: Vec<String>,
+    pub project: Vec<String>,
+    pub ignore: Vec<String>,
+    pub test_file_patterns: Vec<String>,
+    pub unresolved_imports: UnresolvedImportsDiagnostics,
+    pub aliases: AliasDiagnostics,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedImportsDiagnostics {
+    pub mode: UnresolvedImportsMode,
+    pub ignore: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AliasDiagnostics {
+    pub configured: BTreeMap<String, Vec<String>>,
+    pub package_json_imports: PackageJsonImportsDiagnostics,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageJsonImportsDiagnostics {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileDiscoveryDiagnostics {
+    pub project_matched: usize,
+    pub selected_project_files: usize,
+    pub ignored_by_gitignore: usize,
+    pub ignored_by_config: usize,
+    pub parsed: usize,
+    pub skipped_by_extension_or_type: usize,
+    pub entries: usize,
+    pub test_leaf_files: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryDiagnostics {
+    pub zero_match_patterns: Vec<String>,
+    pub entry_matches_by_pattern: BTreeMap<String, Vec<String>>,
+    pub entry_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeadFileDiagnostics {
+    pub removable: bool,
+    pub matched_project: bool,
+    pub matched_entry: bool,
+    pub matched_test_file_patterns: bool,
+    pub imported: bool,
+    pub imported_by: Vec<String>,
+    pub imported_by_dead_files: Vec<String>,
+    pub imported_by_test_files: Vec<String>,
+    pub imported_by_live_files: Vec<String>,
+    pub only_imported_by_dead_or_test_files: bool,
+    pub skipped_from_reachability_due_to_test_leaf_semantics: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FixPlanDiagnostics {
+    pub files_to_delete: Vec<String>,
+    pub files_with_export_edits: BTreeMap<String, Vec<String>>,
+    pub skipped_exports_in_deleted_files: BTreeMap<String, Vec<String>>,
+}
+
 pub fn analyze_path(
     cwd: &Path,
     config: &CodescytheConfig,
@@ -93,7 +208,14 @@ pub fn analyze_path(
     if !cwd.exists() {
         anyhow::bail!("analysis root does not exist: {}", cwd.display());
     }
-    let project_files = discover_project_files(&cwd, config)?;
+    let project_discovery = discover_project_files(&cwd, config, options.diagnostics)?;
+    let mut file_discovery = project_discovery.diagnostics.unwrap_or_default();
+    let project_files = project_discovery.files;
+    let entry_matches_by_pattern = if options.diagnostics {
+        entry_matches_by_pattern(&cwd, config, &project_files)?
+    } else {
+        BTreeMap::new()
+    };
     let entry_files = discover_entry_files(&cwd, config, &project_files)?;
     let test_file_indexes = discover_test_file_indexes(&cwd, config, &project_files)?;
     let entry_set = entry_files.iter().cloned().collect::<HashSet<_>>();
@@ -475,10 +597,45 @@ pub fn analyze_path(
         total: total_files,
     };
 
-    Ok(Analysis { issues, counters })
+    let diagnostics = if options.diagnostics {
+        file_discovery.parsed = files.parsed_count();
+        file_discovery.entries = entry_indexes.len();
+        file_discovery.test_leaf_files = test_file_indexes.len();
+        let reverse_imports = collect_reverse_imports_for_diagnostics(&mut files, &module_resolver);
+        Some(build_analysis_diagnostics(
+            &cwd,
+            config,
+            file_discovery,
+            entry_matches_by_pattern,
+            &entry_files,
+            &entry_indexes,
+            &test_file_indexes,
+            &used_files,
+            &files,
+            &issues,
+            &reverse_imports,
+        ))
+    } else {
+        None
+    };
+
+    Ok(Analysis {
+        issues,
+        counters,
+        diagnostics,
+    })
 }
 
-fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<PathBuf>> {
+struct ProjectDiscovery {
+    files: Vec<PathBuf>,
+    diagnostics: Option<FileDiscoveryDiagnostics>,
+}
+
+fn discover_project_files(
+    cwd: &Path,
+    config: &CodescytheConfig,
+    diagnostics: bool,
+) -> Result<ProjectDiscovery> {
     let include = build_glob_set(&config.project)?;
     let ignore = Arc::new(build_glob_set(&config.ignore)?);
     let mut files = Vec::new();
@@ -509,7 +666,88 @@ fn discover_project_files(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<P
     }
 
     files.sort();
+    let diagnostics = diagnostics
+        .then(|| project_discovery_diagnostics(cwd, &include, &ignore, &files))
+        .transpose()?;
+    Ok(ProjectDiscovery { files, diagnostics })
+}
+
+fn project_discovery_diagnostics(
+    cwd: &Path,
+    include: &GlobSet,
+    ignore: &GlobSet,
+    selected_files: &[PathBuf],
+) -> Result<FileDiscoveryDiagnostics> {
+    let all_files = walk_files(cwd, false)?;
+    let git_visible_files = walk_files(cwd, true)?
+        .into_iter()
+        .map(|path| normalize_path(&path))
+        .collect::<BTreeSet<_>>();
+    let selected = selected_files
+        .iter()
+        .map(|path| normalize_path(path))
+        .collect::<BTreeSet<_>>();
+
+    let mut project_matched = 0;
+    let mut ignored_by_gitignore = 0;
+    let mut ignored_by_config = 0;
+    let mut skipped_by_extension_or_type = 0;
+
+    for path in all_files {
+        let relative = relative_path(cwd, &path);
+        let matches_project = include.is_match(&relative);
+        let config_ignored = ignore.is_match(&relative);
+        let normalized = normalize_path(&path);
+
+        if !is_supported_source_path(&path) {
+            skipped_by_extension_or_type += 1;
+        }
+        if !matches_project {
+            continue;
+        }
+
+        project_matched += 1;
+        if config_ignored {
+            ignored_by_config += 1;
+        } else if !git_visible_files.contains(&normalized) && !selected.contains(&normalized) {
+            ignored_by_gitignore += 1;
+        }
+    }
+
+    Ok(FileDiscoveryDiagnostics {
+        project_matched,
+        selected_project_files: selected_files.len(),
+        ignored_by_gitignore,
+        ignored_by_config,
+        skipped_by_extension_or_type,
+        ..Default::default()
+    })
+}
+
+fn walk_files(cwd: &Path, git_ignore: bool) -> Result<Vec<PathBuf>> {
+    let mut walker = WalkBuilder::new(cwd);
+    walker
+        .follow_links(true)
+        .standard_filters(false)
+        .git_ignore(git_ignore)
+        .require_git(false);
+    walker.filter_entry(|entry| should_enter_without_config_ignore(entry));
+
+    let mut files = Vec::new();
+    for entry in walker.build() {
+        let entry = entry?;
+        if entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
+            files.push(entry.path().to_path_buf());
+        }
+    }
     Ok(files)
+}
+
+fn is_supported_source_path(path: &Path) -> bool {
+    SourceType::from_path(path).is_ok()
 }
 
 fn discover_test_file_indexes(
@@ -554,6 +792,51 @@ fn discover_entry_files(
         }
     }
     Ok(entries.into_iter().collect())
+}
+
+fn entry_matches_by_pattern(
+    cwd: &Path,
+    config: &CodescytheConfig,
+    project_files: &[PathBuf],
+) -> Result<BTreeMap<String, Vec<String>>> {
+    if config.entry.is_empty() {
+        let project_file_set = project_files
+            .iter()
+            .map(|path| normalize_path(path))
+            .collect::<BTreeSet<_>>();
+        return Ok(infer_entry_files(cwd)?
+            .into_iter()
+            .filter(|path| project_file_set.contains(path))
+            .map(|path| {
+                let relative = relative_path(cwd, &path);
+                (format!("inferred:{relative}"), vec![relative])
+            })
+            .collect());
+    }
+
+    let mut matches = BTreeMap::new();
+    for pattern in &config.entry {
+        let mut matched = BTreeSet::new();
+        if has_glob_meta(pattern) {
+            let glob = build_glob_set(&[pattern.clone()])?;
+            for file in project_files {
+                let relative = relative_path(cwd, file);
+                if glob.is_match(&relative) {
+                    matched.insert(relative);
+                }
+            }
+        } else {
+            let path = normalize_path(&cwd.join(pattern));
+            if project_files
+                .iter()
+                .any(|file| normalize_path(file) == path)
+            {
+                matched.insert(relative_path(cwd, &path));
+            }
+        }
+        matches.insert(pattern.clone(), matched.into_iter().collect());
+    }
+    Ok(matches)
 }
 
 fn infer_entry_files(cwd: &Path) -> Result<Vec<PathBuf>> {
@@ -632,6 +915,19 @@ fn should_enter(cwd: &Path, entry: &DirEntry, ignore: &GlobSet) -> bool {
     ) && !entry.file_name().to_string_lossy().starts_with("bazel-")
 }
 
+fn should_enter_without_config_ignore(entry: &DirEntry) -> bool {
+    if !entry
+        .file_type()
+        .is_some_and(|file_type| file_type.is_dir())
+    {
+        return true;
+    }
+    !matches!(
+        entry.file_name().to_str(),
+        Some(".git" | "node_modules" | "target")
+    ) && !entry.file_name().to_string_lossy().starts_with("bazel-")
+}
+
 fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read source file {}", path.display()))?;
@@ -699,6 +995,13 @@ impl FileCache {
             .expect("file should be parsed before returning"))
     }
 
+    fn get_for_diagnostics(&mut self, index: usize) -> Option<FileData> {
+        if self.parsed[index].is_none() {
+            self.parsed[index] = parse_file(&self.cwd, &self.paths[index]).ok();
+        }
+        self.parsed[index].clone()
+    }
+
     fn parse_many(&mut self, indexes: &[usize]) -> Result<()> {
         let missing = indexes
             .iter()
@@ -733,6 +1036,24 @@ impl FileCache {
         relative_path(&self.cwd, &self.paths[index])
     }
 
+    fn len(&self) -> usize {
+        self.paths.len()
+    }
+
+    fn parsed_count(&self) -> usize {
+        self.parsed.iter().filter(|file| file.is_some()).count()
+    }
+
+    fn index_by_relative(&self, relative: &str) -> Option<usize> {
+        self.paths
+            .iter()
+            .position(|path| self.relative_path_for_path(path) == relative)
+    }
+
+    fn relative_path_for_path(&self, path: &Path) -> String {
+        relative_path(&self.cwd, path)
+    }
+
     fn matching_relative_glob(&self, pattern: &str) -> Result<Vec<usize>> {
         let glob = build_glob_set(&[pattern.to_string()])?;
         Ok(self
@@ -744,6 +1065,208 @@ impl FileCache {
                     .then_some(index)
             })
             .collect())
+    }
+}
+
+fn collect_reverse_imports_for_diagnostics(
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+) -> HashMap<usize, BTreeSet<usize>> {
+    let mut reverse = HashMap::<usize, BTreeSet<usize>>::new();
+    for index in 0..files.len() {
+        let Some(file) = files.get_for_diagnostics(index) else {
+            continue;
+        };
+        for target in diagnostic_project_import_targets(&file, files, resolver) {
+            reverse.entry(target).or_default().insert(index);
+        }
+    }
+    reverse
+}
+
+fn diagnostic_project_import_targets(
+    file: &FileData,
+    files: &FileCache,
+    resolver: &ModuleResolver,
+) -> BTreeSet<usize> {
+    let mut targets = BTreeSet::new();
+    for source in file.import_sources() {
+        if let Ok(ImportResolution::Project(target)) = resolver.resolve(file, &source) {
+            targets.insert(target);
+        }
+    }
+    for pattern in &file.glob_imports {
+        let Some(pattern) = project_glob_from_import(&file.relative, pattern) else {
+            continue;
+        };
+        if let Ok(matched) = files.matching_relative_glob(&pattern) {
+            targets.extend(matched);
+        }
+    }
+    targets
+}
+
+fn build_analysis_diagnostics(
+    cwd: &Path,
+    config: &CodescytheConfig,
+    file_discovery: FileDiscoveryDiagnostics,
+    entry_matches_by_pattern: BTreeMap<String, Vec<String>>,
+    entry_files: &[PathBuf],
+    entry_indexes: &HashSet<usize>,
+    test_file_indexes: &TestFiles,
+    used_files: &UsedFiles,
+    files: &FileCache,
+    issues: &Issues,
+    reverse_imports: &HashMap<usize, BTreeSet<usize>>,
+) -> AnalysisDiagnostics {
+    let entry_files = entry_files
+        .iter()
+        .map(|path| relative_path(cwd, path))
+        .collect::<Vec<_>>();
+    let zero_match_patterns = entry_matches_by_pattern
+        .iter()
+        .filter_map(|(pattern, matches)| matches.is_empty().then_some(pattern.clone()))
+        .collect::<Vec<_>>();
+
+    let mut dead_files = BTreeMap::new();
+    for path in issues.files.keys() {
+        let Some(index) = files.index_by_relative(path) else {
+            dead_files.insert(path.clone(), dead_file_without_index(path));
+            continue;
+        };
+        dead_files.insert(
+            path.clone(),
+            dead_file_diagnostics(
+                index,
+                files,
+                entry_indexes,
+                test_file_indexes,
+                used_files,
+                issues,
+                reverse_imports,
+            ),
+        );
+    }
+
+    AnalysisDiagnostics {
+        runtime: None,
+        config: config_diagnostics(cwd, config),
+        file_discovery,
+        entry: EntryDiagnostics {
+            zero_match_patterns,
+            entry_matches_by_pattern,
+            entry_files,
+        },
+        dead_files,
+        fix_plan: None,
+    }
+}
+
+fn dead_file_without_index(path: &str) -> DeadFileDiagnostics {
+    DeadFileDiagnostics {
+        removable: true,
+        matched_project: true,
+        reason: format!("{path} matched project files but was not reached from any entry"),
+        ..Default::default()
+    }
+}
+
+fn dead_file_diagnostics(
+    index: usize,
+    files: &FileCache,
+    entry_indexes: &HashSet<usize>,
+    test_file_indexes: &TestFiles,
+    used_files: &UsedFiles,
+    issues: &Issues,
+    reverse_imports: &HashMap<usize, BTreeSet<usize>>,
+) -> DeadFileDiagnostics {
+    let importers = reverse_imports.get(&index).cloned().unwrap_or_default();
+    let imported_by = importers
+        .iter()
+        .map(|importer| files.relative(*importer))
+        .collect::<Vec<_>>();
+    let imported_by_dead_files = importers
+        .iter()
+        .filter_map(|importer| {
+            let relative = files.relative(*importer);
+            issues.files.contains_key(&relative).then_some(relative)
+        })
+        .collect::<Vec<_>>();
+    let imported_by_test_files = importers
+        .iter()
+        .filter_map(|importer| {
+            test_file_indexes
+                .contains(importer)
+                .then(|| files.relative(*importer))
+        })
+        .collect::<Vec<_>>();
+    let imported_by_live_files = importers
+        .iter()
+        .filter_map(|importer| {
+            let relative = files.relative(*importer);
+            (!issues.files.contains_key(&relative) && !test_file_indexes.contains(importer))
+                .then_some(relative)
+        })
+        .collect::<Vec<_>>();
+    let imported = !imported_by.is_empty();
+    let only_imported_by_dead_or_test_files = imported && imported_by_live_files.is_empty();
+    let skipped_from_reachability_due_to_test_leaf_semantics =
+        !used_files.contains(&index) && !imported_by_test_files.is_empty();
+
+    DeadFileDiagnostics {
+        removable: true,
+        matched_project: true,
+        matched_entry: entry_indexes.contains(&index),
+        matched_test_file_patterns: test_file_indexes.contains(&index),
+        imported,
+        imported_by,
+        imported_by_dead_files,
+        imported_by_test_files,
+        imported_by_live_files,
+        only_imported_by_dead_or_test_files,
+        skipped_from_reachability_due_to_test_leaf_semantics,
+        reason: if imported {
+            "matched project files but was only reached from files that do not make it live"
+                .to_string()
+        } else {
+            "matched project files but was not reached from any entry".to_string()
+        },
+    }
+}
+
+fn config_diagnostics(cwd: &Path, config: &CodescytheConfig) -> ConfigDiagnostics {
+    ConfigDiagnostics {
+        entry: config.entry.clone(),
+        project: config.project.clone(),
+        ignore: config.ignore.clone(),
+        test_file_patterns: config.test_file_patterns.clone(),
+        unresolved_imports: UnresolvedImportsDiagnostics {
+            mode: config.unresolved_imports.mode,
+            ignore: config.unresolved_imports.ignore.clone(),
+        },
+        aliases: AliasDiagnostics {
+            configured: config.aliases.clone(),
+            package_json_imports: package_json_imports_diagnostics(cwd),
+        },
+    }
+}
+
+fn package_json_imports_diagnostics(cwd: &Path) -> PackageJsonImportsDiagnostics {
+    let path = cwd.join("package.json");
+    let Ok(source) = fs::read_to_string(&path) else {
+        return PackageJsonImportsDiagnostics::default();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&source) else {
+        return PackageJsonImportsDiagnostics::default();
+    };
+    let keys = value
+        .get("imports")
+        .and_then(|imports| imports.as_object())
+        .map(|imports| imports.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    PackageJsonImportsDiagnostics {
+        path: Some(path.to_string_lossy().replace('\\', "/")),
+        keys,
     }
 }
 
@@ -1492,6 +2015,25 @@ struct ImportRecord {
 struct NamedImport {
     source: String,
     imported: String,
+}
+
+impl FileData {
+    fn import_sources(&self) -> BTreeSet<String> {
+        let mut sources = BTreeSet::new();
+        sources.extend(self.imports.iter().map(|import| import.source.clone()));
+        sources.extend(self.side_effect_imports.iter().cloned());
+        sources.extend(self.dynamic_imports.iter().cloned());
+        sources.extend(self.reexport_all.iter().cloned());
+        for export in self.exports.values() {
+            if let Some(source) = &export.reexport_source {
+                sources.insert(source.clone());
+            }
+            if let Some(source) = &export.namespace_source {
+                sources.insert(source.clone());
+            }
+        }
+        sources
+    }
 }
 
 struct FileVisitor {

@@ -2,6 +2,8 @@ export interface RunOptions {
   cwd?: string;
   config?: string;
   fix?: boolean;
+  json?: boolean;
+  verbose?: boolean;
 }
 
 export interface Analysis {
@@ -17,6 +19,7 @@ export interface Analysis {
     processed: number;
     total: number;
   };
+  diagnostics?: Record<string, unknown>;
 }
 
 export interface FixResult {

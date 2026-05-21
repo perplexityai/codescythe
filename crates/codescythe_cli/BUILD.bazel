@@ -45,6 +45,7 @@ rust_test(
     data = [
         ":codescythe",
         "//tests/fixtures/cli-fix-output:fixtures",
+        "//tests/fixtures/cli-verbose-output:fixtures",
         "//tests/fixtures/oxc-resolution:fixtures",
         "//tests/fixtures/test-file-usage:fixtures",
     ],

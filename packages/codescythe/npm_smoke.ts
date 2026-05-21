@@ -16,6 +16,21 @@ type Analysis = {
   counters: {
     unresolved: number;
   };
+  diagnostics?: {
+    runtime?: {
+      fix: boolean;
+      json: boolean;
+      verbose: boolean;
+    };
+    config?: {
+      entry?: string[];
+      aliases?: {
+        packageJsonImports?: {
+          keys?: string[];
+        };
+      };
+    };
+  };
 };
 
 type FixResult = {
@@ -26,12 +41,12 @@ type FixResult = {
 };
 
 type NativeBinding = {
-  analyze(options: {config?: string; cwd?: string}): string;
+  analyze(options: {config?: string; cwd?: string; fix?: boolean; json?: boolean; verbose?: boolean}): string;
 };
 
 type Codescythe = {
-  analyze(options: {config?: string; cwd?: string}): Analysis;
-  fix(options: {config?: string; cwd?: string}): FixResult;
+  analyze(options: {config?: string; cwd?: string; fix?: boolean; json?: boolean; verbose?: boolean}): Analysis;
+  fix(options: {config?: string; cwd?: string; fix?: boolean; json?: boolean; verbose?: boolean}): FixResult;
 };
 
 const repoRoot = process.cwd();
@@ -63,6 +78,16 @@ describe('@perplexity/codescythe npm package', () => {
     const codescythe = smokeRequire('@perplexity/codescythe') as Codescythe;
     const analysis = codescythe.analyze({cwd: fixture});
     assertFixtureAnalysis(analysis);
+  });
+
+  it('returns verbose diagnostics through the public package', () => {
+    const codescythe = smokeRequire('@perplexity/codescythe') as Codescythe;
+    const analysis = codescythe.analyze({cwd: fixture, verbose: true});
+    assertFixtureAnalysis(analysis);
+    assert.equal(analysis.diagnostics?.runtime?.fix, false);
+    assert.equal(analysis.diagnostics?.runtime?.json, false);
+    assert.equal(analysis.diagnostics?.runtime?.verbose, true);
+    assert.deepEqual(analysis.diagnostics?.config?.entry, ['index.ts']);
   });
 
   it('uses the config parent as the cwd when cwd is omitted', () => {
@@ -132,6 +157,32 @@ describe('@perplexity/codescythe npm package', () => {
 
     assert.equal(binResult.status, 1, binResult.stderr || binResult.stdout);
     assertFixtureAnalysis(JSON.parse(binResult.stdout) as Analysis);
+  });
+
+  it('runs the public package bin with verbose diagnostics', () => {
+    const binResult = childProcess.spawnSync(
+      process.execPath,
+      [
+        '--experimental-transform-types',
+        path.join(mainPackageDir, 'bin/codescythe.ts'),
+        '--verbose',
+        '-C',
+        fixture,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_PATH: nodeModules,
+        },
+      },
+    );
+
+    assert.equal(binResult.status, 1, binResult.stderr || binResult.stdout);
+    assert.match(binResult.stderr, /Codescythe diagnostics/);
+    assert.match(binResult.stderr, /resolved directory:/);
+    assert.match(binResult.stderr, /entry: index\.ts/);
+    assert.match(binResult.stdout, /Unused files/);
   });
 });
 
