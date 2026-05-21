@@ -114,7 +114,7 @@
     "codescythe": {
       "totalFiles": 8382,
       "unusedFiles": 16,
-      "unusedExports": 10896
+      "unusedExports": 11186
     },
     "knip": {
       "unusedFiles": 16
