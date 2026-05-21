@@ -777,6 +777,48 @@ fn resolves_package_imports_before_unresolved_ignore_patterns() {
 }
 
 #[test]
+fn resolves_package_import_js_specifiers_to_ts_source() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r##"{
+              "entry": "src/main.ts",
+              "project": ["src/**/*.ts", "pplx/**/*.ts"]
+            }"##,
+    );
+    write_file(
+        cwd,
+        "package.json",
+        r##"{
+              "type": "module",
+              "imports": {
+                "#pplx/*": "./pplx/*"
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "src/main.ts",
+        "import { used } from '#pplx/frontend/module.js';\nconsole.log(used);\n",
+    );
+    write_file(
+        cwd,
+        "pplx/frontend/module.ts",
+        "export const used = 1;\nexport const unused = 2;\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+    assert!(analysis.issues.unresolved.is_empty());
+    assert_no_unused_export(&analysis, "pplx/frontend/module.ts", "used");
+    assert_unused_export(&analysis, "pplx/frontend/module.ts", "unused");
+}
+
+#[test]
 fn warns_when_unresolved_ignore_overlaps_source_alias() {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();
@@ -812,6 +854,46 @@ fn warns_when_unresolved_ignore_overlaps_source_alias() {
         "#pplx/frontend/**"
     );
     assert_eq!(analysis.source_alias_ignore_warnings[0].alias, "#pplx/*");
+    assert!(analysis.source_alias_ignore_warnings[0].fix_blocking);
+}
+
+#[test]
+fn marks_asset_query_source_alias_ignore_as_non_fix_blocking() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r##"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts",
+              "unresolvedImports": {
+                "ignore": ["#pplx/frontend/**/sprite.generated.svg?raw"]
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "package.json",
+        r##"{
+              "imports": {
+                "#pplx/*": "./pplx/*.ts"
+              }
+            }"##,
+    );
+    write_file(cwd, "src/main.ts", "console.log('entry');\n");
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+    assert_eq!(analysis.source_alias_ignore_warnings.len(), 1);
+    assert_eq!(
+        analysis.source_alias_ignore_warnings[0].pattern,
+        "#pplx/frontend/**/sprite.generated.svg?raw"
+    );
+    assert_eq!(analysis.source_alias_ignore_warnings[0].alias, "#pplx/*");
+    assert!(!analysis.source_alias_ignore_warnings[0].fix_blocking);
 }
 
 #[test]
