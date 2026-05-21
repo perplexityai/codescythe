@@ -1,14 +1,19 @@
 name: Codescythe npm Release
 
 on:
-  push:
-    tags:
-      - "codescythe_cli_v*"
-      - "codescythe_npm_v*"
+  release:
+    types:
+      - published
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build and verify only, no publish)"
+        type: boolean
+        required: false
+        default: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -44,39 +49,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p artifacts
-
-          copy_loader_package() {
-            local pkg="$1"
-            local out="artifacts/$pkg"
-            mkdir -p "$out"
-            cp "packages/$pkg/README.md" "$out/"
-            cp "packages/$pkg/index.d.ts" "$out/"
-            cp "packages/$pkg/index.ts" "$out/"
-            cp "packages/$pkg/package.json" "$out/"
-            cp -R "packages/$pkg/bin" "$out/"
-          }
-
-          copy_native_package() {
-            local pkg="$1"
-            local target="$2"
-            local node_file="$3"
-            local out="artifacts/$pkg"
-            local built_node
-
-            mkdir -p "$out"
-            cp "packages/$pkg/README.md" "$out/"
-            cp "packages/$pkg/index.ts" "$out/"
-            cp "packages/$pkg/package.json" "$out/"
-
-            built_node="$(bazel cquery --output=files "$target" | tail -n 1)"
-            cp "$built_node" "$out/$node_file"
-          }
-
-          copy_loader_package codescythe
-          copy_native_package codescythe-darwin-arm64 //packages/codescythe-darwin-arm64:native_node codescythe.darwin-arm64.node
-          copy_native_package codescythe-linux-amd64 //packages/codescythe-linux-amd64:native_node codescythe.linux-amd64.node
-          copy_native_package codescythe-linux-arm64 //packages/codescythe-linux-arm64:native_node codescythe.linux-arm64.node
+          node --experimental-transform-types tools/prepare_npm_publish_artifacts.ts artifacts
 
       - name: Upload loader package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -169,3 +142,55 @@ jobs:
               exit 1
             fi
           fi
+
+  publish:
+    name: Publish npm packages
+    needs:
+      - build
+      - verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'codescythe_cli_v')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && startsWith(github.ref_name, 'codescythe_cli_v')) }}
+
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Download loader package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-package-codescythe
+          path: artifacts/codescythe
+
+      - name: Download Darwin arm64 package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-package-codescythe-darwin-arm64
+          path: artifacts/codescythe-darwin-arm64
+
+      - name: Download Linux amd64 package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-package-codescythe-linux-amd64
+          path: artifacts/codescythe-linux-amd64
+
+      - name: Download Linux arm64 package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-package-codescythe-linux-arm64
+          path: artifacts/codescythe-linux-arm64
+
+      - name: Publish packages
+        run: |
+          set -euo pipefail
+
+          npm publish --access public artifacts/codescythe-darwin-arm64
+          npm publish --access public artifacts/codescythe-linux-amd64
+          npm publish --access public artifacts/codescythe-linux-arm64
+          npm publish --access public artifacts/codescythe

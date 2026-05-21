@@ -3,6 +3,13 @@
   "version": "0.4.10",
   "description": "Codescythe native binding for Linux amd64",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/perplexityai/codescythe.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./index.ts",
   "files": [
     "codescythe.linux-amd64.node",

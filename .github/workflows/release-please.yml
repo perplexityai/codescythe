@@ -1,0 +1,47 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Create or update release PR
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Dispatch CLI release workflow
+        if: ${{ steps.release.outputs.release_created == 'true' && startsWith(steps.release.outputs.tag_name, 'codescythe_cli_v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          gh workflow run cli-release.yml --ref "$TAG_NAME" -f dry_run=false
+
+      - name: Dispatch npm release workflow
+        if: ${{ steps.release.outputs.release_created == 'true' && startsWith(steps.release.outputs.tag_name, 'codescythe_cli_v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          gh workflow run npm-release.yml --ref "$TAG_NAME" -f dry_run=false

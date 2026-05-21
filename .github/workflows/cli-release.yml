@@ -1,19 +1,19 @@
 name: Codescythe CLI Release
 
 on:
-  push:
-    tags:
-      - "codescythe_cli_v*"
+  release:
+    types:
+      - published
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run (build and verify only, no release)"
+        description: "Dry run (build and verify only, no upload)"
         type: boolean
         required: false
         default: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -147,21 +147,16 @@ jobs:
           fi
 
   release:
-    name: Create release
+    name: Upload release assets
     needs:
       - build
       - verify
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    if: ${{ startsWith(github.ref, 'refs/tags/codescythe_cli_v') && (github.event_name == 'push' || inputs.dry_run == false) }}
+    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'codescythe_cli_v')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && startsWith(github.ref_name, 'codescythe_cli_v')) }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-
       - name: Download release artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -188,82 +183,20 @@ jobs:
           shasum -a 256 codescythe-* > checksums.txt
           cat checksums.txt
 
-      - name: Generate changelog
-        id: git-cliff
-        uses: orhun/git-cliff-action@d77b37db2e3f7398432d34b72a12aa3e2ba87e51
-        with:
-          config: cliff.toml
-          args: --latest --strip header
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GITHUB_REPO: ${{ github.repository }}
-          OUTPUT: release/changelog.md
-
-      - name: Prepare release notes
-        run: |
-          set -euo pipefail
-
-          if [ ! -s release/changelog.md ]; then
-            echo "No conventional commits found for this release." > release/changelog.md
-          fi
-
-          cat > release/body.md <<EOF
-          ## Codescythe CLI Release
-
-          ### Binaries
-          - **macOS Apple Silicon**: \`codescythe-darwin-arm64\`
-          - **Linux AMD64**: \`codescythe-linux-amd64\`
-          - **Linux ARM64**: \`codescythe-linux-arm64\`
-
-          ### Installation
-
-          \`\`\`bash
-          # macOS (Apple Silicon)
-          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/codescythe-darwin-arm64
-          chmod +x codescythe-darwin-arm64
-          sudo mv codescythe-darwin-arm64 /usr/local/bin/codescythe
-
-          # Linux AMD64
-          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/codescythe-linux-amd64
-          chmod +x codescythe-linux-amd64
-          sudo mv codescythe-linux-amd64 /usr/local/bin/codescythe
-
-          # Linux ARM64
-          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/codescythe-linux-arm64
-          chmod +x codescythe-linux-arm64
-          sudo mv codescythe-linux-arm64 /usr/local/bin/codescythe
-          \`\`\`
-
-          ### Verification
-
-          \`\`\`bash
-          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/checksums.txt
-          shasum -a 256 -c checksums.txt
-          \`\`\`
-
-          ### Changes
-
-          EOF
-
-          cat release/changelog.md >> release/body.md
-
       - name: List release artifacts
         run: |
           ls -lh release
           echo "---"
           cat release/checksums.txt
-          echo "---"
-          cat release/body.md
 
-      - name: Create GitHub release
+      - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
+          gh release upload "$RELEASE_TAG" \
             release/codescythe-darwin-arm64 \
             release/codescythe-linux-amd64 \
             release/codescythe-linux-arm64 \
             release/checksums.txt \
-            --title "Codescythe CLI ${{ github.ref_name }}" \
-            --notes-file release/body.md \
-            --verify-tag
+            --clobber
