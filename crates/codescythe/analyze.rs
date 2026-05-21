@@ -272,6 +272,24 @@ pub fn analyze_path(
                 }
             }
 
+            for local in &file.namespace_object_uses {
+                if let Some(source) = file.namespace_imports.get(local) {
+                    mark_all_exports(
+                        &file,
+                        source,
+                        &mut files,
+                        &module_resolver,
+                        &mut used_files,
+                        &mut used_exports,
+                        &mut queue,
+                        &mut queued_files,
+                        &mut unresolved,
+                        &unresolved_policy,
+                        &test_file_indexes,
+                    )?;
+                }
+            }
+
             for export in file.exports.values() {
                 mark_reexport_source_file(
                     &file,
@@ -1446,6 +1464,7 @@ struct FileData {
     namespace_imports: BTreeMap<String, String>,
     named_imports: BTreeMap<String, NamedImport>,
     member_uses: Vec<(String, String)>,
+    namespace_object_uses: BTreeSet<String>,
     reexport_all: Vec<String>,
     local_references: BTreeSet<String>,
 }
@@ -1486,6 +1505,7 @@ struct FileVisitor {
     namespace_imports: BTreeMap<String, String>,
     named_imports: BTreeMap<String, NamedImport>,
     member_uses: Vec<(String, String)>,
+    namespace_object_uses: BTreeSet<String>,
     reexport_all: Vec<String>,
     local_references: BTreeSet<String>,
 }
@@ -1503,6 +1523,7 @@ impl FileVisitor {
             namespace_imports: BTreeMap::new(),
             named_imports: BTreeMap::new(),
             member_uses: Vec::new(),
+            namespace_object_uses: BTreeSet::new(),
             reexport_all: Vec::new(),
             local_references: BTreeSet::new(),
         }
@@ -1520,6 +1541,7 @@ impl FileVisitor {
             namespace_imports: self.namespace_imports,
             named_imports: self.named_imports,
             member_uses: self.member_uses,
+            namespace_object_uses: self.namespace_object_uses,
             reexport_all: self.reexport_all,
             local_references: self.local_references,
         }
@@ -1715,13 +1737,37 @@ impl<'a> Visit<'a> for FileVisitor {
     }
 
     fn visit_static_member_expression(&mut self, expression: &StaticMemberExpression<'a>) {
-        if let Expression::Identifier(object) = &expression.object {
+        if let Some(object) = expression_identifier_name(&expression.object) {
             self.member_uses.push((
-                object.name.as_str().to_string(),
+                object.to_string(),
                 expression.property.name.as_str().to_string(),
             ));
+            self.local_references.insert(object.to_string());
+            return;
         }
         walk::walk_static_member_expression(self, expression);
+    }
+
+    fn visit_computed_member_expression(&mut self, expression: &ComputedMemberExpression<'a>) {
+        if let Some(object) = expression_identifier_name(&expression.object) {
+            self.local_references.insert(object.to_string());
+            self.namespace_object_uses.insert(object.to_string());
+            self.visit_expression(&expression.expression);
+            return;
+        }
+        walk::walk_computed_member_expression(self, expression);
+    }
+
+    fn visit_jsx_member_expression(&mut self, expression: &JSXMemberExpression<'a>) {
+        if let Some(object) = jsx_member_object_identifier_name(&expression.object) {
+            self.member_uses.push((
+                object.to_string(),
+                expression.property.name.as_str().to_string(),
+            ));
+            self.local_references.insert(object.to_string());
+            return;
+        }
+        walk::walk_jsx_member_expression(self, expression);
     }
 
     fn visit_variable_declarator(&mut self, declaration: &VariableDeclarator<'a>) {
@@ -1748,6 +1794,8 @@ impl<'a> Visit<'a> for FileVisitor {
     }
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        self.namespace_object_uses
+            .insert(identifier.name.as_str().to_string());
         self.local_references
             .insert(identifier.name.as_str().to_string());
     }
@@ -1900,6 +1948,27 @@ fn property_key_name(key: &PropertyKey<'_>) -> Option<String> {
     match key {
         PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.as_str().to_string()),
         PropertyKey::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
+        _ => None,
+    }
+}
+
+fn expression_identifier_name<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    match expression {
+        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_identifier_name(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+fn jsx_member_object_identifier_name<'a>(
+    object: &'a JSXMemberExpressionObject<'a>,
+) -> Option<&'a str> {
+    match object {
+        JSXMemberExpressionObject::IdentifierReference(identifier) => {
+            Some(identifier.name.as_str())
+        }
         _ => None,
     }
 }
@@ -2438,6 +2507,48 @@ mod tests {
 
         assert_unused_export(&analysis, "src/module.ts", "onlyForTest");
         assert_unused_file(&analysis, "src/module.test.ts");
+    }
+
+    #[test]
+    fn jsx_namespace_member_usage_marks_exports_used() {
+        let analysis = analyze_inline_project_with_config(
+            r#"{
+              "entry": "src/entry.tsx",
+              "project": ["src/**/*.ts", "src/**/*.tsx"]
+            }"#,
+            &[
+                (
+                    "src/entry.tsx",
+                    "import * as AnimateHeight from './animate-height';\nconst view = <AnimateHeight.Root><AnimateHeight.Item /></AnimateHeight.Root>;\nconsole.log(view);\n",
+                ),
+                (
+                    "src/animate-height.ts",
+                    "export const Root = () => null;\nexport const Item = () => null;\nexport const Unused = () => null;\n",
+                ),
+            ],
+        );
+
+        assert_no_unused_export(&analysis, "src/animate-height.ts", "Root");
+        assert_no_unused_export(&analysis, "src/animate-height.ts", "Item");
+        assert_unused_export(&analysis, "src/animate-height.ts", "Unused");
+    }
+
+    #[test]
+    fn opaque_namespace_usage_marks_all_exports_used() {
+        let analysis = analyze_inline_project(&[
+            (
+                "src/entry.ts",
+                "import * as DelimiterList from './delimiter-list';\nconst key = 'Root';\nconsole.log(DelimiterList[key]);\nconsole.log(Object.keys(DelimiterList));\n",
+            ),
+            (
+                "src/delimiter-list.ts",
+                "export const Root = 1;\nexport const Item = 2;\nexport const Separator = 3;\n",
+            ),
+        ]);
+
+        assert_no_unused_export(&analysis, "src/delimiter-list.ts", "Root");
+        assert_no_unused_export(&analysis, "src/delimiter-list.ts", "Item");
+        assert_no_unused_export(&analysis, "src/delimiter-list.ts", "Separator");
     }
 
     #[test]
