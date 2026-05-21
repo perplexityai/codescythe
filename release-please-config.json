@@ -31,6 +31,21 @@
           "jsonpath": "$.package.version"
         },
         {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name=='codescythe')].version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name=='codescythe_cli')].version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name=='codescythe_napi')].version"
+        },
+        {
           "type": "json",
           "path": "packages/codescythe/package.json",
           "jsonpath": "$.version"
