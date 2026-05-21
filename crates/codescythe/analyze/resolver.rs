@@ -84,6 +84,75 @@ impl ModuleResolver {
             }
         }
     }
+
+    pub(super) fn explain_unresolved(
+        &self,
+        cwd: &Path,
+        config: &CodescytheConfig,
+        importer: &str,
+        specifier: &str,
+    ) -> Result<UnresolvedImportExplanation> {
+        let importer_path = cwd.join(importer);
+        let resolver_error = match self.resolver.resolve_file(&importer_path, specifier) {
+            Ok(resolution) => format!(
+                "resolved to {} but did not map to a project file",
+                relative_path(cwd, resolution.path())
+            ),
+            Err(error) => error.to_string(),
+        };
+        let aliases = source_alias_mappings(cwd, config)?;
+        let matched_aliases = aliases
+            .iter()
+            .flat_map(|alias| self.matched_alias_explanations(cwd, alias, specifier))
+            .collect();
+
+        Ok(UnresolvedImportExplanation {
+            importer: importer.to_string(),
+            specifier: specifier.to_string(),
+            resolver_error,
+            matched_aliases,
+        })
+    }
+
+    fn matched_alias_explanations(
+        &self,
+        cwd: &Path,
+        alias: &AliasMapping,
+        specifier: &str,
+    ) -> Vec<UnresolvedImportMatchedAlias> {
+        let Some(tail) = alias_match_tail(&alias.key, specifier) else {
+            return Vec::new();
+        };
+
+        alias
+            .values
+            .iter()
+            .map(|target| {
+                let expanded_target = expand_alias_target(target, &tail);
+                let candidate_files = candidate_paths_for_expanded_target(&expanded_target)
+                    .into_iter()
+                    .map(|candidate| self.candidate_file(cwd, &candidate))
+                    .collect();
+                UnresolvedImportMatchedAlias {
+                    source: alias.source.clone(),
+                    key: alias.key.clone(),
+                    target: target.clone(),
+                    expanded_target,
+                    candidate_files,
+                }
+            })
+            .collect()
+    }
+
+    fn candidate_file(&self, cwd: &Path, candidate: &str) -> UnresolvedImportCandidateFile {
+        let path = candidate_path(cwd, candidate);
+        let normalized = normalize_path(&path);
+        UnresolvedImportCandidateFile {
+            path: display_candidate_path(cwd, &normalized),
+            exists: normalized.exists(),
+            in_project: self.index_by_path.contains_key(&normalized),
+        }
+    }
 }
 
 fn config_aliases(cwd: &Path, config: &CodescytheConfig) -> Vec<(String, Vec<AliasValue>)> {
@@ -272,6 +341,83 @@ fn config_alias_value(cwd: &Path, value: &str) -> String {
 
 fn is_relative_alias_path(value: &str) -> bool {
     value == "." || value == ".." || value.starts_with("./") || value.starts_with("../")
+}
+
+fn alias_match_tail(alias: &str, specifier: &str) -> Option<String> {
+    let Some(wildcard) = alias.find('*') else {
+        return (alias == specifier).then(String::new);
+    };
+
+    let prefix = &alias[..wildcard];
+    let suffix = &alias[wildcard + 1..];
+    specifier
+        .strip_prefix(prefix)?
+        .strip_suffix(suffix)
+        .map(ToString::to_string)
+}
+
+fn expand_alias_target(target: &str, tail: &str) -> String {
+    if let Some(wildcard) = target.find('*') {
+        format!("{}{}{}", &target[..wildcard], tail, &target[wildcard + 1..])
+    } else {
+        target.to_string()
+    }
+}
+
+fn candidate_paths_for_expanded_target(expanded_target: &str) -> Vec<String> {
+    let without_query = expanded_target
+        .split_once('?')
+        .map_or(expanded_target, |(prefix, _)| prefix);
+    let normalized = without_query.replace('\\', "/");
+
+    for (extension, aliases) in [
+        (".js", [".ts", ".tsx", ".js", ".jsx"].as_slice()),
+        (".jsx", &[".tsx", ".jsx"]),
+        (".mjs", &[".mts", ".mjs"]),
+        (".cjs", &[".cts", ".cjs"]),
+    ] {
+        if let Some(base) = normalized.strip_suffix(extension) {
+            return aliases
+                .iter()
+                .map(|alias| format!("{base}{alias}"))
+                .collect();
+        }
+    }
+
+    if path_has_extension(&normalized) {
+        return vec![normalized];
+    }
+
+    [
+        ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json", ".node",
+    ]
+    .into_iter()
+    .map(|extension| format!("{normalized}{extension}"))
+    .collect()
+}
+
+fn path_has_extension(path: &str) -> bool {
+    path.rsplit('/')
+        .next()
+        .and_then(|segment| segment.rsplit_once('.'))
+        .is_some_and(|(_, extension)| !extension.is_empty())
+}
+
+fn candidate_path(cwd: &Path, candidate: &str) -> PathBuf {
+    let path = Path::new(candidate);
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    cwd.join(candidate)
+}
+
+fn display_candidate_path(cwd: &Path, path: &Path) -> String {
+    path.strip_prefix(cwd)
+        .map_or_else(|_| path, |relative| relative)
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string()
 }
 
 pub(super) struct UnresolvedImportPolicy {

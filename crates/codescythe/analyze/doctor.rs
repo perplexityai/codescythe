@@ -1,5 +1,7 @@
 use super::*;
 
+const DOCTOR_UNRESOLVED_IMPORT_LIMIT: usize = 10;
+
 pub fn doctor_config(
     cwd: &Path,
     config: &CodescytheConfig,
@@ -8,6 +10,18 @@ pub fn doctor_config(
     let cwd = absolute_normalize_path(cwd)?;
     let project_files = discover_project_files(&cwd, config)?;
     let entry_files = discover_entry_files(&cwd, config, &project_files)?;
+    let analysis = if entry_files.is_empty() {
+        None
+    } else {
+        Some(analyze_path(
+            &cwd,
+            config,
+            AnalysisOptions {
+                config_path: config_path.map(Path::to_path_buf),
+                ..AnalysisOptions::default()
+            },
+        )?)
+    };
     let mut warnings = Vec::new();
 
     for warning in source_alias_ignore_warnings_for_config(&cwd, config)? {
@@ -27,15 +41,21 @@ pub fn doctor_config(
         }
     }
 
-    if project_files.len() >= 20 && !entry_files.is_empty() {
-        let analysis = analyze_path(
-            &cwd,
-            config,
-            AnalysisOptions {
-                config_path: config_path.map(Path::to_path_buf),
-                ..AnalysisOptions::default()
-            },
-        )?;
+    if let Some(analysis) = &analysis
+        && analysis.counters.unresolved > 0
+    {
+        warnings.push(ConfigDoctorWarning {
+            code: "unresolvedImports".to_string(),
+            message: format!(
+                "analysis reported {} unresolved imports; inspect unresolvedImports for resolver diagnostics",
+                analysis.counters.unresolved
+            ),
+        });
+    }
+
+    if project_files.len() >= 20
+        && let Some(analysis) = &analysis
+    {
         let unused_files = analysis.issues.files.len();
         if unused_files * 100 / project_files.len() >= 80 {
             warnings.push(ConfigDoctorWarning {
@@ -59,6 +79,12 @@ pub fn doctor_config(
         });
     }
 
+    let unresolved_imports = analysis
+        .as_ref()
+        .map(|analysis| doctor_unresolved_imports(&cwd, config, &project_files, analysis))
+        .transpose()?
+        .unwrap_or_default();
+
     warnings.sort_by(|left, right| {
         left.code
             .cmp(&right.code)
@@ -78,7 +104,27 @@ pub fn doctor_config(
             package_import_keys: package_import_keys(&cwd).unwrap_or_default(),
             configured_alias_keys: config.aliases.keys().cloned().collect(),
         },
+        unresolved_imports,
     })
+}
+
+fn doctor_unresolved_imports(
+    cwd: &Path,
+    config: &CodescytheConfig,
+    project_files: &[PathBuf],
+    analysis: &Analysis,
+) -> Result<Vec<UnresolvedImportExplanation>> {
+    let resolver = ModuleResolver::new(cwd, project_files, config);
+    let mut explanations = Vec::new();
+    for (importer, specifiers) in &analysis.issues.unresolved {
+        for specifier in specifiers {
+            if explanations.len() >= DOCTOR_UNRESOLVED_IMPORT_LIMIT {
+                return Ok(explanations);
+            }
+            explanations.push(resolver.explain_unresolved(cwd, config, importer, specifier)?);
+        }
+    }
+    Ok(explanations)
 }
 
 fn entry_pattern_matches(cwd: &Path, pattern: &str, project_files: &[PathBuf]) -> Result<usize> {

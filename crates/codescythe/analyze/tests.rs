@@ -682,6 +682,57 @@ fn ignored_unresolved_patterns_do_not_count_as_issues() {
 }
 
 #[test]
+fn doctor_explains_unresolved_alias_candidates() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r##"{
+              "entry": "src/main.ts",
+              "project": ["src/**/*.ts", "pplx/**/*.ts"]
+            }"##,
+    );
+    write_file(
+        cwd,
+        "package.json",
+        r##"{
+              "imports": {
+                "#pplx/*": "./pplx/*"
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "src/main.ts",
+        "import { missing } from '#pplx/frontend/missing.js';\nconsole.log(missing);\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let result = doctor_config(cwd, &config, None).unwrap();
+
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "unresolvedImports")
+    );
+    assert_eq!(result.unresolved_imports.len(), 1);
+    let unresolved = &result.unresolved_imports[0];
+    assert_eq!(unresolved.importer, "src/main.ts");
+    assert_eq!(unresolved.specifier, "#pplx/frontend/missing.js");
+    assert_eq!(unresolved.matched_aliases.len(), 1);
+    let alias = &unresolved.matched_aliases[0];
+    assert_eq!(alias.key, "#pplx/*");
+    assert_eq!(alias.target, "./pplx/*");
+    assert_eq!(alias.expanded_target, "./pplx/frontend/missing.js");
+    assert_eq!(alias.candidate_files[0].path, "pplx/frontend/missing.ts");
+    assert!(!alias.candidate_files[0].exists);
+    assert!(!alias.candidate_files[0].in_project);
+}
+
+#[test]
 fn verbose_records_ignored_unresolved_patterns_with_samples() {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();
