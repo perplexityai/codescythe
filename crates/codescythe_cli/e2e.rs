@@ -270,6 +270,108 @@ fn cli_fix_text_output_for_clean_projects_stays_summary_only() {
     fs::remove_dir_all(&fixture).unwrap();
 }
 
+#[test]
+fn cli_verbose_json_includes_diagnostics_snapshot() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = write_verbose_fixture_to_temp("verbose-json");
+
+    let output = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--verbose", "--json"])
+        .output()
+        .expect("failed to run codescythe CLI with --verbose --json");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_verbose_json_snapshot(
+        "verbose analysis json",
+        &output.stdout,
+        &fixture,
+        &runfile("tests/fixtures/cli-verbose-output/analysis.snapshot.json"),
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
+#[test]
+fn cli_verbose_text_prints_diagnostics_to_stderr_snapshot() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = write_verbose_fixture_to_temp("verbose-text");
+
+    let output = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--verbose"])
+        .output()
+        .expect("failed to run codescythe CLI with --verbose");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Unused files"),
+        "{}",
+        output_text(&output)
+    );
+    assert_text_snapshot(
+        "verbose diagnostics stderr",
+        normalize_verbose_text(&output.stderr, &fixture).as_bytes(),
+        &runfile("tests/fixtures/cli-verbose-output/diagnostics.stderr"),
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
+#[test]
+fn cli_fix_verbose_json_includes_fix_plan_snapshot() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = write_verbose_fixture_to_temp("verbose-fix-json");
+
+    let output = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--fix", "--verbose", "--json"])
+        .output()
+        .expect("failed to run codescythe CLI with --fix --verbose --json");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_verbose_json_snapshot(
+        "verbose fix json",
+        &output.stdout,
+        &fixture,
+        &runfile("tests/fixtures/cli-verbose-output/fix.snapshot.json"),
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
+#[test]
+fn cli_fix_verbose_text_prints_fix_plan_to_stderr_snapshot() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = write_verbose_fixture_to_temp("verbose-fix-text");
+
+    let output = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--fix", "--verbose"])
+        .output()
+        .expect("failed to run codescythe CLI with --fix --verbose");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Removed 1 unused exports"),
+        "{}",
+        output_text(&output)
+    );
+    assert_text_snapshot(
+        "verbose fix diagnostics stderr",
+        normalize_verbose_text(&output.stderr, &fixture).as_bytes(),
+        &runfile("tests/fixtures/cli-verbose-output/fix.diagnostics.stderr"),
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
 fn runfile(relative: &str) -> PathBuf {
     let relative = Path::new(relative);
     let mut candidates = Vec::new();
@@ -375,12 +477,69 @@ fn assert_text_snapshot(name: &str, actual: &[u8], expected_path: &Path) {
     );
 }
 
+fn assert_verbose_json_snapshot(name: &str, actual: &[u8], fixture: &Path, expected_path: &Path) {
+    let actual = normalize_verbose_json(actual, fixture);
+    let expected = fs::read_to_string(expected_path)
+        .unwrap_or_else(|error| panic!("failed to read {name} snapshot: {error}"));
+    assert_eq!(
+        actual,
+        expected,
+        "{name} snapshot changed; expected snapshot at {}",
+        expected_path.display()
+    );
+}
+
 fn normalize_json(source: &[u8]) -> String {
     let value = serde_json::from_slice::<Value>(source).expect("source should be JSON");
     format!(
         "{}\n",
         serde_json::to_string_pretty(&value).expect("value should serialize")
     )
+}
+
+fn normalize_verbose_json(source: &[u8], fixture: &Path) -> String {
+    let mut value = serde_json::from_slice::<Value>(source).expect("source should be JSON");
+    for diagnostics_path in ["/diagnostics", "/analysis/diagnostics"] {
+        if let Some(runtime) = value
+            .pointer_mut(&format!("{diagnostics_path}/runtime"))
+            .and_then(Value::as_object_mut)
+        {
+            runtime.insert("processCwd".to_string(), Value::String("<cwd>".to_string()));
+            runtime.insert(
+                "resolvedDirectory".to_string(),
+                Value::String("<fixture>".to_string()),
+            );
+            if let Some(config_source) = runtime
+                .get_mut("configSource")
+                .and_then(Value::as_object_mut)
+            {
+                config_source.insert(
+                    "path".to_string(),
+                    Value::String("<fixture>/codescythe.json".to_string()),
+                );
+            }
+        }
+        if let Some(package_imports) = value
+            .pointer_mut(&format!(
+                "{diagnostics_path}/config/aliases/packageJsonImports"
+            ))
+            .and_then(Value::as_object_mut)
+        {
+            package_imports.insert(
+                "path".to_string(),
+                Value::String("<fixture>/package.json".to_string()),
+            );
+        }
+    }
+    let fixture = fixture.to_string_lossy();
+    let rendered = serde_json::to_string_pretty(&value).expect("value should serialize");
+    format!("{}\n", rendered.replace(fixture.as_ref(), "<fixture>"))
+}
+
+fn normalize_verbose_text(source: &[u8], fixture: &Path) -> String {
+    String::from_utf8_lossy(source)
+        .replace(&env::current_dir().unwrap().to_string_lossy().to_string(), "<cwd>")
+        .replace(&fixture.to_string_lossy().to_string(), "<fixture>")
 }
 
 fn write_fixture_to_temp(name: &str, files: &[(&str, &str)]) -> PathBuf {
@@ -400,6 +559,57 @@ fn write_fixture_to_temp(name: &str, files: &[(&str, &str)]) -> PathBuf {
         fs::write(path, contents).unwrap();
     }
     target
+}
+
+fn write_verbose_fixture_to_temp(name: &str) -> PathBuf {
+    write_fixture_to_temp(
+        name,
+        &[
+            (
+                "codescythe.json",
+                r##"{
+  "entry": ["src/main.ts", "src/missing.ts", "src/entries/*.ts"],
+  "project": ["src/**/*.ts", "ignored/**/*.ts"],
+  "ignore": ["ignored/**"],
+  "testFilePatterns": "src/**/*.test.ts",
+  "aliases": {
+    "#alias/*": "./src/*.ts"
+  },
+  "unresolvedImports": {
+    "ignore": ["#virtual/**"]
+  }
+}
+"##,
+            ),
+            (
+                "package.json",
+                r##"{
+  "imports": {
+    "#pkg/*": "./src/*.ts"
+  }
+}
+"##,
+            ),
+            (".gitignore", "src/gitignored.ts\n"),
+            (
+                "src/main.ts",
+                "import { used } from '#pkg/used';\nimport './dead.test';\nconsole.log(used);\n",
+            ),
+            (
+                "src/used.ts",
+                "export const used = 1;\nexport const unused = 2;\n",
+            ),
+            ("src/dead.ts", "export const dead = 1;\n"),
+            (
+                "src/dead.test.ts",
+                "import { dead } from './dead';\nconsole.log(dead);\n",
+            ),
+            ("src/entries/extra.ts", "console.log('extra entry');\n"),
+            ("src/gitignored.ts", "export const gitignored = 1;\n"),
+            ("ignored/configIgnored.ts", "export const ignored = 1;\n"),
+            ("README.md", "not source\n"),
+        ],
+    )
 }
 
 fn copy_fixture_to_temp(source: &Path, name: &str) -> PathBuf {

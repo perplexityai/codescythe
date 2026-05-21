@@ -1,22 +1,25 @@
 'use strict';
 
-type AnalyzeOptions = {
+type RunOptions = {
   config?: string;
   cwd?: string;
+  fix?: boolean;
+  json?: boolean;
+  verbose?: boolean;
 };
 
 type NativeBinding = {
-  analyze(options: AnalyzeOptions): string;
-  fix(options: AnalyzeOptions): string;
+  analyze(options: RunOptions): string;
+  fix(options: RunOptions): string;
 };
 
 const native = requireNative();
 
-function analyze(options: AnalyzeOptions = {}) {
+function analyze(options: RunOptions = {}) {
   return JSON.parse(native.analyze(options));
 }
 
-function fix(options: AnalyzeOptions = {}) {
+function fix(options: RunOptions = {}) {
   return JSON.parse(native.fix(options));
 }
 

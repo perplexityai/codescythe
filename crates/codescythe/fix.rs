@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{Analysis, SymbolIssue};
+use crate::{Analysis, FixPlanDiagnostics, SymbolIssue};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +66,31 @@ pub fn apply_fixes(cwd: &Path, analysis: &Analysis) -> Result<FixResult> {
         removed_exports,
         analysis: analysis.clone(),
     })
+}
+
+pub fn fix_plan_diagnostics(analysis: &Analysis, result: &FixResult) -> FixPlanDiagnostics {
+    let removed_files = result
+        .removed_files
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut files_with_export_edits = BTreeMap::new();
+    let mut skipped_exports_in_deleted_files = BTreeMap::new();
+
+    for (relative, exports) in &analysis.issues.exports {
+        let symbols = exports.keys().cloned().collect::<Vec<_>>();
+        if removed_files.contains(relative) {
+            skipped_exports_in_deleted_files.insert(relative.clone(), symbols);
+        } else if !symbols.is_empty() {
+            files_with_export_edits.insert(relative.clone(), symbols);
+        }
+    }
+
+    FixPlanDiagnostics {
+        files_to_delete: result.removed_files.clone(),
+        files_with_export_edits,
+        skipped_exports_in_deleted_files,
+    }
 }
 
 fn removal_ranges<'a>(
@@ -185,6 +210,7 @@ mod tests {
                     unresolved: BTreeMap::new(),
                 },
                 counters: Default::default(),
+                diagnostics: None,
             },
         )
         .unwrap();

@@ -78,6 +78,14 @@ Fixing is a single analysis-and-edit pass. Removing a dead file can make more
 files or exports unreachable, so repeated cleanup jobs should run Codescythe
 again after a fix pass when a completely stable tree is required.
 
+## Diagnostics
+
+Run Codescythe with `--verbose` to print the resolved runtime context, config
+summary, file-discovery counters, entry matches, dead-file reasons, and fix plan
+preview. In text mode, diagnostics are written to stderr before the normal
+report. With `--verbose --json`, the JSON result includes a `diagnostics` object;
+plain `--json` output remains compact and unchanged.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository layout, architecture,

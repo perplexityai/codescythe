@@ -1,0 +1,36 @@
+Codescythe diagnostics
+Runtime:
+  version: codescythe 0.4.6
+  process cwd: <cwd>
+  resolved directory: <fixture>
+  config: <fixture>/codescythe.json (discovered)
+  flags: fix=false json=false verbose=true
+Config:
+  entry: src/main.ts, src/missing.ts, src/entries/*.ts
+  project: src/**/*.ts, ignored/**/*.ts
+  ignore: ignored/**, .git/**, bazel-*/**, node_modules/**, dist/**, build/**, coverage/**
+  testFilePatterns: src/**/*.test.ts
+  unresolvedImports: mode=Report ignore=#virtual/**
+  configured aliases: #alias/*
+  package.json#imports: <fixture>/package.json (#pkg/*)
+File discovery:
+  project matched: 7
+  selected project files: 5
+  ignored by .gitignore: 1
+  ignored by config: 1
+  parsed: 4
+  skipped by extension/type: 4
+  entries: 2
+  test leaf files: 1
+Entry matches:
+  src/entries/*.ts: 1
+  src/main.ts: 1
+  src/missing.ts: 0
+  zero-match entry patterns: src/missing.ts
+Dead file reasons:
+  src/dead.test.ts: matched project files but was only reached from files that do not make it live
+    entry=false test=true imported=true onlyDeadOrTestImporters=false testLeafSkipped=false
+    imported by: src/main.ts
+  src/dead.ts: matched project files but was only reached from files that do not make it live
+    entry=false test=false imported=true onlyDeadOrTestImporters=true testLeafSkipped=true
+    imported by: src/dead.test.ts
