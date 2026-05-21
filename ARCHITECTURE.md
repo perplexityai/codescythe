@@ -96,9 +96,11 @@ same confidence level as proved-unused code.
 
 Codescythe treats unresolved-ignore patterns that overlap local source aliases
 from `package.json#imports` or `aliases` as risky. Normal analysis emits a
-warning, `--fix` refuses that config unless `--force` is used, and export edits
-are skipped when retained ignored-unresolved diagnostics match an exporting
-file's alias namespace.
+warning. `--fix` refuses source-like overlaps, meaning extensionless and
+JS/TS-family patterns that can hide real source imports, unless `--force` is
+used. Non-JS/TS asset patterns such as `*.svg?raw` still warn but do not block
+`--fix`. Export edits are skipped when retained ignored-unresolved diagnostics
+match an exporting file's alias namespace.
 
 The CLI and N-API adapter both derive the analysis root the same way: an explicit
 directory or `cwd` option wins, otherwise a config file's parent directory wins,

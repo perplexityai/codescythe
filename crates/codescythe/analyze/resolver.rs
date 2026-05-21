@@ -166,6 +166,16 @@ pub fn source_alias_ignore_warnings_for_config(
     source_alias_ignore_warnings(config, &aliases)
 }
 
+pub fn source_alias_fix_blocking_ignore_warnings_for_config(
+    cwd: &Path,
+    config: &CodescytheConfig,
+) -> Result<Vec<SourceAliasIgnoreWarning>> {
+    Ok(source_alias_ignore_warnings_for_config(cwd, config)?
+        .into_iter()
+        .filter(|warning| warning.fix_blocking)
+        .collect())
+}
+
 pub(super) fn source_alias_ignore_warnings(
     config: &CodescytheConfig,
     aliases: &[AliasMapping],
@@ -173,6 +183,7 @@ pub(super) fn source_alias_ignore_warnings(
     let mut warnings = Vec::new();
     for pattern in &config.unresolved_imports.ignore {
         let literal_prefix = glob_literal_prefix(pattern);
+        let fix_blocking = unresolved_ignore_can_match_source_module(pattern);
         for alias in aliases {
             let Some(alias_prefix) = alias_literal_prefix(&alias.key) else {
                 continue;
@@ -180,14 +191,23 @@ pub(super) fn source_alias_ignore_warnings(
             if literal_prefix.starts_with(&alias_prefix)
                 || alias_prefix.starts_with(&literal_prefix)
             {
+                let message = if fix_blocking {
+                    format!(
+                        "unresolved import ignore pattern {pattern:?} overlaps local source alias {:?} and can hide JS/TS source imports",
+                        alias.key
+                    )
+                } else {
+                    format!(
+                        "unresolved import ignore pattern {pattern:?} overlaps local source alias {:?} but only matches non-JS/TS asset-like imports",
+                        alias.key
+                    )
+                };
                 warnings.push(SourceAliasIgnoreWarning {
                     pattern: pattern.clone(),
                     alias: alias.key.clone(),
                     source: alias.source.clone(),
-                    message: format!(
-                        "unresolved import ignore pattern {pattern:?} overlaps local source alias {:?}",
-                        alias.key
-                    ),
+                    fix_blocking,
+                    message,
                 });
             }
         }
@@ -218,6 +238,27 @@ fn glob_literal_prefix(pattern: &str) -> String {
         prefix.push(character);
     }
     prefix
+}
+
+fn unresolved_ignore_can_match_source_module(pattern: &str) -> bool {
+    let without_query = pattern
+        .split_once('?')
+        .map_or(pattern, |(prefix, _)| prefix);
+    let segment = without_query.rsplit('/').next().unwrap_or(without_query);
+    let Some((_, extension)) = segment.rsplit_once('.') else {
+        return true;
+    };
+    if extension.is_empty()
+        || extension
+            .chars()
+            .any(|character| matches!(character, '*' | '?' | '[' | '{'))
+    {
+        return true;
+    }
+    matches!(
+        extension,
+        "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs"
+    )
 }
 
 fn config_alias_value(cwd: &Path, value: &str) -> String {

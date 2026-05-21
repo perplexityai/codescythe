@@ -319,6 +319,46 @@ mod tests {
     }
 
     #[test]
+    fn permits_fix_when_source_alias_ignore_only_matches_asset_query_imports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r##"{
+              "entry": "src/main.ts",
+              "project": ["src/**/*.ts", "pplx/**/*.ts"],
+              "unresolvedImports": {
+                "ignore": ["#pplx/frontend/**/sprite.generated.svg?raw"]
+              }
+            }"##,
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("package.json"),
+            r##"{
+              "imports": {
+                "#pplx/*": "./pplx/*.ts"
+              }
+            }"##,
+        )
+        .unwrap();
+        fs::create_dir_all(cwd.join("src")).unwrap();
+        fs::write(
+            cwd.join("src/main.ts"),
+            "import sprite from '#pplx/frontend/app/sprite.generated.svg?raw';\nconsole.log(sprite);\n",
+        )
+        .unwrap();
+        fs::write(cwd.join("src/dead.ts"), "export const dead = 1;\n").unwrap();
+
+        let result = run_and_fix(cwd, None).unwrap();
+
+        assert_eq!(result.removed_files, vec!["src/dead.ts"]);
+        assert_eq!(result.analysis.counters.ignored_unresolved, 1);
+        assert_eq!(result.analysis.source_alias_ignore_warnings.len(), 1);
+        assert!(!result.analysis.source_alias_ignore_warnings[0].fix_blocking);
+    }
+
+    #[test]
     fn skips_export_edits_when_ignored_unresolved_import_might_point_to_file() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
