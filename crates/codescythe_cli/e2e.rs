@@ -24,7 +24,7 @@ fn cli_reports_release_version() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "codescythe 0.4.8"
+        "codescythe 0.4.9"
     );
 }
 
