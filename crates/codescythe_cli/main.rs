@@ -49,6 +49,10 @@ fn run() -> Result<bool> {
         if args.json {
             println!("{}", serde_json::to_string(&result)?);
         } else {
+            if has_issues(&result.analysis) {
+                print_text_report(&result.analysis);
+                println!();
+            }
             println!(
                 "Removed {} unused exports from {} files and {} unused files",
                 result.removed_exports,
@@ -56,9 +60,7 @@ fn run() -> Result<bool> {
                 result.removed_files.len()
             );
         }
-        return Ok(!result.analysis.issues.files.is_empty()
-            || !result.analysis.issues.exports.is_empty()
-            || !result.analysis.issues.unresolved.is_empty());
+        return Ok(has_issues(&result.analysis));
     }
 
     let analysis = codescythe::run(&cwd, config)?;
@@ -68,9 +70,13 @@ fn run() -> Result<bool> {
         print_text_report(&analysis);
     }
 
-    Ok(!analysis.issues.files.is_empty()
+    Ok(has_issues(&analysis))
+}
+
+fn has_issues(analysis: &codescythe::Analysis) -> bool {
+    !analysis.issues.files.is_empty()
         || !analysis.issues.exports.is_empty()
-        || !analysis.issues.unresolved.is_empty())
+        || !analysis.issues.unresolved.is_empty()
 }
 
 fn print_text_report(analysis: &codescythe::Analysis) {

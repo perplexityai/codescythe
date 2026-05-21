@@ -11,6 +11,10 @@ type Analysis = {
   issues: {
     files: Record<string, unknown>;
     exports: Record<string, Record<string, unknown>>;
+    unresolved?: Record<string, string[]>;
+  };
+  counters: {
+    unresolved: number;
   };
 };
 
@@ -18,6 +22,7 @@ type FixResult = {
   changedFiles: string[];
   removedFiles: string[];
   removedExports: number;
+  analysis: Analysis;
 };
 
 type NativeBinding = {
@@ -76,6 +81,7 @@ describe('@perplexity/codescythe npm package', () => {
     assert.deepEqual(result.removedFiles, ['dangling.ts']);
     assert.deepEqual(result.changedFiles, ['my-module.ts', 'my-namespace.ts', 'types.ts']);
     assert.equal(result.removedExports, 6);
+    assertFixtureAnalysis(result.analysis);
     assert.equal(fs.existsSync(path.join(fixFixture, 'dangling.ts')), false);
     const fixedAnalysis = codescythe.analyze({cwd: fixFixture});
     assert.deepEqual(fixedAnalysis.issues.files, {});

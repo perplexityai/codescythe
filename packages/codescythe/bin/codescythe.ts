@@ -15,6 +15,7 @@ type AnalysisResult = {
   issues: {
     exports: Record<string, Record<string, {col: number; line: number; symbol: string}>>;
     files: Record<string, unknown>;
+    unresolved?: Record<string, string[]>;
   };
 };
 
@@ -22,6 +23,7 @@ type FixResult = {
   changedFiles: string[];
   removedFiles: string[];
   removedExports: number;
+  analysis: AnalysisResult;
 };
 
 const { analyze, fix } = require('@perplexity/codescythe') as {
@@ -55,26 +57,67 @@ if (json) {
   console.log(JSON.stringify(result));
 } else if (shouldFix) {
   const fixResult = result as FixResult;
+  if (hasIssues(fixResult.analysis)) {
+    printTextReport(fixResult.analysis);
+    console.log('');
+  }
   console.log(
     `Removed ${fixResult.removedExports} unused exports from ${fixResult.changedFiles.length} files and ${fixResult.removedFiles.length} unused files`,
   );
-} else if (result.counters.files === 0 && result.counters.exports === 0 && result.counters.unresolved === 0) {
-  console.log('No dead TypeScript code found');
 } else {
-  const analysisResult = result as AnalysisResult;
-  for (const filePath of Object.keys(analysisResult.issues.files)) {
-    console.log(`unused file ${filePath}`);
-  }
-  for (const [filePath, exports] of Object.entries(analysisResult.issues.exports)) {
-    for (const issue of Object.values(exports)) {
-      console.log(`unused export ${filePath}:${issue.line}:${issue.col} ${issue.symbol}`);
-    }
-  }
+  printTextReport(result as AnalysisResult);
 }
 
 if (shouldFix) {
-  process.exit(0);
+  const fixResult = result as FixResult;
+  process.exit(hasIssues(fixResult.analysis) ? 1 : 0);
 }
 
 const analysisResult = result as AnalysisResult;
-process.exit(analysisResult.counters.files || analysisResult.counters.exports || analysisResult.counters.unresolved ? 1 : 0);
+process.exit(hasIssues(analysisResult) ? 1 : 0);
+
+function hasIssues(analysis: AnalysisResult): boolean {
+  return (
+    Object.keys(analysis.issues.files).length > 0 ||
+    Object.keys(analysis.issues.exports).length > 0 ||
+    Object.keys(analysis.issues.unresolved ?? {}).length > 0
+  );
+}
+
+function printTextReport(analysis: AnalysisResult): void {
+  if (!hasIssues(analysis)) {
+    console.log('No dead TypeScript code found');
+    return;
+  }
+
+  const filePaths = Object.keys(analysis.issues.files);
+  if (filePaths.length > 0) {
+    console.log(`Unused files (${filePaths.length})`);
+    for (const filePath of filePaths) {
+      console.log(`  ${filePath}`);
+    }
+  }
+
+  const exportCount = Object.values(analysis.issues.exports).reduce(
+    (count, exports) => count + Object.keys(exports).length,
+    0,
+  );
+  if (exportCount > 0) {
+    console.log(`Unused exports (${exportCount})`);
+    for (const [filePath, exports] of Object.entries(analysis.issues.exports)) {
+      for (const issue of Object.values(exports)) {
+        console.log(`  ${filePath}:${issue.line}:${issue.col} ${issue.symbol}`);
+      }
+    }
+  }
+
+  const unresolved = analysis.issues.unresolved ?? {};
+  if (Object.keys(unresolved).length > 0) {
+    console.log(`Unresolved imports (${analysis.counters.unresolved})`);
+    for (const [filePath, imports] of Object.entries(unresolved)) {
+      for (const importPath of imports) {
+        console.log(`  ${filePath}: ${importPath}`);
+      }
+    }
+  }
+}
