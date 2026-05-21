@@ -293,9 +293,9 @@ mod tests {
             cwd.join("codescythe.json"),
             r##"{
               "entry": "src/main.ts",
-              "project": ["src/**/*.ts", "pplx/**/*.ts"],
+              "project": ["src/**/*.ts", "workspace/**/*.ts"],
               "unresolvedImports": {
-                "ignore": ["#pplx/frontend/**"]
+                "ignore": ["#workspace/frontend/**"]
               }
             }"##,
         )
@@ -304,7 +304,7 @@ mod tests {
             cwd.join("package.json"),
             r##"{
               "imports": {
-                "#pplx/*": "./pplx/*.ts"
+                "#workspace/*": "./workspace/*.ts"
               }
             }"##,
         )
@@ -326,9 +326,9 @@ mod tests {
             cwd.join("codescythe.json"),
             r##"{
               "entry": "src/main.ts",
-              "project": ["src/**/*.ts", "pplx/**/*.ts"],
+              "project": ["src/**/*.ts", "workspace/**/*.ts"],
               "unresolvedImports": {
-                "ignore": ["#pplx/frontend/**/sprite.generated.svg?raw"]
+                "ignore": ["#workspace/frontend/**/sprite.generated.svg?raw"]
               }
             }"##,
         )
@@ -337,7 +337,7 @@ mod tests {
             cwd.join("package.json"),
             r##"{
               "imports": {
-                "#pplx/*": "./pplx/*.ts"
+                "#workspace/*": "./workspace/*.ts"
               }
             }"##,
         )
@@ -345,7 +345,7 @@ mod tests {
         fs::create_dir_all(cwd.join("src")).unwrap();
         fs::write(
             cwd.join("src/main.ts"),
-            "import sprite from '#pplx/frontend/app/sprite.generated.svg?raw';\nconsole.log(sprite);\n",
+            "import sprite from '#workspace/frontend/app/sprite.generated.svg?raw';\nconsole.log(sprite);\n",
         )
         .unwrap();
         fs::write(cwd.join("src/dead.ts"), "export const dead = 1;\n").unwrap();

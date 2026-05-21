@@ -9,6 +9,8 @@ use std::{
 
 use serde_json::Value;
 
+const EXPECTED_SUMMARY_VERSION: &str = "0.4.10"; // x-release-please-version
+
 #[test]
 fn cli_reports_release_version() {
     let output = Command::new(runfile("crates/codescythe_cli/codescythe"))
@@ -211,7 +213,7 @@ fn cli_explains_exports_and_doctors_config() {
           "entry": "src/main.ts",
           "project": "src/**/*.ts",
           "unresolvedImports": {
-            "ignore": ["#pplx/frontend/**"]
+            "ignore": ["#workspace/frontend/**"]
           }
         }"##,
     )
@@ -220,7 +222,7 @@ fn cli_explains_exports_and_doctors_config() {
         fixture.join("package.json"),
         r##"{
           "imports": {
-            "#pplx/*": "./pplx/*.ts"
+            "#workspace/*": "./workspace/*.ts"
           }
         }"##,
     )
@@ -255,10 +257,11 @@ fn cli_explains_exports_and_doctors_config() {
     let analysis: Value =
         serde_json::from_slice(&explain_output.stdout).expect("explain stdout should be JSON");
     assert_eq!(analysis["explainExport"]["status"], "dead");
+    assert_eq!(analysis["summary"]["version"], EXPECTED_SUMMARY_VERSION);
     assert_eq!(analysis["summary"]["projectCount"], 2);
     assert_eq!(
         analysis["sourceAliasIgnoreWarnings"][0]["pattern"],
-        "#pplx/frontend/**"
+        "#workspace/frontend/**"
     );
 
     let doctor_output = Command::new(&cli)
@@ -273,6 +276,7 @@ fn cli_explains_exports_and_doctors_config() {
     );
     let doctor: Value =
         serde_json::from_slice(&doctor_output.stdout).expect("doctor stdout should be JSON");
+    assert_eq!(doctor["summary"]["version"], EXPECTED_SUMMARY_VERSION);
     assert_eq!(doctor["warnings"][0]["code"], "sourceAliasUnresolvedIgnore");
 
     fs::remove_dir_all(&fixture).unwrap();

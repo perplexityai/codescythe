@@ -691,7 +691,7 @@ fn doctor_explains_unresolved_alias_candidates() {
         "codescythe.json",
         r##"{
               "entry": "src/main.ts",
-              "project": ["src/**/*.ts", "pplx/**/*.ts"]
+              "project": ["src/**/*.ts", "workspace/**/*.ts"]
             }"##,
     );
     write_file(
@@ -699,14 +699,14 @@ fn doctor_explains_unresolved_alias_candidates() {
         "package.json",
         r##"{
               "imports": {
-                "#pplx/*": "./pplx/*"
+                "#workspace/*": "./workspace/*"
               }
             }"##,
     );
     write_file(
         cwd,
         "src/main.ts",
-        "import { missing } from '#pplx/frontend/missing.js';\nconsole.log(missing);\n",
+        "import { missing } from '#workspace/frontend/missing.js';\nconsole.log(missing);\n",
     );
 
     let config = crate::load_config(cwd, None).unwrap();
@@ -721,13 +721,16 @@ fn doctor_explains_unresolved_alias_candidates() {
     assert_eq!(result.unresolved_imports.len(), 1);
     let unresolved = &result.unresolved_imports[0];
     assert_eq!(unresolved.importer, "src/main.ts");
-    assert_eq!(unresolved.specifier, "#pplx/frontend/missing.js");
+    assert_eq!(unresolved.specifier, "#workspace/frontend/missing.js");
     assert_eq!(unresolved.matched_aliases.len(), 1);
     let alias = &unresolved.matched_aliases[0];
-    assert_eq!(alias.key, "#pplx/*");
-    assert_eq!(alias.target, "./pplx/*");
-    assert_eq!(alias.expanded_target, "./pplx/frontend/missing.js");
-    assert_eq!(alias.candidate_files[0].path, "pplx/frontend/missing.ts");
+    assert_eq!(alias.key, "#workspace/*");
+    assert_eq!(alias.target, "./workspace/*");
+    assert_eq!(alias.expanded_target, "./workspace/frontend/missing.js");
+    assert_eq!(
+        alias.candidate_files[0].path,
+        "workspace/frontend/missing.ts"
+    );
     assert!(!alias.candidate_files[0].exists);
     assert!(!alias.candidate_files[0].in_project);
 }
@@ -837,7 +840,7 @@ fn resolves_package_import_js_specifiers_to_ts_source() {
         "codescythe.json",
         r##"{
               "entry": "src/main.ts",
-              "project": ["src/**/*.ts", "pplx/**/*.ts"]
+              "project": ["src/**/*.ts", "workspace/**/*.ts"]
             }"##,
     );
     write_file(
@@ -846,18 +849,18 @@ fn resolves_package_import_js_specifiers_to_ts_source() {
         r##"{
               "type": "module",
               "imports": {
-                "#pplx/*": "./pplx/*"
+                "#workspace/*": "./workspace/*"
               }
             }"##,
     );
     write_file(
         cwd,
         "src/main.ts",
-        "import { used } from '#pplx/frontend/module.js';\nconsole.log(used);\n",
+        "import { used } from '#workspace/frontend/module.js';\nconsole.log(used);\n",
     );
     write_file(
         cwd,
-        "pplx/frontend/module.ts",
+        "workspace/frontend/module.ts",
         "export const used = 1;\nexport const unused = 2;\n",
     );
 
@@ -865,8 +868,8 @@ fn resolves_package_import_js_specifiers_to_ts_source() {
     let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
 
     assert!(analysis.issues.unresolved.is_empty());
-    assert_no_unused_export(&analysis, "pplx/frontend/module.ts", "used");
-    assert_unused_export(&analysis, "pplx/frontend/module.ts", "unused");
+    assert_no_unused_export(&analysis, "workspace/frontend/module.ts", "used");
+    assert_unused_export(&analysis, "workspace/frontend/module.ts", "unused");
 }
 
 #[test]
@@ -881,7 +884,7 @@ fn warns_when_unresolved_ignore_overlaps_source_alias() {
               "entry": "src/main.ts",
               "project": "src/**/*.ts",
               "unresolvedImports": {
-                "ignore": ["#pplx/frontend/**"]
+                "ignore": ["#workspace/frontend/**"]
               }
             }"##,
     );
@@ -890,7 +893,7 @@ fn warns_when_unresolved_ignore_overlaps_source_alias() {
         "package.json",
         r##"{
               "imports": {
-                "#pplx/*": "./pplx/*.ts"
+                "#workspace/*": "./workspace/*.ts"
               }
             }"##,
     );
@@ -902,9 +905,12 @@ fn warns_when_unresolved_ignore_overlaps_source_alias() {
     assert_eq!(analysis.source_alias_ignore_warnings.len(), 1);
     assert_eq!(
         analysis.source_alias_ignore_warnings[0].pattern,
-        "#pplx/frontend/**"
+        "#workspace/frontend/**"
     );
-    assert_eq!(analysis.source_alias_ignore_warnings[0].alias, "#pplx/*");
+    assert_eq!(
+        analysis.source_alias_ignore_warnings[0].alias,
+        "#workspace/*"
+    );
     assert!(analysis.source_alias_ignore_warnings[0].fix_blocking);
 }
 
@@ -920,7 +926,7 @@ fn marks_asset_query_source_alias_ignore_as_non_fix_blocking() {
               "entry": "src/main.ts",
               "project": "src/**/*.ts",
               "unresolvedImports": {
-                "ignore": ["#pplx/frontend/**/sprite.generated.svg?raw"]
+                "ignore": ["#workspace/frontend/**/sprite.generated.svg?raw"]
               }
             }"##,
     );
@@ -929,7 +935,7 @@ fn marks_asset_query_source_alias_ignore_as_non_fix_blocking() {
         "package.json",
         r##"{
               "imports": {
-                "#pplx/*": "./pplx/*.ts"
+                "#workspace/*": "./workspace/*.ts"
               }
             }"##,
     );
@@ -941,9 +947,12 @@ fn marks_asset_query_source_alias_ignore_as_non_fix_blocking() {
     assert_eq!(analysis.source_alias_ignore_warnings.len(), 1);
     assert_eq!(
         analysis.source_alias_ignore_warnings[0].pattern,
-        "#pplx/frontend/**/sprite.generated.svg?raw"
+        "#workspace/frontend/**/sprite.generated.svg?raw"
     );
-    assert_eq!(analysis.source_alias_ignore_warnings[0].alias, "#pplx/*");
+    assert_eq!(
+        analysis.source_alias_ignore_warnings[0].alias,
+        "#workspace/*"
+    );
     assert!(!analysis.source_alias_ignore_warnings[0].fix_blocking);
 }
 
