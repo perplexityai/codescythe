@@ -1,6 +1,6 @@
 Codescythe diagnostics
 Runtime:
-  version: codescythe 0.4.6
+  version: codescythe 0.4.7
   process cwd: <cwd>
   resolved directory: <fixture>
   config: <fixture>/codescythe.json (discovered)

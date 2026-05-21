@@ -28,7 +28,7 @@
   },
   "diagnostics": {
     "runtime": {
-      "version": "codescythe 0.4.6",
+      "version": "codescythe 0.4.7",
       "processCwd": "<cwd>",
       "resolvedDirectory": "<fixture>",
       "configSource": {
