@@ -1,8 +1,90 @@
 use super::*;
 
 pub(super) struct ModuleResolver {
-    resolver: Resolver,
+    resolver: ResolverGeneric<IgnoredResolverMetadataFileSystem>,
     index_by_path: HashMap<PathBuf, usize>,
+}
+
+struct IgnoredResolverMetadataFileSystem {
+    cwd: PathBuf,
+    ignore: GlobSet,
+    inner: FileSystemOs,
+}
+
+impl IgnoredResolverMetadataFileSystem {
+    fn for_config(cwd: &Path, config: &CodescytheConfig) -> Result<Self> {
+        Ok(Self {
+            cwd: cwd.to_path_buf(),
+            ignore: build_glob_set(&config.ignore)?,
+            inner: FileSystemOs::new(),
+        })
+    }
+
+    fn ignores_resolver_metadata(&self, path: &Path) -> bool {
+        if !path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| matches!(name, "package.json" | "tsconfig.json"))
+        {
+            return false;
+        }
+
+        let normalized = normalize_path(path);
+        self.ignore.is_match(relative_path(&self.cwd, &normalized))
+    }
+
+    fn ignored_error(path: &Path) -> io::Error {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("ignored by codescythe config: {}", path.display()),
+        )
+    }
+}
+
+impl FileSystem for IgnoredResolverMetadataFileSystem {
+    fn new() -> Self {
+        Self {
+            cwd: PathBuf::new(),
+            ignore: build_glob_set(&[]).expect("empty glob set is valid"),
+            inner: FileSystemOs::new(),
+        }
+    }
+
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        if self.ignores_resolver_metadata(path) {
+            return Err(Self::ignored_error(path));
+        }
+        self.inner.read(path)
+    }
+
+    fn read_to_string(&self, path: &Path) -> io::Result<String> {
+        if self.ignores_resolver_metadata(path) {
+            return Err(Self::ignored_error(path));
+        }
+        self.inner.read_to_string(path)
+    }
+
+    fn metadata(&self, path: &Path) -> io::Result<FileMetadata> {
+        if self.ignores_resolver_metadata(path) {
+            return Err(Self::ignored_error(path));
+        }
+        self.inner.metadata(path)
+    }
+
+    fn symlink_metadata(&self, path: &Path) -> io::Result<FileMetadata> {
+        if self.ignores_resolver_metadata(path) {
+            return Err(Self::ignored_error(path));
+        }
+        self.inner.symlink_metadata(path)
+    }
+
+    fn read_link(&self, path: &Path) -> Result<PathBuf, ResolveError> {
+        self.inner.read_link(path)
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        self.inner.canonicalize(path)
+    }
 }
 
 pub(super) enum ImportResolution {
@@ -12,48 +94,55 @@ pub(super) enum ImportResolution {
 }
 
 impl ModuleResolver {
-    pub(super) fn new(cwd: &Path, project_files: &[PathBuf], config: &CodescytheConfig) -> Self {
-        let resolver = Resolver::new(ResolveOptions {
-            cwd: Some(cwd.to_path_buf()),
-            tsconfig: Some(TsconfigDiscovery::Auto),
-            alias: config_aliases(cwd, config),
-            condition_names: vec!["node".into(), "import".into()],
-            extensions: vec![
-                ".ts".into(),
-                ".tsx".into(),
-                ".mts".into(),
-                ".cts".into(),
-                ".js".into(),
-                ".jsx".into(),
-                ".mjs".into(),
-                ".cjs".into(),
-                ".json".into(),
-                ".node".into(),
-            ],
-            extension_alias: vec![
-                (
+    pub(super) fn new(
+        cwd: &Path,
+        project_files: &[PathBuf],
+        config: &CodescytheConfig,
+    ) -> Result<Self> {
+        let resolver = ResolverGeneric::new_with_file_system(
+            IgnoredResolverMetadataFileSystem::for_config(cwd, config)?,
+            ResolveOptions {
+                cwd: Some(cwd.to_path_buf()),
+                tsconfig: Some(TsconfigDiscovery::Auto),
+                alias: config_aliases(cwd, config),
+                condition_names: vec!["node".into(), "import".into()],
+                extensions: vec![
+                    ".ts".into(),
+                    ".tsx".into(),
+                    ".mts".into(),
+                    ".cts".into(),
                     ".js".into(),
-                    vec![".ts".into(), ".tsx".into(), ".js".into(), ".jsx".into()],
-                ),
-                (".jsx".into(), vec![".tsx".into(), ".jsx".into()]),
-                (".mjs".into(), vec![".mts".into(), ".mjs".into()]),
-                (".cjs".into(), vec![".cts".into(), ".cjs".into()]),
-            ],
-            symlinks: false,
-            node_path: false,
-            builtin_modules: true,
-            ..ResolveOptions::default()
-        });
+                    ".jsx".into(),
+                    ".mjs".into(),
+                    ".cjs".into(),
+                    ".json".into(),
+                    ".node".into(),
+                ],
+                extension_alias: vec![
+                    (
+                        ".js".into(),
+                        vec![".ts".into(), ".tsx".into(), ".js".into(), ".jsx".into()],
+                    ),
+                    (".jsx".into(), vec![".tsx".into(), ".jsx".into()]),
+                    (".mjs".into(), vec![".mts".into(), ".mjs".into()]),
+                    (".cjs".into(), vec![".cts".into(), ".cjs".into()]),
+                ],
+                symlinks: false,
+                node_path: false,
+                builtin_modules: true,
+                ..ResolveOptions::default()
+            },
+        );
         let index_by_path = project_files
             .iter()
             .enumerate()
             .map(|(index, path)| (normalize_path(path), index))
             .collect::<HashMap<_, _>>();
 
-        Self {
+        Ok(Self {
             resolver,
             index_by_path,
-        }
+        })
     }
 
     pub(super) fn resolve(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
@@ -175,7 +264,7 @@ pub(super) fn source_alias_mappings(
     cwd: &Path,
     config: &CodescytheConfig,
 ) -> Result<Vec<AliasMapping>> {
-    let mut aliases = package_import_aliases(cwd)?;
+    let mut aliases = package_import_aliases(cwd, config)?;
     aliases.extend(config.aliases.iter().map(|(key, values)| AliasMapping {
         key: key.clone(),
         values: values.clone(),
@@ -184,9 +273,9 @@ pub(super) fn source_alias_mappings(
     Ok(aliases)
 }
 
-fn package_import_aliases(cwd: &Path) -> Result<Vec<AliasMapping>> {
+fn package_import_aliases(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<AliasMapping>> {
     let package_json = cwd.join("package.json");
-    if !package_json.exists() {
+    if !package_json.exists() || config_ignores_path(cwd, config, &package_json)? {
         return Ok(Vec::new());
     }
     let value = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&package_json)?)
@@ -205,13 +294,17 @@ fn package_import_aliases(cwd: &Path) -> Result<Vec<AliasMapping>> {
         .collect())
 }
 
-pub(super) fn package_import_keys(cwd: &Path) -> Result<Vec<String>> {
-    let mut keys = package_import_aliases(cwd)?
+pub(super) fn package_import_keys(cwd: &Path, config: &CodescytheConfig) -> Result<Vec<String>> {
+    let mut keys = package_import_aliases(cwd, config)?
         .into_iter()
         .map(|alias| alias.key)
         .collect::<Vec<_>>();
     keys.sort();
     Ok(keys)
+}
+
+fn config_ignores_path(cwd: &Path, config: &CodescytheConfig, path: &Path) -> Result<bool> {
+    Ok(build_glob_set(&config.ignore)?.is_match(relative_path(cwd, &normalize_path(path))))
 }
 
 fn collect_import_targets(value: &serde_json::Value) -> Vec<String> {

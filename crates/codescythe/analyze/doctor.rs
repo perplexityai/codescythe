@@ -101,7 +101,7 @@ pub fn doctor_config(
             entry_count: entry_files.len(),
             ignored_unresolved_count: 0,
             ignored_unresolved_patterns: config.unresolved_imports.ignore.clone(),
-            package_import_keys: package_import_keys(&cwd).unwrap_or_default(),
+            package_import_keys: package_import_keys(&cwd, config).unwrap_or_default(),
             configured_alias_keys: config.aliases.keys().cloned().collect(),
         },
         unresolved_imports,
@@ -114,7 +114,7 @@ fn doctor_unresolved_imports(
     project_files: &[PathBuf],
     analysis: &Analysis,
 ) -> Result<Vec<UnresolvedImportExplanation>> {
-    let resolver = ModuleResolver::new(cwd, project_files, config);
+    let resolver = ModuleResolver::new(cwd, project_files, config)?;
     let mut explanations = Vec::new();
     for (importer, specifiers) in &analysis.issues.unresolved {
         for specifier in specifiers {

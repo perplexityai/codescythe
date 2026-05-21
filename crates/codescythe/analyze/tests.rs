@@ -873,6 +873,149 @@ fn resolves_package_import_js_specifiers_to_ts_source() {
 }
 
 #[test]
+fn ignored_package_json_and_tsconfig_do_not_feed_oxc_resolver_metadata() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r##"{
+              "entry": "workspace/apps/web/e2e/main.ts",
+              "project": "workspace/**/*.ts",
+              "ignore": [
+                "package.json",
+                "**/package.json",
+                "tsconfig.json",
+                "**/tsconfig.json"
+              ]
+            }"##,
+    );
+    write_file(
+        cwd,
+        "workspace/apps/web/e2e/package.json",
+        r##"{
+              "name": "@example/web-e2e",
+              "private": true,
+              "imports": {
+                "#local/*": "./local/*"
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "workspace/apps/web/e2e/tsconfig.json",
+        r##"{
+              "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {
+                  "#ts/*": ["local/*"]
+                }
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "workspace/apps/web/e2e/main.ts",
+        "import { packageUsed } from '#local/package-module.js';\nimport { tsconfigUsed } from '#ts/tsconfig-module.js';\nconsole.log(packageUsed, tsconfigUsed);\n",
+    );
+    write_file(
+        cwd,
+        "workspace/apps/web/e2e/local/package-module.ts",
+        "export const packageUsed = 1;\n",
+    );
+    write_file(
+        cwd,
+        "workspace/apps/web/e2e/local/tsconfig-module.ts",
+        "export const tsconfigUsed = 1;\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+    assert_eq!(
+        analysis.issues.unresolved["workspace/apps/web/e2e/main.ts"],
+        vec!["#local/package-module.js", "#ts/tsconfig-module.js"]
+    );
+    assert_unused_file(&analysis, "workspace/apps/web/e2e/local/package-module.ts");
+    assert_unused_file(&analysis, "workspace/apps/web/e2e/local/tsconfig-module.ts");
+}
+
+#[test]
+fn configured_aliases_still_resolve_when_resolver_metadata_is_ignored() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r##"{
+              "entry": "workspace/apps/web/e2e/main.ts",
+              "project": "workspace/**/*.ts",
+              "ignore": [
+                "package.json",
+                "**/package.json",
+                "tsconfig.json",
+                "**/tsconfig.json"
+              ],
+              "aliases": {
+                "#workspace/*": "./workspace/*"
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "package.json",
+        r##"{
+              "imports": {
+                "#workspace/*": "./workspace/wrong-package/*"
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "tsconfig.json",
+        r##"{
+              "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {
+                  "#workspace/*": ["workspace/wrong-tsconfig/*"]
+                }
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "workspace/apps/web/e2e/main.ts",
+        "import { used } from '#workspace/frontend/module.js';\nconsole.log(used);\n",
+    );
+    write_file(
+        cwd,
+        "workspace/frontend/module.ts",
+        "export const used = 1;\nexport const unused = 2;\n",
+    );
+    write_file(
+        cwd,
+        "workspace/wrong-package/frontend/module.ts",
+        "export const used = 1;\n",
+    );
+    write_file(
+        cwd,
+        "workspace/wrong-tsconfig/frontend/module.ts",
+        "export const used = 1;\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+    assert!(analysis.issues.unresolved.is_empty());
+    assert_no_unused_export(&analysis, "workspace/frontend/module.ts", "used");
+    assert_unused_export(&analysis, "workspace/frontend/module.ts", "unused");
+    assert_unused_file(&analysis, "workspace/wrong-package/frontend/module.ts");
+    assert_unused_file(&analysis, "workspace/wrong-tsconfig/frontend/module.ts");
+}
+
+#[test]
 fn warns_when_unresolved_ignore_overlaps_source_alias() {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();

@@ -34,7 +34,7 @@ use util::{
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    env, fs,
+    env, fs, io,
     path::{Component, Path, PathBuf},
     sync::Arc,
     thread,
@@ -47,7 +47,10 @@ use oxc::ast_visit::{Visit, walk};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::{Parser, ParserReturn};
-use oxc_resolver::{AliasValue, ResolveError, ResolveOptions, Resolver, TsconfigDiscovery};
+use oxc_resolver::{
+    AliasValue, FileMetadata, FileSystem, FileSystemOs, ResolveError, ResolveOptions,
+    ResolverGeneric, TsconfigDiscovery,
+};
 use oxc_span::{GetSpan, SourceType, Span};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -304,7 +307,7 @@ pub fn analyze_path(
         .enumerate()
         .map(|(index, path)| (normalize_path(path), index))
         .collect::<HashMap<_, _>>();
-    let module_resolver = ModuleResolver::new(&cwd, &project_files, config);
+    let module_resolver = ModuleResolver::new(&cwd, &project_files, config)?;
     let unresolved_policy = UnresolvedImportPolicy::new(config)?;
     let alias_mappings = source_alias_mappings(&cwd, config)?;
     let source_alias_ignore_warnings = source_alias_ignore_warnings(config, &alias_mappings)?;
@@ -735,7 +738,7 @@ pub fn analyze_path(
             .keys()
             .cloned()
             .collect(),
-        package_import_keys: package_import_keys(&cwd).unwrap_or_default(),
+        package_import_keys: package_import_keys(&cwd, config).unwrap_or_default(),
         configured_alias_keys: config.aliases.keys().cloned().collect(),
     });
 
