@@ -108,9 +108,12 @@ Use `doctor` to check config risk before running destructive fixes:
 codescythe doctor --config codescythe.jsonc
 ```
 
-The doctor flags broad unresolved-import ignores under local aliases, entry
-patterns with zero matches, project scopes that appear much broader than entry
-coverage, and generated ignore patterns that also match checked source files.
+The doctor flags broad unresolved-import ignores under local aliases, unresolved
+imports, entry patterns with zero matches, project scopes that appear much
+broader than entry coverage, and generated ignore patterns that also match
+checked source files. When unresolved imports are present, JSON doctor output
+includes sampled resolver diagnostics with matched aliases, expanded targets,
+candidate files, and whether each candidate exists in the project.
 
 ## Contributing
 

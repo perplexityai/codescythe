@@ -94,6 +94,12 @@ with counts and sample importer/specifier pairs. This keeps generated namespace
 suppressions visible and prevents ignored unresolved edges from looking like the
 same confidence level as proved-unused code.
 
+The `doctor` command runs the same resolver-backed analysis and samples
+unresolved imports into `unresolvedImports`. Each sample records the importer,
+specifier, resolver error, matching source aliases, expanded alias targets, and
+candidate files with `exists` and `inProject` booleans. This makes alias misses
+self-diagnosing without requiring a separate reproduction run.
+
 Codescythe treats unresolved-ignore patterns that overlap local source aliases
 from `package.json#imports` or `aliases` as risky. Normal analysis emits a
 warning. `--fix` refuses source-like overlaps, meaning extensionless and

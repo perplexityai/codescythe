@@ -22,6 +22,7 @@ export interface SourceAliasIgnoreWarning {
   pattern: string;
   alias: string;
   source: string;
+  fixBlocking: boolean;
   message: string;
 }
 
@@ -56,6 +57,28 @@ export interface AnalysisSummary {
 export interface ConfigDoctorResult {
   warnings: { code: string; message: string }[];
   summary: AnalysisSummary;
+  unresolvedImports?: UnresolvedImportExplanation[];
+}
+
+export interface UnresolvedImportExplanation {
+  importer: string;
+  specifier: string;
+  resolverError: string;
+  matchedAliases: UnresolvedImportMatchedAlias[];
+}
+
+export interface UnresolvedImportMatchedAlias {
+  source: string;
+  key: string;
+  target: string;
+  expandedTarget: string;
+  candidateFiles: UnresolvedImportCandidateFile[];
+}
+
+export interface UnresolvedImportCandidateFile {
+  path: string;
+  exists: boolean;
+  inProject: boolean;
 }
 
 export interface Analysis {

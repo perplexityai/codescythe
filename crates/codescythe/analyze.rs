@@ -154,6 +154,8 @@ pub struct AnalysisSummary {
 pub struct ConfigDoctorResult {
     pub warnings: Vec<ConfigDoctorWarning>,
     pub summary: AnalysisSummary,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unresolved_imports: Vec<UnresolvedImportExplanation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +188,33 @@ pub struct SourceAliasIgnoreWarning {
     pub source: String,
     pub fix_blocking: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedImportExplanation {
+    pub importer: String,
+    pub specifier: String,
+    pub resolver_error: String,
+    pub matched_aliases: Vec<UnresolvedImportMatchedAlias>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedImportMatchedAlias {
+    pub source: String,
+    pub key: String,
+    pub target: String,
+    pub expanded_target: String,
+    pub candidate_files: Vec<UnresolvedImportCandidateFile>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedImportCandidateFile {
+    pub path: String,
+    pub exists: bool,
+    pub in_project: bool,
 }
 
 #[derive(Debug, Clone)]

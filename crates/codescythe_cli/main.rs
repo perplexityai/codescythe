@@ -153,7 +153,7 @@ fn run_command(command: Command) -> Result<bool> {
             } else {
                 print_doctor_report(&result);
             }
-            Ok(!result.warnings.is_empty())
+            Ok(!result.warnings.is_empty() || !result.unresolved_imports.is_empty())
         }
     }
 }
@@ -275,14 +275,39 @@ fn print_explain_export(analysis: &codescythe::Analysis) {
 }
 
 fn print_doctor_report(result: &codescythe::ConfigDoctorResult) {
-    if result.warnings.is_empty() {
+    if result.warnings.is_empty() && result.unresolved_imports.is_empty() {
         println!("No risky Codescythe config found");
         return;
     }
 
-    println!("Config warnings ({})", result.warnings.len());
-    for warning in &result.warnings {
-        println!("  {}: {}", warning.code, warning.message);
+    if !result.warnings.is_empty() {
+        println!("Config warnings ({})", result.warnings.len());
+        for warning in &result.warnings {
+            println!("  {}: {}", warning.code, warning.message);
+        }
+    }
+
+    if !result.unresolved_imports.is_empty() {
+        println!(
+            "Unresolved import diagnostics ({})",
+            result.unresolved_imports.len()
+        );
+        for unresolved in &result.unresolved_imports {
+            println!("  {}: {}", unresolved.importer, unresolved.specifier);
+            println!("    resolver error: {}", unresolved.resolver_error);
+            for alias in &unresolved.matched_aliases {
+                println!(
+                    "    alias {} from {} via {} -> {}",
+                    alias.key, alias.source, alias.target, alias.expanded_target
+                );
+                for candidate in &alias.candidate_files {
+                    println!(
+                        "      {} exists={} inProject={}",
+                        candidate.path, candidate.exists, candidate.in_project
+                    );
+                }
+            }
+        }
     }
 }
 
