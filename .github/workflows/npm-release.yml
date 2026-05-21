@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@0.19.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}-npm-packages
@@ -79,28 +79,28 @@ jobs:
           copy_native_package codescythe-linux-arm64 //packages/codescythe-linux-arm64:native_node codescythe.linux-arm64.node
 
       - name: Upload loader package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npm-package-codescythe
           path: artifacts/codescythe
           retention-days: 7
 
       - name: Upload Darwin arm64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npm-package-codescythe-darwin-arm64
           path: artifacts/codescythe-darwin-arm64
           retention-days: 7
 
       - name: Upload Linux amd64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npm-package-codescythe-linux-amd64
           path: artifacts/codescythe-linux-amd64
           retention-days: 7
 
       - name: Upload Linux arm64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npm-package-codescythe-linux-arm64
           path: artifacts/codescythe-linux-arm64
@@ -126,10 +126,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
 
@@ -140,13 +140,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download loader package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: npm-package-codescythe
           path: smoke/codescythe
 
       - name: Download native package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: npm-package-${{ matrix.package }}
           path: smoke/${{ matrix.package }}

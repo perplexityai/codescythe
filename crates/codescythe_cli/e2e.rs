@@ -194,6 +194,82 @@ fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
     fs::remove_dir_all(&writable_fixture).unwrap();
 }
 
+#[test]
+fn cli_fix_text_reports_unresolved_imports_before_summary() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = write_fixture_to_temp(
+        "fix-unresolved",
+        &[
+            (
+                "codescythe.json",
+                r#"{
+  "entry": "src/main.ts",
+  "project": "src/**/*.ts"
+}
+"#,
+            ),
+            ("src/main.ts", "import './missing';\nconsole.log('entry');\n"),
+        ],
+    );
+
+    let output = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--fix"])
+        .output()
+        .expect("failed to run codescythe CLI with --fix");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_text_snapshot(
+        "fix unresolved stdout",
+        &output.stdout,
+        &runfile("tests/fixtures/cli-fix-output/unresolved.stdout"),
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
+#[test]
+fn cli_fix_text_output_for_clean_projects_stays_summary_only() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = write_fixture_to_temp(
+        "fix-clean",
+        &[
+            (
+                "codescythe.json",
+                r#"{
+  "entry": "src/main.ts",
+  "project": "src/**/*.ts"
+}
+"#,
+            ),
+            ("src/main.ts", "const value = 1;\nconsole.log(value);\n"),
+        ],
+    );
+
+    let output = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--fix"])
+        .output()
+        .expect("failed to run codescythe CLI with --fix");
+
+    assert_eq!(output.status.code(), Some(0), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_text_snapshot(
+        "fix clean stdout",
+        &output.stdout,
+        &runfile("tests/fixtures/cli-fix-output/clean.stdout"),
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
 fn runfile(relative: &str) -> PathBuf {
     let relative = Path::new(relative);
     let mut candidates = Vec::new();
@@ -287,12 +363,43 @@ fn assert_json_snapshot(name: &str, actual: &[u8], expected_path: &Path) {
     );
 }
 
+fn assert_text_snapshot(name: &str, actual: &[u8], expected_path: &Path) {
+    let actual = String::from_utf8_lossy(actual);
+    let expected = fs::read_to_string(expected_path)
+        .unwrap_or_else(|error| panic!("failed to read {name} snapshot: {error}"));
+    assert_eq!(
+        actual,
+        expected,
+        "{name} snapshot changed; expected snapshot at {}",
+        expected_path.display()
+    );
+}
+
 fn normalize_json(source: &[u8]) -> String {
     let value = serde_json::from_slice::<Value>(source).expect("source should be JSON");
     format!(
         "{}\n",
         serde_json::to_string_pretty(&value).expect("value should serialize")
     )
+}
+
+fn write_fixture_to_temp(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after UNIX_EPOCH")
+        .as_nanos();
+    let target = env::temp_dir().join(format!(
+        "codescythe-e2e-{name}-{}-{nanos}",
+        std::process::id()
+    ));
+    for (relative, contents) in files {
+        let path = target.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, contents).unwrap();
+    }
+    target
 }
 
 fn copy_fixture_to_temp(source: &Path, name: &str) -> PathBuf {
