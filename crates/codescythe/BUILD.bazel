@@ -20,6 +20,8 @@ COMMON_DEPS = [
     "@crates//:walkdir",
 ]
 
+VERSION = "0.4.10"  # x-release-please-version
+
 rust_library(
     name = "codescythe",
     srcs = [
@@ -39,6 +41,7 @@ rust_library(
     compile_data = ["//:config_schema"],
     crate_name = "codescythe",
     edition = "2024",
+    version = VERSION,
     visibility = ["//visibility:public"],
     deps = COMMON_DEPS,
 )
@@ -50,6 +53,7 @@ rust_test(
         "//tests/fixtures/knip-export-basics:fixtures",
         "//tests/fixtures/oxc-resolution:fixtures",
     ],
+    version = VERSION,
     deps = COMMON_DEPS + [
         "@crates//:tempfile",
     ],
