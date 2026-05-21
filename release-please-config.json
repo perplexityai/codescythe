@@ -5,11 +5,31 @@
   "tag-separator": "_",
   "packages": {
     ".": {
-      "release-type": "rust",
+      "release-type": "simple",
       "component": "codescythe_cli",
       "package-name": "codescythe_cli",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/codescythe/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/codescythe_cli/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/codescythe_napi/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
         {
           "type": "json",
           "path": "packages/codescythe/package.json",
