@@ -63,7 +63,7 @@ unset.
 
 ## Current Numbers
 
-Local run on May 20, 2026 with the checked-in fixture configs:
+Local run on May 22, 2026 with the checked-in fixture configs:
 
 ```sh
 bazel build -c opt //crates/codescythe_cli:codescythe
@@ -73,14 +73,14 @@ node --experimental-transform-types benchmarks/run.ts --samples 3 --warmups 1 --
 ```text
 fixture    tool        mean       rme        samples  ops/sec
 ---------  ----------  ---------  ---------  -------  -------
-vscode     codescythe  1468.2ms   +/-4.42%   4        0.68
-vscode     knip        4669.8ms   +/-27.79%  3        0.21
-grafana    codescythe  1031.1ms   +/-3.69%   5        0.97
-grafana    knip        10302.1ms  +/-28.43%  3        0.10
-kibana     codescythe  15932.2ms  +/-10.85%  3        0.06
-kibana     knip        61479.6ms  +/-14.43%  3        0.02
-renovate   codescythe  176.3ms    +/-2.92%   17       5.67
-renovate   knip        954.5ms    +/-18.01%  5        1.05
+vscode     codescythe  1111.9ms   +/-1.36%   5        0.90
+vscode     knip        4223.1ms   +/-4.89%   3        0.24
+grafana    codescythe  833.2ms    +/-4.11%   5        1.20
+grafana    knip        9513.4ms   +/-56.75%  3        0.11
+kibana     codescythe  12963.8ms  +/-25.85%  3        0.08
+kibana     knip        53327.5ms  +/-33.69%  3        0.02
+renovate   codescythe  154.5ms    +/-4.79%   18       6.47
+renovate   knip        900.5ms    +/-6.09%   5        1.11
 ```
 
 ## Vendored Conformance
