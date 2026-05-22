@@ -78,6 +78,50 @@ fn cli_resolves_oxc_resolution_fixture() {
 }
 
 #[test]
+fn cli_profile_writes_to_stderr_without_polluting_json() {
+    let output = Command::new(runfile("crates/codescythe_cli/codescythe_profiling"))
+        .env("CODESCYTHE_PROFILE", "1")
+        .args([
+            "-C",
+            path_arg(&runfile("tests/fixtures/oxc-resolution")),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run codescythe CLI");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    let analysis: Value =
+        serde_json::from_slice(&output.stdout).expect("CLI stdout should remain JSON");
+    assert_eq!(analysis["counters"]["unresolved"], 0);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("codescythe profile:"), "{stderr}");
+    assert!(stderr.contains("codescythe cli profile:"), "{stderr}");
+    assert!(stderr.contains("json serialization"), "{stderr}");
+}
+
+#[test]
+fn cli_default_build_ignores_profile_env() {
+    let output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .env("CODESCYTHE_PROFILE", "1")
+        .args([
+            "-C",
+            path_arg(&runfile("tests/fixtures/oxc-resolution")),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run codescythe CLI");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    serde_json::from_slice::<Value>(&output.stdout).expect("CLI stdout should remain JSON");
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr from default build: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
     let cli = runfile("crates/codescythe_cli/codescythe");
     let fixture = runfile("tests/fixtures/test-file-usage");
