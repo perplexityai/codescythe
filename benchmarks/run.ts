@@ -565,6 +565,11 @@ function prepareFixture(fixture: Fixture, fixtureRoot: string) {
       'plugin-configs',
     );
     mkdirSync(pluginConfigsDir, { recursive: true });
+    writeJson(path.join(pluginConfigsDir, 'package.json'), {
+      name: '@grafana/plugin-configs',
+      version: '0.0.0',
+      main: 'tsconfig.json',
+    });
     writeJson(path.join(pluginConfigsDir, 'tsconfig.json'), {
       compilerOptions: {
         allowImportingTsExtensions: true,

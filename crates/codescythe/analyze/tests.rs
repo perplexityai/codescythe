@@ -942,6 +942,69 @@ fn ignored_package_json_and_tsconfig_do_not_feed_oxc_resolver_metadata() {
 }
 
 #[test]
+fn ignored_node_modules_does_not_hide_resolver_package_tsconfig() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r##"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts",
+              "ignore": [
+                "node_modules/**",
+                "**/node_modules/**"
+              ]
+            }"##,
+    );
+    write_file(
+        cwd,
+        "tsconfig.json",
+        r##"{
+              "extends": "@example/tsconfig/tsconfig.json"
+            }"##,
+    );
+    write_file(
+        cwd,
+        "node_modules/@example/tsconfig/package.json",
+        r##"{
+              "name": "@example/tsconfig",
+              "version": "0.0.0"
+            }"##,
+    );
+    write_file(
+        cwd,
+        "node_modules/@example/tsconfig/tsconfig.json",
+        r##"{
+              "compilerOptions": {
+                "baseUrl": "../../..",
+                "paths": {
+                  "#shared/*": ["src/shared/*"]
+                }
+              }
+            }"##,
+    );
+    write_file(
+        cwd,
+        "src/main.ts",
+        "import { used } from '#shared/module.js';\nconsole.log(used);\n",
+    );
+    write_file(
+        cwd,
+        "src/shared/module.ts",
+        "export const used = 1;\nexport const unused = 2;\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+    assert!(analysis.issues.unresolved.is_empty());
+    assert_no_unused_export(&analysis, "src/shared/module.ts", "used");
+    assert_unused_export(&analysis, "src/shared/module.ts", "unused");
+}
+
+#[test]
 fn configured_aliases_still_resolve_when_resolver_metadata_is_ignored() {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();

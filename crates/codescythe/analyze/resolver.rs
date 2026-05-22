@@ -29,6 +29,13 @@ impl IgnoredResolverMetadataFileSystem {
             return false;
         }
 
+        if path
+            .components()
+            .any(|component| component.as_os_str() == "node_modules")
+        {
+            return false;
+        }
+
         let normalized = normalize_path(path);
         self.ignore.is_match(relative_path(&self.cwd, &normalized))
     }
