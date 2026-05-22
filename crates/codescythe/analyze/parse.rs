@@ -22,8 +22,20 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     let mut visitor = FileVisitor::new(cwd, path);
     visitor.visit_program(&program);
     let mut file = visitor.finish();
-    for export in file.exports.values_mut() {
-        (export.line, export.col) = line_col(&source, export.name_span.start);
+    match file.exports.len() {
+        0 => {}
+        1 => {
+            for export in file.exports.values_mut() {
+                (export.line, export.col) = line_col(&source, export.name_span.start);
+            }
+        }
+        _ => {
+            let line_starts = line_starts(&source);
+            for export in file.exports.values_mut() {
+                (export.line, export.col) =
+                    line_col_from_starts(&source, &line_starts, export.name_span.start);
+            }
+        }
     }
     Ok(file)
 }
@@ -720,6 +732,16 @@ fn export_kind(kind: ImportOrExportKind) -> ExportKind {
     }
 }
 
+fn line_starts(source: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    for (index, byte) in source.bytes().enumerate() {
+        if byte == b'\n' {
+            starts.push(index + 1);
+        }
+    }
+    starts
+}
+
 fn line_col(source: &str, offset: u32) -> (usize, usize) {
     let offset = offset as usize;
     let mut line = 1;
@@ -736,4 +758,35 @@ fn line_col(source: &str, offset: u32) -> (usize, usize) {
         }
     }
     (line, col)
+}
+
+fn line_col_from_starts(source: &str, line_starts: &[usize], offset: u32) -> (usize, usize) {
+    let offset = offset as usize;
+    let line_index = line_starts
+        .partition_point(|line_start| *line_start <= offset)
+        .saturating_sub(1);
+    let line_start = line_starts[line_index];
+    let col = source[line_start..offset].chars().count() + 1;
+    (line_index + 1, col)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_start_lookup_matches_scanning_line_col() {
+        let source = "αβ\nconst value = 1;\nexport { value };\n";
+        let line_starts = line_starts(source);
+        for offset in source
+            .char_indices()
+            .map(|(index, _)| index)
+            .chain(std::iter::once(source.len()))
+        {
+            assert_eq!(
+                line_col(source, offset as u32),
+                line_col_from_starts(source, &line_starts, offset as u32)
+            );
+        }
+    }
 }
