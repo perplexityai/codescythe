@@ -212,8 +212,9 @@ frontier. This keeps file reads and parsing parallel without reading files that
 the dependency graph has not reached.
 
 Parsing uses `SourceType::from_path` so the extension controls whether a file is
-parsed as TypeScript, JSX, ESM, or CommonJS-flavored source. Each file is parsed
-at most once per analysis run.
+parsed as TypeScript, ESM, or CommonJS-flavored source. JavaScript-family files
+are parsed with JSX enabled because large Babel-based codebases commonly keep
+JSX in `.js` files. Each file is parsed at most once per analysis run.
 
 The parse pool is capped by `CODESCYTHE_PARSE_THREADS` when set, then
 `RAYON_NUM_THREADS`, then the host's available parallelism. Test files may be

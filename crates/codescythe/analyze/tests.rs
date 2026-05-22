@@ -151,6 +151,35 @@ fn discovers_nested_gitignore_files_by_default() {
 }
 
 #[test]
+fn parses_js_files_with_jsx_syntax() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": "src/main.js",
+              "project": "src/**/*.js"
+            }"#,
+    );
+    write_file(
+        cwd,
+        "src/main.js",
+        "import { Button } from './button';\nexport const app = <Button />;\n",
+    );
+    write_file(cwd, "src/button.js", "export const Button = () => null;\n");
+    write_file(cwd, "src/dead.js", "export const dead = 1;\n");
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap();
+
+    assert_eq!(analysis.counters.total, 3);
+    assert_unused_file(&analysis, "src/dead.js");
+    assert!(!analysis.issues.files.contains_key("src/button.js"));
+}
+
+#[test]
 fn follows_oxc_resolution_rules_for_project_imports() {
     let (_tempdir, cwd) = fixture_path("oxc-resolution");
 
