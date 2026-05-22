@@ -1,8 +1,11 @@
 use super::*;
 
+use std::cell::RefCell;
+
 pub(super) struct ModuleResolver {
     resolver: ResolverGeneric<IgnoredResolverMetadataFileSystem>,
     index_by_path: HashMap<PathBuf, usize>,
+    resolution_cache: RefCell<HashMap<(String, String), ImportResolution>>,
 }
 
 struct IgnoredResolverMetadataFileSystem {
@@ -94,6 +97,7 @@ impl FileSystem for IgnoredResolverMetadataFileSystem {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(super) enum ImportResolution {
     Project(usize),
     External,
@@ -149,10 +153,24 @@ impl ModuleResolver {
         Ok(Self {
             resolver,
             index_by_path,
+            resolution_cache: RefCell::new(HashMap::new()),
         })
     }
 
     pub(super) fn resolve(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
+        let cache_key = (from.relative.clone(), specifier.to_string());
+        if let Some(resolution) = self.resolution_cache.borrow().get(&cache_key) {
+            return Ok(*resolution);
+        }
+
+        let resolution = self.resolve_uncached(from, specifier)?;
+        self.resolution_cache
+            .borrow_mut()
+            .insert(cache_key, resolution);
+        Ok(resolution)
+    }
+
+    fn resolve_uncached(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
         match self.resolver.resolve_file(&from.path, specifier) {
             Ok(resolution) => {
                 let path = normalize_path(resolution.path());
