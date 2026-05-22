@@ -107,7 +107,7 @@
   },
   "counters": {
     "codescythe": {
-      "totalFiles": 85960,
+      "totalFiles": 85952,
       "unusedFiles": 16,
       "unusedExports": 16
     },
@@ -122,7 +122,7 @@
       "removedExports": 8
     },
     "postFixCounters": {
-      "totalFiles": 85944,
+      "totalFiles": 85936,
       "unusedFiles": 0,
       "unusedExports": 0
     },
