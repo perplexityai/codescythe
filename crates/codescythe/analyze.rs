@@ -3,6 +3,7 @@ mod doctor;
 mod explain;
 mod graph;
 mod parse;
+mod profile;
 mod resolver;
 mod util;
 
@@ -23,6 +24,9 @@ use graph::{
     mark_source_file, mark_used_export, mark_used_file,
 };
 use parse::{ExportInfo, FileCache, FileData};
+use profile::AnalysisProfile;
+#[cfg(feature = "profiling")]
+use profile::AnalysisProfileReport;
 use resolver::{
     ImportResolution, ModuleResolver, UnresolvedImportPolicy, package_import_keys,
     source_alias_ignore_warnings, source_alias_mappings,
@@ -292,26 +296,50 @@ pub fn analyze_path(
     config: &CodescytheConfig,
     options: AnalysisOptions,
 ) -> Result<Analysis> {
+    let mut profile = AnalysisProfile::new();
     let cwd = absolute_normalize_path(cwd)?;
     if !cwd.exists() {
         anyhow::bail!("analysis root does not exist: {}", cwd.display());
     }
-    let project_files = discover_project_files(&cwd, config)?;
-    let entry_files = discover_entry_files(&cwd, config, &project_files)?;
-    let test_file_indexes = discover_test_file_indexes(&cwd, config, &project_files)?;
+    let project_files = profile.time("discover project files", || {
+        discover_project_files(&cwd, config)
+    })?;
+    let entry_files = profile.time("discover entry files", || {
+        discover_entry_files(&cwd, config, &project_files)
+    })?;
+    let test_file_indexes = profile.time("classify test files", || {
+        discover_test_file_indexes(&cwd, config, &project_files)
+    })?;
     let entry_set = entry_files.iter().cloned().collect::<HashSet<_>>();
     let total_files = project_files.len();
 
-    let index_by_path = project_files
-        .iter()
-        .enumerate()
-        .map(|(index, path)| (normalize_path(path), index))
-        .collect::<HashMap<_, _>>();
-    let module_resolver = ModuleResolver::new(&cwd, &project_files, config)?;
-    let unresolved_policy = UnresolvedImportPolicy::new(config)?;
-    let alias_mappings = source_alias_mappings(&cwd, config)?;
-    let source_alias_ignore_warnings = source_alias_ignore_warnings(config, &alias_mappings)?;
-    let mut files = FileCache::new(&cwd, project_files)?;
+    let (
+        index_by_path,
+        module_resolver,
+        unresolved_policy,
+        alias_mappings,
+        source_alias_ignore_warnings,
+        mut files,
+    ) = profile.time("build indexes and resolver", || {
+        let index_by_path = project_files
+            .iter()
+            .enumerate()
+            .map(|(index, path)| (normalize_path(path), index))
+            .collect::<HashMap<_, _>>();
+        let module_resolver = ModuleResolver::new(&cwd, &project_files, config)?;
+        let unresolved_policy = UnresolvedImportPolicy::new(config)?;
+        let alias_mappings = source_alias_mappings(&cwd, config)?;
+        let source_alias_ignore_warnings = source_alias_ignore_warnings(config, &alias_mappings)?;
+        let files = FileCache::new(&cwd, project_files)?;
+        Ok::<_, anyhow::Error>((
+            index_by_path,
+            module_resolver,
+            unresolved_policy,
+            alias_mappings,
+            source_alias_ignore_warnings,
+            files,
+        ))
+    })?;
 
     let mut entry_indexes = HashSet::<usize>::new();
     let mut used_files = UsedFiles::new();
@@ -339,11 +367,16 @@ pub fn analyze_path(
         }
     }
 
+    let graph_started = profile.start();
     while !queue.is_empty() {
         let batch = queue.drain(..).collect::<Vec<_>>();
+        profile.record_frontier(batch.len());
         queued_files.clear();
+        let parse_started = profile.start();
         files.parse_many(&batch)?;
+        profile.record_frontier_parse(parse_started);
 
+        let inspect_started = profile.start();
         for index in batch {
             let file = files.get(index)?.clone();
             let public_entry = entry_indexes.contains(&index) && !config.include_entry_exports;
@@ -570,8 +603,11 @@ pub fn analyze_path(
                 }
             }
         }
+        profile.record_frontier_inspect(inspect_started);
     }
+    profile.record("walk reachable graph", graph_started);
 
+    let issue_started = profile.start();
     let mut issues = Issues::default();
     let mut unused_file_indexes = HashSet::<usize>::new();
 
@@ -630,14 +666,17 @@ pub fn analyze_path(
             }
         }
     }
+    profile.record("build unused file/export issues", issue_started);
 
-    let live_test_support_files = discover_live_test_support_files(
-        &mut files,
-        &module_resolver,
-        &test_file_indexes,
-        &unused_file_indexes,
-        &used_files,
-    )?;
+    let live_test_support_files = profile.time("scan live test support", || {
+        discover_live_test_support_files(
+            &mut files,
+            &module_resolver,
+            &test_file_indexes,
+            &unused_file_indexes,
+            &used_files,
+        )
+    })?;
     for index in &live_test_support_files {
         let relative = files.relative(*index);
         issues.files.remove(&relative);
@@ -645,13 +684,15 @@ pub fn analyze_path(
         unused_file_indexes.remove(index);
     }
 
-    let removable_test_files = discover_removable_test_files(
-        &mut files,
-        &module_resolver,
-        &test_file_indexes,
-        &unused_file_indexes,
-        &issues.exports,
-    )?;
+    let removable_test_files = profile.time("scan removable tests", || {
+        discover_removable_test_files(
+            &mut files,
+            &module_resolver,
+            &test_file_indexes,
+            &unused_file_indexes,
+            &issues.exports,
+        )
+    })?;
     for index in removable_test_files {
         let relative = files.relative(index);
         issues.files.insert(
@@ -665,17 +706,19 @@ pub fn analyze_path(
     let mut effective_used_files = used_files.clone();
     effective_used_files.extend(live_test_support_files.iter().copied());
 
-    let export_usage = if options.verbose || options.explain_export.is_some() {
-        Some(build_export_usage_index(
-            &mut files,
-            &module_resolver,
-            &effective_used_files,
-            &entry_indexes,
-            &test_file_indexes,
-        )?)
-    } else {
-        None
-    };
+    let export_usage = profile.time("build export usage explanations", || {
+        if options.verbose || options.explain_export.is_some() {
+            Ok(Some(build_export_usage_index(
+                &mut files,
+                &module_resolver,
+                &effective_used_files,
+                &entry_indexes,
+                &test_file_indexes,
+            )?))
+        } else {
+            Ok(None)
+        }
+    })?;
 
     if options.verbose {
         if let Some(export_usage) = &export_usage {
@@ -690,20 +733,23 @@ pub fn analyze_path(
         }
     }
 
-    let explain_export = if let Some(request) = &options.explain_export {
-        Some(explain_requested_export(
-            request,
-            &mut files,
-            &issues,
-            &effective_used_files,
-            export_usage.as_ref(),
-            &alias_mappings,
-            &ignored_unresolved_imports_by_pattern,
-        )?)
-    } else {
-        None
-    };
+    let explain_export = profile.time("explain requested export", || {
+        if let Some(request) = &options.explain_export {
+            Ok(Some(explain_requested_export(
+                request,
+                &mut files,
+                &issues,
+                &effective_used_files,
+                export_usage.as_ref(),
+                &alias_mappings,
+                &ignored_unresolved_imports_by_pattern,
+            )?))
+        } else {
+            Ok(None)
+        }
+    })?;
 
+    let finalize_started = profile.start();
     issues.unresolved = unresolved
         .into_iter()
         .map(|(file, imports)| {
@@ -748,6 +794,22 @@ pub fn analyze_path(
         } else {
             BTreeMap::new()
         };
+
+    profile.record("finalize report", finalize_started);
+    #[cfg(feature = "profiling")]
+    profile.print(AnalysisProfileReport {
+        project_files: total_files,
+        entry_files: entry_indexes.len(),
+        test_files: test_file_indexes.len(),
+        parsed_files: files.parsed_count(),
+        used_files: effective_used_files.len(),
+        used_exports: used_exports.values().map(HashSet::len).sum(),
+        issue_files: counters.files,
+        issue_exports: counters.exports,
+        unresolved: counters.unresolved,
+        ignored_unresolved: counters.ignored_unresolved,
+        resolver: module_resolver.profile_stats(),
+    });
 
     Ok(Analysis {
         issues,

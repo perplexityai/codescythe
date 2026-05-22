@@ -108,6 +108,11 @@ impl FileCache {
         Ok(())
     }
 
+    #[cfg(feature = "profiling")]
+    pub(super) fn parsed_count(&self) -> usize {
+        self.parsed.iter().filter(|file| file.is_some()).count()
+    }
+
     pub(super) fn relative(&self, index: usize) -> String {
         relative_path(&self.cwd, &self.paths[index])
     }

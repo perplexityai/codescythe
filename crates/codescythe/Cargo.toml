@@ -10,6 +10,10 @@ description = "Focused TypeScript dead-code analysis and removal core"
 [lib]
 path = "lib.rs"
 
+[features]
+default = []
+profiling = []
+
 [dependencies]
 anyhow.workspace = true
 globset.workspace = true

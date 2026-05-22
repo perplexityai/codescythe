@@ -46,6 +46,55 @@ flowchart TD
 `codescythe::run_and_fix(cwd, config_path)` runs the same analysis, then applies
 supported unused-file and export removals.
 
+## Profiling
+
+Profiling is compiled behind the `profiling` Cargo feature so default release
+builds do not carry profiler timers, counters, or resolver hot-path branches.
+Build the profiling binary explicitly, then set `CODESCYTHE_PROFILE=1` to print
+stage timings and high-level counters to stderr. The profile output is
+intentionally outside JSON stdout, so it can be used with `--json` and
+redirected independently:
+
+```sh
+bazel build -c opt //crates/codescythe_cli:codescythe_profiling
+CODESCYTHE_PROFILE=1 bazel-bin/crates/codescythe_cli/codescythe_profiling \
+  --json --directory <repo> --config <config> \
+  > report.json 2> profile.txt
+```
+
+The profiler reports discovery, entry classification, resolver setup, reachable
+graph traversal, issue construction, test scans, optional explanation work, and
+finalization. It also breaks graph traversal into frontier parse time and
+frontier inspection time, and includes resolver call counts, cache hits/misses,
+classification counts, and uncached resolver wall time. The CLI adds JSON
+serialization timing for JSON output.
+
+The current Kibana fixture is a useful stress test because its benchmark config
+marks every configured source root as an entry. A representative local run on
+May 22, 2026 processed 85,936 project files, treated all 85,936 as entries,
+parsed all 85,936, found no unused files, and reported 50,869 unused exports.
+The same run spent 12.18s total: 1.18s in project discovery, 10.41s walking the
+reachable graph, 81ms building issue maps, and 13ms serializing JSON. Graph
+frontier parsing accounted for 4.03s, while frontier inspection accounted for
+6.38s. The resolver saw 1,715,145 calls, served 75.9% from the analysis-local
+resolution cache, and still spent 4.77s in uncached resolution.
+
+Those numbers shape the optimization priorities:
+
+- File reads and parsing are not repeated for the same file inside one analysis
+  run; `FileCache` parses each file at most once.
+- JSON serialization is not a meaningful bottleneck for the current 7 MB Kibana
+  report.
+- Since the benchmark config makes the whole project reachable, entry pruning
+  cannot help this fixture. It can still matter for real configs with narrower
+  entries.
+- Resolver work remains important even after memoization because Kibana still
+  has more than 400k unique importer/specifier misses in the resolution cache.
+- Small object-copy, line/column, and output-format experiments have not shown a
+  reliable memory win; the higher-value work is reducing resolver misses,
+  reducing graph inspection work, or changing the configured entry surface when
+  coverage allows it.
+
 ## Config Loading
 
 `load_config` accepts an analysis root and an optional config path.

@@ -4,8 +4,14 @@ use std::{
     process::ExitCode,
 };
 
+#[cfg(feature = "profiling")]
+use std::time::{Duration, Instant};
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+
+#[cfg(feature = "profiling")]
+const PROFILE_ENV: &str = "CODESCYTHE_PROFILE";
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Find focused TypeScript dead code")]
@@ -87,7 +93,9 @@ fn run() -> Result<bool> {
             },
         )?;
         if args.json {
+            let started = start_profile_timer();
             println!("{}", serde_json::to_string(&result)?);
+            print_profile_stage("json serialization", started);
         } else {
             println!(
                 "Removed {} unused exports from {} files and {} unused files",
@@ -132,7 +140,9 @@ fn run() -> Result<bool> {
         ));
     }
     if args.json {
+        let started = start_profile_timer();
         println!("{}", serde_json::to_string(&analysis)?);
+        print_profile_stage("json serialization", started);
     } else {
         print_text_report(&analysis);
     }
@@ -149,12 +159,59 @@ fn run_command(command: Command) -> Result<bool> {
             let cwd = analysis_root(args.directory.as_deref(), config)?;
             let result = codescythe::doctor(&cwd, config)?;
             if args.json {
+                let started = start_profile_timer();
                 println!("{}", serde_json::to_string(&result)?);
+                print_profile_stage("json serialization", started);
             } else {
                 print_doctor_report(&result);
             }
             Ok(!result.warnings.is_empty() || !result.unresolved_imports.is_empty())
         }
+    }
+}
+
+#[cfg(feature = "profiling")]
+struct CliProfileTimer(Option<Instant>);
+
+#[cfg(not(feature = "profiling"))]
+struct CliProfileTimer;
+
+#[cfg(feature = "profiling")]
+fn start_profile_timer() -> CliProfileTimer {
+    CliProfileTimer(profile_enabled().then(Instant::now))
+}
+
+#[cfg(not(feature = "profiling"))]
+fn start_profile_timer() -> CliProfileTimer {
+    CliProfileTimer
+}
+
+#[cfg(feature = "profiling")]
+fn print_profile_stage(name: &str, started: CliProfileTimer) {
+    let Some(started) = started.0 else {
+        return;
+    };
+    eprintln!("codescythe cli profile:");
+    eprintln!("  {name}: {}", format_duration(started.elapsed()));
+}
+
+#[cfg(not(feature = "profiling"))]
+fn print_profile_stage(_name: &str, _started: CliProfileTimer) {}
+
+#[cfg(feature = "profiling")]
+fn profile_enabled() -> bool {
+    env::var(PROFILE_ENV)
+        .ok()
+        .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false" | "FALSE"))
+}
+
+#[cfg(feature = "profiling")]
+fn format_duration(duration: Duration) -> String {
+    let millis = duration.as_secs_f64() * 1000.0;
+    if millis >= 1000.0 {
+        format!("{:.2}s", millis / 1000.0)
+    } else {
+        format!("{millis:.1}ms")
     }
 }
 

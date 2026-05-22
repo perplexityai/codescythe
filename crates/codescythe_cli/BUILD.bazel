@@ -24,6 +24,22 @@ rust_binary(
     ],
 )
 
+rust_binary(
+    name = "codescythe_profiling",
+    srcs = ["main.rs"],
+    crate_features = ["profiling"],
+    crate_name = "codescythe",
+    edition = "2024",
+    version = VERSION,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/codescythe:codescythe_profiling",
+        "@crates//:anyhow",
+        "@crates//:clap",
+        "@crates//:serde_json",
+    ],
+)
+
 rust_test(
     name = "codescythe_cli_test",
     srcs = ["main.rs"],
@@ -44,6 +60,7 @@ rust_test(
     crate_name = "codescythe_cli_e2e_test",
     data = [
         ":codescythe",
+        ":codescythe_profiling",
         "//tests/fixtures/cli-fix-output:fixtures",
         "//tests/fixtures/cli-verbose-output:fixtures",
         "//tests/fixtures/oxc-resolution:fixtures",

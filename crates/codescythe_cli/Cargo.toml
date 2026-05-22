@@ -11,6 +11,10 @@ description = "Codescythe command-line interface"
 name = "codescythe"
 path = "main.rs"
 
+[features]
+default = []
+profiling = ["codescythe/profiling"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true

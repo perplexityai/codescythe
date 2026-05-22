@@ -1,11 +1,40 @@
+#[cfg(feature = "profiling")]
+use super::profile::profile_enabled;
 use super::*;
 
 use std::cell::RefCell;
+
+#[cfg(feature = "profiling")]
+use std::time::{Duration, Instant};
 
 pub(super) struct ModuleResolver {
     resolver: ResolverGeneric<IgnoredResolverMetadataFileSystem>,
     index_by_path: HashMap<PathBuf, usize>,
     resolution_cache: RefCell<HashMap<(String, String), ImportResolution>>,
+    #[cfg(feature = "profiling")]
+    profile: Option<RefCell<ResolverProfileStats>>,
+}
+
+#[cfg(feature = "profiling")]
+#[derive(Clone, Copy, Default)]
+pub(super) struct ResolverProfileStats {
+    pub(super) calls: usize,
+    pub(super) cache_hits: usize,
+    pub(super) cache_misses: usize,
+    pub(super) project: usize,
+    pub(super) external: usize,
+    pub(super) unresolved: usize,
+    pub(super) resolve_time: Duration,
+}
+
+#[cfg(feature = "profiling")]
+impl ResolverProfileStats {
+    pub(super) fn hit_rate(&self) -> f64 {
+        if self.calls == 0 {
+            return 0.0;
+        }
+        (self.cache_hits as f64 / self.calls as f64) * 100.0
+    }
 }
 
 struct IgnoredResolverMetadataFileSystem {
@@ -154,20 +183,52 @@ impl ModuleResolver {
             resolver,
             index_by_path,
             resolution_cache: RefCell::new(HashMap::new()),
+            #[cfg(feature = "profiling")]
+            profile: profile_enabled().then(|| RefCell::new(ResolverProfileStats::default())),
         })
     }
 
     pub(super) fn resolve(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
+        #[cfg(feature = "profiling")]
+        if let Some(profile) = &self.profile {
+            profile.borrow_mut().calls += 1;
+        }
+
         let cache_key = (from.relative.clone(), specifier.to_string());
         if let Some(resolution) = self.resolution_cache.borrow().get(&cache_key) {
+            #[cfg(feature = "profiling")]
+            if let Some(profile) = &self.profile {
+                profile.borrow_mut().cache_hits += 1;
+            }
             return Ok(*resolution);
         }
 
-        let resolution = self.resolve_uncached(from, specifier)?;
+        #[cfg(feature = "profiling")]
+        let started = self.profile.as_ref().map(|_| Instant::now());
+        let resolution = self.resolve_uncached(from, specifier);
+        #[cfg(feature = "profiling")]
+        if let (Some(profile), Some(started)) = (&self.profile, started) {
+            let mut profile = profile.borrow_mut();
+            profile.cache_misses += 1;
+            profile.resolve_time += started.elapsed();
+            match resolution {
+                Ok(ImportResolution::Project(_)) => profile.project += 1,
+                Ok(ImportResolution::External) => profile.external += 1,
+                Ok(ImportResolution::Unresolved) => profile.unresolved += 1,
+                Err(_) => {}
+            }
+        }
+
+        let resolution = resolution?;
         self.resolution_cache
             .borrow_mut()
             .insert(cache_key, resolution);
         Ok(resolution)
+    }
+
+    #[cfg(feature = "profiling")]
+    pub(super) fn profile_stats(&self) -> Option<ResolverProfileStats> {
+        self.profile.as_ref().map(|profile| *profile.borrow())
     }
 
     fn resolve_uncached(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
