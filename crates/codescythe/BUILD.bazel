@@ -20,7 +20,7 @@ COMMON_DEPS = [
     "@crates//:walkdir",
 ]
 
-VERSION = "0.4.11"  # x-release-please-version
+VERSION = "0.4.12"  # x-release-please-version
 
 rust_library(
     name = "codescythe",
