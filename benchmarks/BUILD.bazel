@@ -31,6 +31,7 @@ fixture_functional_test(
 js_binary(
     name = "fixture_conformance_snapshot_bin",
     data = [
+        ":kibana_pr270237_knip.jsonc",
         "//:node_modules/benchmark",
         "//:node_modules/knip",
         "//crates/codescythe_cli:codescythe",

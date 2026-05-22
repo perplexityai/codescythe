@@ -40,13 +40,15 @@ Codescythe and Knip, except Codescythe disables its default test-file leaf
 patterns for these whole-corpus benchmark configs. VS Code uses source-root
 entry/project globs for `src`, `build`, and `extensions`. Grafana uses
 source-root entry/project globs for `public`, `packages`, `scripts`, and the
-root TypeScript config files. Kibana uses source-root entry/project globs for
-`src`, `x-pack`, `packages`, `examples`, and `oas_docs`. Renovate uses the
-source-side CLI, config-validator, `tsdown` package entries, TypeScript tooling
-scripts, JavaScript/MJS tooling entrypoints, and test entrypoints instead of
-generated `dist/` package bins.
-The repo installs Knip as a dev dependency; set `KNIP_BIN` to compare against a
-different Knip binary.
+root TypeScript config files. Kibana uses the root `knip.jsonc` introduced in
+`elastic/kibana#270237`; Codescythe uses the equivalent source graph (`src`,
+`x-pack`, `packages`, `examples`, and `plugins` with `ts`, `tsx`, `js`, and
+`jsx` files), while Knip runs with the imported
+`benchmarks/kibana_pr270237_knip.jsonc`. Renovate uses the source-side CLI,
+config-validator, `tsdown` package entries, TypeScript tooling scripts,
+JavaScript/MJS tooling entrypoints, and test entrypoints instead of generated
+`dist/` package bins. The repo installs Knip as a dev dependency; set `KNIP_BIN`
+to compare against a different Knip binary.
 
 The Kibana source snapshot expects `@kbn/tsconfig-base` to exist in
 `node_modules`, but the Bazel-fetched fixture only contains source files. The
@@ -63,7 +65,8 @@ unset.
 
 ## Current Numbers
 
-Local run on May 22, 2026 with the checked-in fixture configs:
+Local run on May 22, 2026 with the checked-in fixture configs. The Kibana rows
+use the imported `elastic/kibana#270237` Knip config and a one-run smoke sample.
 
 ```sh
 bazel build -c opt //crates/codescythe_cli:codescythe
@@ -77,8 +80,8 @@ vscode     codescythe  1111.9ms   +/-1.36%   5        0.90
 vscode     knip        4223.1ms   +/-4.89%   3        0.24
 grafana    codescythe  833.2ms    +/-4.11%   5        1.20
 grafana    knip        9513.4ms   +/-56.75%  3        0.11
-kibana     codescythe  12963.8ms  +/-25.85%  3        0.08
-kibana     knip        53327.5ms  +/-33.69%  3        0.02
+kibana     codescythe  13609.0ms  +/-0.00%   1        0.07
+kibana     knip        43044.0ms   +/-0.00%   1        0.02
 renovate   codescythe  154.5ms    +/-4.79%   18       6.47
 renovate   knip        900.5ms    +/-6.09%   5        1.11
 ```

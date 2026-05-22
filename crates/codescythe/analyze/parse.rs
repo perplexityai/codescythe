@@ -3,8 +3,7 @@ use super::*;
 fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read source file {}", path.display()))?;
-    let source_type = SourceType::from_path(path)
-        .with_context(|| format!("unsupported source extension for {}", path.display()))?;
+    let source_type = source_type_for_path(path)?;
     let allocator = Allocator::default();
     let ParserReturn {
         program, errors, ..
@@ -26,6 +25,16 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
         (export.line, export.col) = line_col(&source, export.name_span.start);
     }
     Ok(file)
+}
+
+fn source_type_for_path(path: &Path) -> Result<SourceType> {
+    let source_type = SourceType::from_path(path)
+        .with_context(|| format!("unsupported source extension for {}", path.display()))?;
+    Ok(if source_type.is_javascript() {
+        source_type.with_jsx(true)
+    } else {
+        source_type
+    })
 }
 
 pub(super) struct FileCache {

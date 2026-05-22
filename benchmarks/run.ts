@@ -29,10 +29,12 @@ type Fixture = {
   rawTsFiles: number;
   entry?: string[];
   project?: string[];
+  baseIgnore?: string[];
   ignore?: string[];
   setup?: 'grafana' | 'kibana';
   extraFiles?: string;
   conformanceImporter?: string;
+  knipBenchmarkConfig?: string;
 };
 
 type Options = {
@@ -113,9 +115,14 @@ const kibanaSourceRoots = [
   'x-pack',
   'packages',
   'examples',
-  'oas_docs',
+  'plugins',
 ];
-const kibanaSourceRootPatterns = kibanaSourceRoots.map(root => `${root}/**/*.{ts,tsx,mts,cts}`);
+const kibanaSourceRootPatterns = kibanaSourceRoots.map(root => `${root}/**/*.{ts,tsx,js,jsx}`);
+const kibanaIgnorePatterns = [
+  '**/node_modules/**',
+  '**/target/**',
+  '**/build/**',
+];
 const vscodeProjectPatterns = [
   'src/**/*.{ts,tsx,mts,cts}',
   'build/**/*.{ts,tsx,mts,cts}',
@@ -266,13 +273,14 @@ const fixtures: Fixture[] = [
     commit: 'd706f62a04af1112db6b4dfef3c94955bdb98250',
     markerTarget: '@benchmark_kibana//:package_json',
     sourceFiles: 110440,
-    benchmarkedFiles: 85928,
-    rawTsFiles: 87408,
+    benchmarkedFiles: 90931,
+    rawTsFiles: 87177,
     entry: kibanaSourceRootPatterns,
     project: kibanaSourceRootPatterns,
-    ignore: ['**/*.gen.ts'],
+    baseIgnore: kibanaIgnorePatterns,
     setup: 'kibana',
     conformanceImporter: 'src/core/server/index.ts',
+    knipBenchmarkConfig: 'benchmarks/kibana_pr270237_knip.jsonc',
   },
   {
     name: 'renovate',
@@ -333,7 +341,7 @@ try {
       prepareFixture(fixture, fixtureRoot);
       const configPath = writeFixtureConfig(configRoot, fixture);
       const knipConfigPath = knipBin
-        ? writeKnipCompatibleConfig(configRoot, fixture, false, `${fixture.name}.knip-benchmark.json`)
+        ? writeKnipBenchmarkConfig(configRoot, fixture)
         : undefined;
       const tools = createTools(fixtureRoot, configPath, codescytheBin, knipBin, knipConfigPath);
       const rows = options.once ? runToolsOnce(tools) : measureTools(tools, options);
@@ -484,7 +492,7 @@ function writeFixtureConfig(
   writeJson(configPath, {
     entry: fixture.entry ?? project,
     project,
-    ignore: [...ignorePatterns, ...(fixture.ignore ?? [])],
+    ignore: [...baseIgnorePatterns(fixture), ...(fixture.ignore ?? [])],
     testFilePatterns: [],
     includeEntryExports: true,
     ignoreExportsUsedInFile: false,
@@ -528,11 +536,25 @@ function writeFuzzFixConfig(directory: string, fixture: Fixture): string {
       fixture.conformanceImporter,
       `${fuzzDirectory}/**/*.{ts,tsx,mts,cts}`,
     ],
-    ignore: [...ignorePatterns, ...(fixture.ignore ?? [])],
+    ignore: [...baseIgnorePatterns(fixture), ...(fixture.ignore ?? [])],
     testFilePatterns: [],
     includeEntryExports: true,
     ignoreExportsUsedInFile: false,
   });
+  return configPath;
+}
+
+function baseIgnorePatterns(fixture: Fixture): string[] {
+  return fixture.baseIgnore ?? ignorePatterns;
+}
+
+function writeKnipBenchmarkConfig(directory: string, fixture: Fixture): string {
+  if (!fixture.knipBenchmarkConfig) {
+    return writeKnipCompatibleConfig(directory, fixture, false, `${fixture.name}.knip-benchmark.json`);
+  }
+  const configPath = path.join(directory, `${fixture.name}.knip-benchmark.jsonc`);
+  const sourcePath = resolveExistingPath(fixture.knipBenchmarkConfig, `${fixture.label} Knip benchmark config`);
+  writeFileSync(configPath, readFileSync(sourcePath, 'utf8'));
   return configPath;
 }
 
@@ -1501,6 +1523,9 @@ function printSummary(
   console.log(`Corpus: ${formatCorpus(fixture)}`);
   console.log(`Config: entry ${formatPatterns(fixture.entry ?? fixture.project ?? sourcePatterns)}`);
   console.log(`Config: project ${formatPatterns(fixture.project ?? sourcePatterns)}`);
+  if (knipBin && fixture.knipBenchmarkConfig) {
+    console.log(`Knip config: ${fixture.knipBenchmarkConfig}`);
+  }
   if (parsed.once) {
     console.log('Runs: 1 functional smoke run');
   } else {
