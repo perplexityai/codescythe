@@ -1,6 +1,6 @@
 {
   "name": "@perplexity/codescythe-darwin-arm64",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "description": "Codescythe native binding for Darwin arm64",
   "license": "Apache-2.0",
   "repository": {

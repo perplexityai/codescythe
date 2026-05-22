@@ -9,7 +9,7 @@ use std::{
 
 use serde_json::Value;
 
-const EXPECTED_SUMMARY_VERSION: &str = "0.4.11"; // x-release-please-version
+const EXPECTED_SUMMARY_VERSION: &str = "0.4.12"; // x-release-please-version
 
 #[test]
 fn cli_reports_release_version() {
@@ -26,7 +26,7 @@ fn cli_reports_release_version() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "codescythe 0.4.11" // x-release-please-version
+        "codescythe 0.4.12" // x-release-please-version
     );
 }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.12](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.11...codescythe_cli_v0.4.12) (2026-05-22)
+
+
+### Bug Fixes
+
+* keep node_modules resolver metadata visible ([#51](https://github.com/perplexityai/codescythe/issues/51)) ([f07f1ba](https://github.com/perplexityai/codescythe/commit/f07f1bab5380e0e0b9a24e2b9b26371faa2fc1d7))
+
 ## [0.4.11](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.10...codescythe_cli_v0.4.11) (2026-05-21)
 
 
