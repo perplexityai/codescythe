@@ -381,51 +381,44 @@ pub fn analyze_path(
             let file = files.get(index)?.clone();
             let public_entry = entry_indexes.contains(&index) && !config.include_entry_exports;
 
+            let mut static_imports_by_source = BTreeMap::<&str, BTreeSet<Option<&str>>>::new();
             for import in &file.imports {
-                match module_resolver.resolve(&file, &import.source)? {
-                    ImportResolution::Project(target) => {
-                        if let Some(name) = &import.imported {
-                            mark_used_export(
-                                target,
-                                name.clone(),
-                                &mut used_files,
-                                &mut used_exports,
-                                &mut queue,
-                                &mut queued_files,
-                                &test_file_indexes,
-                            );
-                        } else {
-                            mark_used_file(
-                                target,
-                                &test_file_indexes,
-                                &mut used_files,
-                                &mut queue,
-                                &mut queued_files,
-                            );
-                        }
-                    }
-                    ImportResolution::Unresolved => {
-                        unresolved_policy.record(
-                            &mut unresolved,
-                            &mut ignored_unresolved_imports_by_pattern,
-                            &file.relative,
-                            &import.source,
-                        )?;
-                    }
-                    ImportResolution::External => {}
-                }
+                static_imports_by_source
+                    .entry(import.source.as_str())
+                    .or_default()
+                    .insert(import.imported.as_deref());
+            }
+            for source in &file.side_effect_imports {
+                static_imports_by_source
+                    .entry(source.as_str())
+                    .or_default()
+                    .insert(None);
             }
 
-            for source in &file.side_effect_imports {
+            for (source, imported_names) in static_imports_by_source {
                 match module_resolver.resolve(&file, source)? {
                     ImportResolution::Project(target) => {
-                        mark_used_file(
-                            target,
-                            &test_file_indexes,
-                            &mut used_files,
-                            &mut queue,
-                            &mut queued_files,
-                        );
+                        for imported in imported_names {
+                            if let Some(name) = imported {
+                                mark_used_export(
+                                    target,
+                                    name.to_string(),
+                                    &mut used_files,
+                                    &mut used_exports,
+                                    &mut queue,
+                                    &mut queued_files,
+                                    &test_file_indexes,
+                                );
+                            } else {
+                                mark_used_file(
+                                    target,
+                                    &test_file_indexes,
+                                    &mut used_files,
+                                    &mut queue,
+                                    &mut queued_files,
+                                );
+                            }
+                        }
                     }
                     ImportResolution::Unresolved => {
                         unresolved_policy.record(
