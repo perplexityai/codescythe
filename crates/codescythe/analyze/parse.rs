@@ -196,7 +196,7 @@ pub(super) struct ExportInfo {
     pub(super) namespace_source: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct ImportRecord {
     pub(super) source: String,
     pub(super) imported: Option<String>,
@@ -241,7 +241,14 @@ impl FileVisitor {
         }
     }
 
-    fn finish(self) -> FileData {
+    fn finish(mut self) -> FileData {
+        dedupe_preserving_order(&mut self.imports);
+        dedupe_preserving_order(&mut self.side_effect_imports);
+        dedupe_preserving_order(&mut self.dynamic_imports);
+        dedupe_preserving_order(&mut self.glob_imports);
+        dedupe_preserving_order(&mut self.member_uses);
+        dedupe_preserving_order(&mut self.reexport_all);
+
         FileData {
             path: self.path,
             relative: self.relative,
@@ -484,6 +491,14 @@ impl<'a> Visit<'a> for FileVisitor {
         self.local_references
             .insert(identifier.name.as_str().to_string());
     }
+}
+
+fn dedupe_preserving_order<T>(items: &mut Vec<T>)
+where
+    T: Clone + Ord,
+{
+    let mut seen = BTreeSet::new();
+    items.retain(|item| seen.insert(item.clone()));
 }
 
 impl FileVisitor {
