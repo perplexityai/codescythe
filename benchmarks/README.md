@@ -86,6 +86,23 @@ renovate   codescythe  154.5ms    +/-4.79%   18       6.47
 renovate   knip        900.5ms    +/-6.09%   5        1.11
 ```
 
+### Import-resolution dedupe comparison
+
+Local before/after checks for the grouped import-resolution path used opt
+Codescythe binaries from `origin/main` and `codex/dedupe-import-resolution`.
+The non-Kibana fixture rows were Codescythe-only runs with `--skip-knip`,
+`--samples 5`, and `--warmups 1`. The Kibana row is a profiled opt run because
+the profile counters show the resolver-call effect directly.
+
+```text
+fixture   metric                 origin/main         dedupe branch       delta
+--------  ---------------------  ------------------  ------------------  ------------
+vscode    benchmark mean         1253.0ms +/-6.08%   1151.6ms +/-5.73%   8.1% faster
+grafana   benchmark mean         916.6ms +/-3.51%    907.8ms +/-6.92%    1.0% faster
+kibana    profiled total         14.68s              11.48s              21.8% faster
+renovate  benchmark mean         258.1ms +/-3.80%    171.5ms +/-6.38%    33.6% faster
+```
+
 ## Vendored Conformance
 
 The conformance snapshots copy each fixture to a temporary directory, inject

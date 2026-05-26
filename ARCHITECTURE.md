@@ -70,14 +70,18 @@ classification counts, and uncached resolver wall time. The CLI adds JSON
 serialization timing for JSON output.
 
 The current Kibana fixture is a useful stress test because its benchmark config
-marks every configured source root as an entry. A representative local run on
-May 22, 2026 processed 85,936 project files, treated all 85,936 as entries,
-parsed all 85,936, found no unused files, and reported 50,869 unused exports.
-The same run spent 12.18s total: 1.18s in project discovery, 10.41s walking the
-reachable graph, 81ms building issue maps, and 13ms serializing JSON. Graph
-frontier parsing accounted for 4.03s, while frontier inspection accounted for
-6.38s. The resolver saw 1,715,145 calls, served 75.9% from the analysis-local
-resolution cache, and still spent 4.77s in uncached resolution.
+marks every configured source root as an entry. A representative local run
+processed 90,929 project files, treated all 90,929 as entries, parsed all
+90,929, found no unused files, and reported 54,316 unused exports. Before
+grouped import resolution, the same config spent 14.68s total, including 11.64s
+walking the reachable graph, 4.33s in graph-frontier parsing, and 7.31s in
+frontier inspection. The resolver saw 1,789,125 calls, 1,365,734 cache hits,
+423,391 cache misses, and 5.48s in uncached resolution. After deduplicating
+parser records and grouping static imports by source before resolution, the run
+spent 11.48s total, 9.81s walking the reachable graph, 3.94s in frontier
+parsing, and 5.88s in frontier inspection. Resolver calls dropped to 1,035,474
+while the 423,391 unique misses stayed unchanged, and uncached resolver time
+fell to 4.53s.
 
 Those numbers shape the optimization priorities:
 
@@ -88,8 +92,10 @@ Those numbers shape the optimization priorities:
 - Since the benchmark config makes the whole project reachable, entry pruning
   cannot help this fixture. It can still matter for real configs with narrower
   entries.
-- Resolver work remains important even after memoization because Kibana still
-  has more than 400k unique importer/specifier misses in the resolution cache.
+- Grouping static imports by source removes repeated resolver cache-hit traffic
+  inside each importer. Resolver work remains important after that because
+  Kibana still has more than 400k unique importer/specifier misses in the
+  resolution cache.
 - Small object-copy, line/column, and output-format experiments have not shown a
   reliable memory win; the higher-value work is reducing resolver misses,
   reducing graph inspection work, or changing the configured entry surface when
@@ -222,6 +228,7 @@ parsed after the production graph settles so Codescythe can identify tests tied
 to removed code and project-file imports tied to tests for live code.
 
 The AST visitor stores one `FileData` record per parsed file. That record
+deduplicates repeated dependency records while preserving first-seen order, then
 contains:
 
 - `exports`: exported symbols keyed by module export name.
@@ -314,22 +321,22 @@ files become the next frontier.
 
 For each queued file, Codescythe:
 
-1. Resolves each named or default import. Project targets are marked reachable,
-   queued the first time they become reachable, and have the imported export
-   name added to `used_exports`.
-2. Resolves each side-effect import. Project targets are marked reachable and
-   queued, but no export is marked.
-3. Applies namespace member usage. A recorded `Namespace.member` use marks
+1. Groups named/default imports and side-effect imports by source specifier,
+   then resolves each source once for the file. Project targets are marked
+   reachable, queued the first time they become reachable, and have any imported
+   export names added to `used_exports`. Side-effect-only sources mark only the
+   target file.
+2. Applies namespace member usage. A recorded `Namespace.member` use marks
    `member` on the namespace source. If a named import refers to a namespace
    re-export, member usage is forwarded through that namespace export.
-4. Resolves re-export source files and marks them reachable without marking
+3. Resolves re-export source files and marks them reachable without marking
    their exported names used. File reachability follows the dependency graph,
    while export liveness remains symbol-specific.
-5. Treats entry-file exports as public API when `includeEntryExports` is false.
+4. Treats entry-file exports as public API when `includeEntryExports` is false.
    Own exports from those entry files are skipped during issue reporting, while
    re-exported sources are marked so public barrel files keep their targets
    alive.
-6. Propagates any currently used re-exported names. If `file.ts` exports
+5. Propagates any currently used re-exported names. If `file.ts` exports
    `{ value } from "./source"`, and reachable code imports `value` from
    `file.ts`, then `value` is marked used in `source`.
 
