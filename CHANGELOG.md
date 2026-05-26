@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.13](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.12...codescythe_cli_v0.4.13) (2026-05-26)
+
+
+### Bug Fixes
+
+* prepare public registry publishing ([#60](https://github.com/perplexityai/codescythe/issues/60)) ([064ef29](https://github.com/perplexityai/codescythe/commit/064ef29fb0bad2a4218bdd5502811518c9c7c9ab))
+
+
+### Performance Improvements
+
+* dedupe import resolution ([#58](https://github.com/perplexityai/codescythe/issues/58)) ([64bbdb0](https://github.com/perplexityai/codescythe/commit/64bbdb055df3222c26a06f776870d5e891dd5426))
+* memoize import resolution ([#54](https://github.com/perplexityai/codescythe/issues/54)) ([6cdf3c9](https://github.com/perplexityai/codescythe/commit/6cdf3c93d46ea784bfb6b4f6e1869eba681fede0))
+
 ## [0.4.12](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.11...codescythe_cli_v0.4.12) (2026-05-22)
 
 
