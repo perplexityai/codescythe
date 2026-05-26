@@ -43,13 +43,13 @@ function requireNative(): NativeBinding {
 
 function nativePackageName(): string {
   if (process.platform === 'linux' && process.arch === 'x64') {
-    return '@perplexity/codescythe-linux-amd64';
+    return 'codescythe-linux-amd64';
   }
   if (process.platform === 'linux' && process.arch === 'arm64') {
-    return '@perplexity/codescythe-linux-arm64';
+    return 'codescythe-linux-arm64';
   }
   if (process.platform === 'darwin' && process.arch === 'arm64') {
-    return '@perplexity/codescythe-darwin-arm64';
+    return 'codescythe-darwin-arm64';
   }
   throw new Error(`Codescythe does not ship a native package for ${process.platform}/${process.arch}`);
 }

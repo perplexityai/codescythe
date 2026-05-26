@@ -20,13 +20,13 @@ importers:
 
   packages/codescythe:
     optionalDependencies:
-      '@perplexity/codescythe-darwin-arm64':
+      'codescythe-darwin-arm64':
         specifier: workspace:*
         version: link:../codescythe-darwin-arm64
-      '@perplexity/codescythe-linux-amd64':
+      'codescythe-linux-amd64':
         specifier: workspace:*
         version: link:../codescythe-linux-amd64
-      '@perplexity/codescythe-linux-arm64':
+      'codescythe-linux-arm64':
         specifier: workspace:*
         version: link:../codescythe-linux-arm64
 
