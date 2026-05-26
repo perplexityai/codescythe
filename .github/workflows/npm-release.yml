@@ -190,7 +190,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          npm publish --access public ./artifacts/codescythe-darwin-arm64
-          npm publish --access public ./artifacts/codescythe-linux-amd64
-          npm publish --access public ./artifacts/codescythe-linux-arm64
-          npm publish --access public ./artifacts/codescythe
+          package_version="$(node -p "require('./artifacts/codescythe/package.json').version")"
+          if [[ "$package_version" == *-e2e.* ]]; then
+            npm_dist_tag=e2e
+          elif [[ "$package_version" == *-* ]]; then
+            npm_dist_tag=next
+          else
+            npm_dist_tag=latest
+          fi
+
+          npm publish --access public --tag "$npm_dist_tag" ./artifacts/codescythe-darwin-arm64
+          npm publish --access public --tag "$npm_dist_tag" ./artifacts/codescythe-linux-amd64
+          npm publish --access public --tag "$npm_dist_tag" ./artifacts/codescythe-linux-arm64
+          npm publish --access public --tag "$npm_dist_tag" ./artifacts/codescythe
