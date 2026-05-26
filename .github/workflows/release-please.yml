@@ -45,3 +45,13 @@ jobs:
           set -euo pipefail
 
           gh workflow run npm-release.yml --ref "$TAG_NAME" -f dry_run=false
+
+      - name: Dispatch crate release workflow
+        if: ${{ steps.release.outputs.release_created == 'true' && startsWith(steps.release.outputs.tag_name, 'codescythe_cli_v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          gh workflow run crates-release.yml --ref "$TAG_NAME" -f dry_run=false
