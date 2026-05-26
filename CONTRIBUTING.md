@@ -196,8 +196,8 @@ artifacts do not reference `GLIBC_` symbols.
 
 Release Please owns version bumps for Cargo manifests, Cargo.lock entries, Bazel
 `VERSION` constants, CLI e2e expectations, and npm package manifests. When it
-creates a `codescythe_cli_v*` release, it dispatches the CLI asset release, npm
-release, and crates.io release workflows. npm publishing uses a temporary pnpm
-release workspace so `workspace:*` optional dependencies publish as exact
-versions, and crates.io publishing uses trusted publishing after a Bazel package
-input check plus `cargo publish --dry-run`.
+creates a `codescythe_cli_v*` release, the CLI asset release, npm release, and
+crates.io release workflows run from their `release.published` triggers. npm
+publishing uses a temporary pnpm release workspace so `workspace:*` optional
+dependencies publish as exact versions, and crates.io publishing uses trusted
+publishing after a Bazel package input check plus `cargo publish --dry-run`.

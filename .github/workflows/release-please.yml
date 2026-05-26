@@ -6,53 +6,27 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  actions: write
-  contents: write
-  issues: write
-  pull-requests: write
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   release-please:
     name: Create or update release PR
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
 
     steps:
-      - name: Run release-please
+      # Release Please owns version/changelog PRs and GitHub release notes.
+      # CLI, npm, and crates publication happen from the release.published
+      # workflows after Release Please creates the codescythe_cli_v* release.
+      - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
         with:
           token: ${{ secrets.RELEASE_TOKEN }}
-          target-branch: ${{ github.ref_name }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      - name: Dispatch CLI release workflow
-        if: ${{ steps.release.outputs.release_created == 'true' && startsWith(steps.release.outputs.tag_name, 'codescythe_cli_v') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.release.outputs.tag_name }}
-        run: |
-          set -euo pipefail
-
-          gh workflow run cli-release.yml --ref "$TAG_NAME" -f dry_run=false
-
-      - name: Dispatch npm release workflow
-        if: ${{ steps.release.outputs.release_created == 'true' && startsWith(steps.release.outputs.tag_name, 'codescythe_cli_v') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.release.outputs.tag_name }}
-        run: |
-          set -euo pipefail
-
-          gh workflow run npm-release.yml --ref "$TAG_NAME" -f dry_run=false
-
-      - name: Dispatch crate release workflow
-        if: ${{ steps.release.outputs.release_created == 'true' && startsWith(steps.release.outputs.tag_name, 'codescythe_cli_v') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.release.outputs.tag_name }}
-        run: |
-          set -euo pipefail
-
-          gh workflow run crates-release.yml --ref "$TAG_NAME" -f dry_run=false
