@@ -33,17 +33,17 @@
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='codescythe')].version"
+          "jsonpath": "$.package[?(@.name.value=='codescythe')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='codescythe_cli')].version"
+          "jsonpath": "$.package[?(@.name.value=='codescythe_cli')].version"
         },
         {
           "type": "toml",
           "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='codescythe_napi')].version"
+          "jsonpath": "$.package[?(@.name.value=='codescythe_napi')].version"
         },
         {
           "type": "json",
