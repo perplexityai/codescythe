@@ -1,5 +1,5 @@
 {
-  "name": "@perplexity/codescythe",
+  "name": "codescythe",
   "version": "0.4.12",
   "description": "Focused TypeScript dead-code analysis and removal",
   "license": "Apache-2.0",
@@ -22,9 +22,9 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@perplexity/codescythe-darwin-arm64": "workspace:*",
-    "@perplexity/codescythe-linux-amd64": "workspace:*",
-    "@perplexity/codescythe-linux-arm64": "workspace:*"
+    "codescythe-darwin-arm64": "workspace:*",
+    "codescythe-linux-amd64": "workspace:*",
+    "codescythe-linux-arm64": "workspace:*"
   },
   "engines": {
     "node": ">=22.18.0"

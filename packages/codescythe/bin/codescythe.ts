@@ -34,7 +34,7 @@ type DoctorResult = {
   warnings: {code: string; message: string}[];
 };
 
-const { analyze, doctor, fix } = require('@perplexity/codescythe') as {
+const { analyze, doctor, fix } = require('codescythe') as {
   analyze(options: CliOptions): AnalysisResult;
   doctor(options: CliOptions): DoctorResult;
   fix(options: CliOptions): FixResult;
