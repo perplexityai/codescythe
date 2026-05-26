@@ -28,6 +28,11 @@ package root instead of hidden under `src/` folders.
     `-- ts.bzl                 # Minimal Gazelle TS mapping
 ```
 
+The root `codescythe.schema.json` is the canonical editor/npm-facing schema.
+`//crates/codescythe:codescythe_schema` uses `write_source_file` to keep the
+crate-local `crates/codescythe/codescythe.schema.json` copy in sync for Cargo
+packaging, where the crate tarball cannot read files outside `crates/codescythe`.
+
 ### Core Crate
 
 `crates/codescythe` owns the analyzer. It loads `codescythe.json`,
@@ -40,8 +45,11 @@ unused files, unused exports, and unresolved imports.
 The public Rust API is intentionally narrow:
 
 - `codescythe::run(cwd, config_path)` returns an analysis report.
+- `codescythe::run_with_options(cwd, config_path, options)` enables verbose
+  diagnostics and one-export explanations.
 - `codescythe::run_and_fix(cwd, config_path)` applies supported removals and
   returns a fix report.
+- `codescythe::doctor(cwd, config_path)` returns config-risk diagnostics.
 
 The core crate has no npm or CLI concerns. That keeps conformance tests and
 future analysis work centered on one library boundary.
@@ -52,9 +60,9 @@ future analysis work centered on one library boundary.
 supports text and JSON output, exits with `1` when issues are found, and exits
 with `2` for runtime/config errors.
 
-`crates/codescythe_napi` exposes the same core behavior to Node through N-API.
-It returns JSON strings from Rust, while the public TypeScript loader parses
-those strings into JavaScript objects.
+`crates/codescythe_napi` exposes the same core behavior to Node through N-API:
+`analyze`, `fix`, and `doctor` all return JSON strings from Rust, while the
+public TypeScript loader parses those strings into JavaScript objects.
 
 ### Npm Package Boundary
 
@@ -62,12 +70,12 @@ The pnpm workspace treats `packages/*` as public distribution boundaries. The
 root `package.json` owns workspace imports and scripts; public packages own
 their own `package.json` files.
 
-`@perplexity/codescythe` is the public npm package. Its TypeScript loader chooses
-one optional native package from `process.platform` and `process.arch`:
+`codescythe` is the public npm package. Its TypeScript loader chooses one
+optional native package from `process.platform` and `process.arch`:
 
-- `@perplexity/codescythe-darwin-arm64`
-- `@perplexity/codescythe-linux-amd64`
-- `@perplexity/codescythe-linux-arm64`
+- `codescythe-darwin-arm64`
+- `codescythe-linux-amd64`
+- `codescythe-linux-arm64`
 
 The package entrypoints are TypeScript files and are executed with Node's
 `--experimental-transform-types` support. The package CLI shim is also
@@ -89,8 +97,8 @@ Bazel is the source of truth for release artifacts.
 
 //crates/codescythe_napi:release_nodes
   |-- codescythe.darwin-arm64.node
-  |-- codescythe.linux-amd64.node   # musl shared object
-  `-- codescythe.linux-arm64.node   # musl shared object
+  |-- codescythe.linux-amd64.node   # GNU Linux shared object
+  `-- codescythe.linux-arm64.node   # GNU Linux shared object
 
 //packages/...:package
   `-- copies the matching TypeScript loader/package files plus native output
@@ -99,9 +107,9 @@ Bazel is the source of truth for release artifacts.
 The release transitions in `crates/codescythe_cli/release_binary.bzl` and
 `crates/codescythe_napi/release_node.bzl` use `with_cfg` to force optimized
 platform builds and select the LLVM cross toolchains. Linux CLI binaries use
-musl targets for static artifacts. Linux N-API packages also use musl targets,
-with `crt-static` disabled for the shared-library build so Rust emits a `.node`
-shared object instead of dropping the `cdylib` output.
+musl targets for static artifacts. Linux N-API packages use the GNU Linux
+targets because npm ships `.node` shared objects, and the npm release smoke test
+uses `ldd` to reject missing runtime libraries.
 
 ## Development
 
@@ -169,8 +177,14 @@ The Rust conformance test lives in `crates/codescythe` and uses the
 `tests/fixtures/knip-export-basics` fixture. Npm smoke coverage is colocated with
 the public package in `packages/codescythe/npm_smoke.ts` and runs through Mocha.
 
-GitHub Actions builds all release targets on macOS, uploads the package and
-binary artifacts, then smoke-tests each triple on its native runner:
+Pull requests run the default `test native` lane with
+`bazel test //... --build_tests_only --test_tag_filters=-functional_test`.
+The slower real-repo fixture checks are tagged `functional_test` and run from
+the main-only `test functional` workflow.
+
+GitHub Actions builds release binaries and npm package artifacts on
+`ubuntu-24.04` with Bazel cross toolchains, uploads the artifacts, then
+smoke-tests each triple on its native runner:
 
 - Darwin arm64 on `macos-15`.
 - Linux amd64 on `ubuntu-24.04`.
@@ -179,3 +193,11 @@ binary artifacts, then smoke-tests each triple on its native runner:
 The smoke jobs verify the npm package loader, direct native package loading, the
 package CLI shim, the standalone static binary, fixture output, and that Linux
 artifacts do not reference `GLIBC_` symbols.
+
+Release Please owns version bumps for Cargo manifests, Cargo.lock entries, Bazel
+`VERSION` constants, CLI e2e expectations, and npm package manifests. When it
+creates a `codescythe_cli_v*` release, it dispatches the CLI asset release, npm
+release, and crates.io release workflows. npm publishing uses a temporary pnpm
+release workspace so `workspace:*` optional dependencies publish as exact
+versions, and crates.io publishing uses trusted publishing after a Bazel package
+input check plus `cargo publish --dry-run`.

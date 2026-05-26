@@ -1,8 +1,8 @@
 # Architecture
 
-Codescythe is a focused TypeScript dead-code analyzer. The core algorithm lives
-in `crates/codescythe`; the CLI, N-API binding, and npm package are thin
-runtime adapters around that library.
+Codescythe is a focused TypeScript and JavaScript dead-code analyzer. The core
+algorithm lives in `crates/codescythe`; the CLI, N-API binding, and npm package
+are thin runtime adapters around that library.
 
 The analyzer keeps two related but separate pieces of state:
 
@@ -70,18 +70,18 @@ classification counts, and uncached resolver wall time. The CLI adds JSON
 serialization timing for JSON output.
 
 The current Kibana fixture is a useful stress test because its benchmark config
-marks every configured source root as an entry. A representative local run
-processed 90,929 project files, treated all 90,929 as entries, parsed all
-90,929, found no unused files, and reported 54,316 unused exports. Before
-grouped import resolution, the same config spent 14.68s total, including 11.64s
-walking the reachable graph, 4.33s in graph-frontier parsing, and 7.31s in
-frontier inspection. The resolver saw 1,789,125 calls, 1,365,734 cache hits,
-423,391 cache misses, and 5.48s in uncached resolution. After deduplicating
-parser records and grouping static imports by source before resolution, the run
-spent 11.48s total, 9.81s walking the reachable graph, 3.94s in frontier
-parsing, and 5.88s in frontier inspection. Resolver calls dropped to 1,035,474
-while the 423,391 unique misses stayed unchanged, and uncached resolver time
-fell to 4.53s.
+marks every configured source root as an entry. The checked-in fixture
+definition covers 90,931 benchmarked source files. A representative profiled run
+around this config processed the whole source-root graph, found no unused files,
+and reported more than 54k unused exports. Before grouped import resolution, the
+same config spent 14.68s total, including 11.64s walking the reachable graph,
+4.33s in graph-frontier parsing, and 7.31s in frontier inspection. The resolver
+saw 1,789,125 calls, 1,365,734 cache hits, 423,391 cache misses, and 5.48s in
+uncached resolution. After deduplicating parser records and grouping static
+imports by source before resolution, the run spent 11.48s total, 9.81s walking
+the reachable graph, 3.94s in frontier parsing, and 5.88s in frontier
+inspection. Resolver calls dropped to 1,035,474 while the 423,391 unique misses
+stayed unchanged, and uncached resolver time fell to 4.53s.
 
 Those numbers shape the optimization priorities:
 
@@ -116,9 +116,10 @@ Without an explicit config path, Codescythe checks:
 3. A `codescythe` object in `package.json`.
 4. The default config.
 
-Config is validated against the bundled `codescythe.schema.json`. Pattern fields
-accept either a string or an array of strings. If `project` is empty, it defaults
-to:
+Config is validated against the bundled `codescythe.schema.json`. The root
+schema is canonical; Bazel generates the crate-local copy that Cargo packages
+and the Rust crate includes at compile time. Pattern fields accept either a
+string or an array of strings. If `project` is empty, it defaults to:
 
 ```json
 "**/*.{ts,tsx,js,jsx,mts,cts}"
@@ -232,9 +233,12 @@ deduplicates repeated dependency records while preserving first-seen order, then
 contains:
 
 - `exports`: exported symbols keyed by module export name.
-- `imports`: named/default imports and destructured dynamic imports.
-- `side_effect_imports`: bare imports, namespace imports, and string-literal
-  dynamic imports.
+- `imports`: named/default imports and destructured dynamic imports or
+  `require()` bindings.
+- `side_effect_imports`: bare imports and namespace-like imports that mark only
+  file reachability.
+- `dynamic_imports`: string-literal `import()` sources.
+- `glob_imports`: literal `import.meta.glob()` patterns.
 - `namespace_imports`: local namespace binding to source specifier.
 - `named_imports`: local named binding to imported source and export name.
 - `member_uses`: static member expressions such as `Namespace.value`.
@@ -256,9 +260,14 @@ The visitor records these source forms:
   `ns` as a namespace binding.
 - `import "./file"` marks the target file reachable but does not mark any export
   used.
+- `const { value } = require("./file")` marks export `value` from the resolved
+  file; assigning `require("./file")` to an identifier records a namespace-style
+  binding for later `Namespace.value` member use.
 - `const { value } = await import("./file")` marks export `value` from the
   resolved file. The string-literal `import()` expression also marks the file
   reachable.
+- `import.meta.glob("./routes/*.ts")` resolves the literal glob relative to the
+  importer and marks matching project files and their exports used.
 - `export { value } from "./file"` marks the source file reachable and creates
   a re-export edge from the current export name to `value` in the source file.
 - `export * from "./file"` records a star re-export source. When it is treated
@@ -332,10 +341,9 @@ For each queued file, Codescythe:
 3. Resolves re-export source files and marks them reachable without marking
    their exported names used. File reachability follows the dependency graph,
    while export liveness remains symbol-specific.
-4. Treats entry-file exports as public API when `includeEntryExports` is false.
-   Own exports from those entry files are skipped during issue reporting, while
-   re-exported sources are marked so public barrel files keep their targets
-   alive.
+4. Skips own entry-file exports when `includeEntryExports` is false, treating
+   those entry files as public API. Re-exported sources are marked so public
+   barrel files keep their targets alive.
 5. Propagates any currently used re-exported names. If `file.ts` exports
    `{ value } from "./source"`, and reachable code imports `value` from
    `file.ts`, then `value` is marked used in `source`.
