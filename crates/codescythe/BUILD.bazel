@@ -1,5 +1,6 @@
 load("@rules_rs//rs:rust_library.bzl", "rust_library")
 load("@rules_rs//rs:rust_test.bzl", "rust_test")
+load("@aspect_bazel_lib//lib:write_source_files.bzl", "write_source_file")
 
 COMMON_DEPS = [
     "@crates//:anyhow",
@@ -38,10 +39,17 @@ LIB_SRCS = [
     "lib.rs",
 ]
 
+write_source_file(
+    name = "codescythe_schema",
+    in_file = "//:config_schema",
+    out_file = "codescythe.schema.json",
+    diff_test_failure_message = "{{DEFAULT_MESSAGE}}\n\nThe crate-local schema is generated from the root codescythe.schema.json. Run:\n\n    bazel run //crates/codescythe:codescythe_schema\n",
+)
+
 rust_library(
     name = "codescythe",
     srcs = LIB_SRCS,
-    compile_data = ["//:config_schema"],
+    compile_data = ["codescythe.schema.json"],
     crate_name = "codescythe",
     edition = "2024",
     version = VERSION,
@@ -52,7 +60,7 @@ rust_library(
 rust_library(
     name = "codescythe_profiling",
     srcs = LIB_SRCS,
-    compile_data = ["//:config_schema"],
+    compile_data = ["codescythe.schema.json"],
     crate_features = ["profiling"],
     crate_name = "codescythe",
     edition = "2024",
