@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.13-e2e.20260526](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.12...codescythe_cli_v0.4.13-e2e.20260526) (2026-05-26)
+
+
+### Bug Fixes
+
+* publish npm packages without scope ([23ef880](https://github.com/perplexityai/codescythe/commit/23ef8805fd4c93c6ef29ed313590abbd31bd7b22))
+
 ## [0.4.12](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.11...codescythe_cli_v0.4.12) (2026-05-22)
 
 

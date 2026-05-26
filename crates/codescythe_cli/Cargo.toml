@@ -1,6 +1,6 @@
 [package]
 name = "codescythe_cli"
-version = "0.4.12"
+version = "0.4.13-e2e.20260526"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
