@@ -190,7 +190,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          npm publish --access public artifacts/codescythe-darwin-arm64
-          npm publish --access public artifacts/codescythe-linux-amd64
-          npm publish --access public artifacts/codescythe-linux-arm64
-          npm publish --access public artifacts/codescythe
+          npm publish --access public ./artifacts/codescythe-darwin-arm64
+          npm publish --access public ./artifacts/codescythe-linux-amd64
+          npm publish --access public ./artifacts/codescythe-linux-arm64
+          npm publish --access public ./artifacts/codescythe

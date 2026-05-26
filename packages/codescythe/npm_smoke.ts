@@ -190,13 +190,13 @@ function packageDirFromEnv(name: string): string {
 
 function linkPackage(packageDir: string, nodeModulesDir: string): void {
   const packageJson = require(path.join(packageDir, 'package.json')) as {name: string};
-  const parts = packageJson.name.split('/');
-  assert.equal(parts.length, 2, `expected scoped package name, got ${packageJson.name}`);
+  const parts = packageJson.name.startsWith('@') ? packageJson.name.split('/') : [packageJson.name];
+  assert.ok(parts.length === 1 || parts.length === 2, `expected package name, got ${packageJson.name}`);
 
-  const scopeDir = path.join(nodeModulesDir, parts[0]);
-  fs.mkdirSync(scopeDir, {recursive: true});
+  const linkParent = parts.length === 2 ? path.join(nodeModulesDir, parts[0]) : nodeModulesDir;
+  fs.mkdirSync(linkParent, {recursive: true});
 
-  const linkPath = path.join(scopeDir, parts[1]);
+  const linkPath = path.join(linkParent, parts.at(-1)!);
   fs.rmSync(linkPath, {force: true, recursive: true});
   fs.symlinkSync(packageDir, linkPath, 'dir');
 }
