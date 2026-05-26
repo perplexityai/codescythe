@@ -1,0 +1,86 @@
+name: Codescythe Crate Release
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build and verify only, no publish)"
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify crate package
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-crate-package
+          repository-cache: true
+
+      - name: Setup Rust
+        run: rustup toolchain install 1.93.0 --profile minimal
+
+      - name: Verify Bazel package inputs
+        run: |
+          set -euo pipefail
+
+          bazel test \
+            //crates/codescythe:codescythe_schema_test \
+            //crates/codescythe:codescythe_test
+
+      - name: Verify cargo package
+        run: |
+          set -euo pipefail
+
+          rustup run 1.93.0 cargo publish \
+            -p codescythe \
+            --registry crates-io \
+            --locked \
+            --dry-run
+
+  publish:
+    name: Publish crate
+    needs:
+      - verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'codescythe_cli_v')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && startsWith(github.ref_name, 'codescythe_cli_v')) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Rust
+        run: rustup toolchain install 1.93.0 --profile minimal
+
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe
+
+      - name: Publish crate
+        run: |
+          set -euo pipefail
+
+          rustup run 1.93.0 cargo publish \
+            -p codescythe \
+            --registry crates-io \
+            --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
