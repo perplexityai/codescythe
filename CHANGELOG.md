@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.13-e2e.20260526.2](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.12...codescythe_cli_v0.4.13-e2e.20260526.2) (2026-05-26)
+
+
+### Miscellaneous Chores
+
+* test pnpm and crates trusted publishing from landed workflows
+
 ## [0.4.12](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.11...codescythe_cli_v0.4.12) (2026-05-22)
 
 
