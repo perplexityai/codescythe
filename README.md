@@ -1,20 +1,20 @@
 # Codescythe
 
-Codescythe is a focused TypeScript dead-code analyzer and remover inspired by
-[Knip](https://knip.dev), scoped to entry/project graph analysis and unused
-TypeScript exports/files. It intentionally avoids Knip's framework plugin
-surface.
+Codescythe is a focused TypeScript and JavaScript dead-code analyzer and
+remover inspired by [Knip](https://knip.dev), scoped to entry/project graph
+analysis and unused source exports/files. It intentionally avoids Knip's
+framework plugin surface.
 
-It exists for TypeScript codebases that want a smaller, more predictable cleanup
-tool: start from known entry points, follow the import/export graph, and identify
-project files or exported symbols that nothing reachable uses. Many dead-code
-tools grow into broad framework integration layers; Codescythe chooses a narrower
-contract so the analysis is easier to reason about, test, and run as part of
-automated cleanup.
+It exists for TypeScript-heavy JavaScript codebases that want a smaller, more
+predictable cleanup tool: start from known entry points, follow the
+import/export graph, and identify project files or exported symbols that nothing
+reachable uses. Many dead-code tools grow into broad framework integration
+layers; Codescythe chooses a narrower contract so the analysis is easier to
+reason about, test, and run as part of automated cleanup.
 
 The goal is not to replace Knip for every framework-aware audit. Codescythe is
 for the common package and monorepo maintenance job where the project boundary is
-already known and the useful answer is deterministic: which TypeScript files and
+already known and the useful answer is deterministic: which source files and
 exports are unused, and which of those removals can be applied safely.
 
 ## Codescythe And Knip
@@ -23,10 +23,10 @@ Codescythe takes a deliberately smaller slice of Knip's problem space.
 
 | | Knip | Codescythe |
 | --- | --- | --- |
-| Primary scope | Broad JavaScript and TypeScript project hygiene: unused files, exports, dependencies, binaries, unresolved imports, and related issue types. | Focused TypeScript dead-code analysis: unused project files, unused exports, unresolved imports, and supported removals. |
+| Primary scope | Broad JavaScript and TypeScript project hygiene: unused files, exports, dependencies, binaries, unresolved imports, and related issue types. | Focused TypeScript/JavaScript dead-code analysis: unused project files, unused exports, unresolved imports, and supported removals. |
 | Project discovery | Infers more from package metadata, workspaces, scripts, framework config, and built-in plugins. | Starts from explicit `entry` and `project` config, then follows the import/export graph. |
 | Framework awareness | Designed for framework and tool integrations through plugins and compilers. | Intentionally avoids a framework plugin surface. |
-| Best fit | Comprehensive audits where framework config, dependency hygiene, and workspace conventions matter. | Deterministic cleanup jobs where the TypeScript boundary is already known and repeatable graph behavior matters more than integration breadth. |
+| Best fit | Comprehensive audits where framework config, dependency hygiene, and workspace conventions matter. | Deterministic cleanup jobs where the source boundary is already known and repeatable graph behavior matters more than integration breadth. |
 
 ## Benchmarks
 
@@ -38,7 +38,7 @@ produced:
 | --- | ---: | ---: | ---: |
 | `microsoft/vscode` | 9,398 | 1.11s | 4.22s |
 | `grafana/grafana` | 8,358 | 833.2ms | 9.51s |
-| `elastic/kibana` | 85,928 | 12.96s | 53.33s |
+| `elastic/kibana` | 90,931 | 13.61s | 43.04s |
 | `renovatebot/renovate` | 2,456 | 154.5ms | 900.5ms |
 
 Counts reflect each fixture's generated benchmark config after excludes. Run
@@ -46,8 +46,10 @@ Counts reflect each fixture's generated benchmark config after excludes. Run
 
 ## Config
 
-The config schema lives at `codescythe.schema.json` and is compiled into the
-core crate. Config can be provided as:
+The canonical config schema lives at root `codescythe.schema.json`. Bazel keeps
+the crate-local `crates/codescythe/codescythe.schema.json` copy in sync with
+`write_source_file`, and that crate-local copy is compiled into the core crate.
+Config can be provided as:
 
 - `codescythe.json` in the project root.
 - `codescythe.jsonc` in the project root, when `codescythe.json` is absent.
@@ -74,6 +76,12 @@ warnings, and explanations for unused exports. Ignored unresolved imports are
 grouped under `ignoredUnresolvedImportsByPattern` with sample specifiers and
 importer files, so generated-import suppressions are visible instead of being
 silent.
+
+The source graph includes static imports and re-exports, string-literal dynamic
+imports, destructured `require("./module")` calls, and `import.meta.glob`
+patterns. `import.meta.glob` marks the matched project files and their exports
+as used; computed patterns and non-literal dynamic imports remain outside the
+supported graph.
 
 ## Fixing
 

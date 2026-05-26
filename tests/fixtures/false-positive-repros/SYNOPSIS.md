@@ -1,6 +1,6 @@
 # Codescythe false-positive repros
 
-While replacing Knip with `codescythe 0.3.0`, I found three patterns that look
+While replacing Knip with `codescythe 0.3.0`, I found four patterns that look
 like false positives. Each fixture in this package should report no unused files
 or exports.
 
@@ -19,6 +19,11 @@ All repro tests exit `0` with no dead-code findings.
 3. Vite `import.meta.glob`
    - `import.meta.glob("./routes/*.ts", { eager: true })`
    - Reports matched route files like `routes/home.ts` as unused.
+4. Test helper imports tied to live production source
+   - `billing.test.ts` imports both live `billing.ts` source and helper
+     `factory.ts`
+   - Reports the helper `factory.ts` as an unused file even though it supports a
+     test for live code.
 
 ## Bazel repro tests
 
@@ -85,6 +90,26 @@ codescythe_test(
     ],
     expected_exit_code = 0,
     must_not_contain = ["routes/home.ts"],
+)
+
+filegroup(
+    name = "test_helper_imports_files",
+    srcs = glob(["test_helper_imports/**"]),
+)
+
+codescythe_test(
+    name = "test_helper_imports_false_positive_repro",
+    args = [
+        "--config",
+        "$(location test_helper_imports/codescythe.json)",
+        "--json",
+    ],
+    data = [
+        ":test_helper_imports_files",
+        "test_helper_imports/codescythe.json",
+    ],
+    expected_exit_code = 0,
+    must_not_contain = ["factory.ts"],
 )
 ```
 
@@ -175,4 +200,50 @@ console.log(Object.keys(modules));
 export const route = {
   path: "/home",
 };
+```
+
+### `test_helper_imports/codescythe.json`
+
+```json
+{
+  "entry": "index.ts",
+  "project": ["**/*.ts"],
+  "unresolvedImports": {
+    "mode": "ignore"
+  },
+  "ignoreExportsUsedInFile": true
+}
+```
+
+### `test_helper_imports/index.ts`
+
+```ts
+import { formatPrice } from './billing';
+
+console.log(formatPrice(1));
+```
+
+### `test_helper_imports/billing.ts`
+
+```ts
+export function formatPrice(value: number) {
+  return `$${value}`;
+}
+```
+
+### `test_helper_imports/billing.test.ts`
+
+```ts
+import { formatPrice } from './billing';
+import { makePrice } from './factory';
+
+console.log(formatPrice(makePrice()));
+```
+
+### `test_helper_imports/factory.ts`
+
+```ts
+export function makePrice() {
+  return 42;
+}
 ```

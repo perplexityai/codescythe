@@ -27,6 +27,7 @@ node --experimental-transform-types benchmarks/run.ts --skip-build --skip-knip
 pnpm conformance:kibana
 bazel run //benchmarks:vscode_conformance
 bazel run //benchmarks:grafana_conformance
+bazel run //benchmarks:kibana_conformance
 bazel run //benchmarks:renovate_conformance
 CODESCYTHE_BIN=/tmp/codescythe KNIP_BIN=/tmp/knip pnpm benchmark
 CODESCYTHE_PARSE_THREADS=4 pnpm benchmark
@@ -65,8 +66,9 @@ unset.
 
 ## Current Numbers
 
-Local run on May 22, 2026 with the checked-in fixture configs. The Kibana rows
-use the imported `elastic/kibana#270237` Knip config and a one-run smoke sample.
+Local run on May 22, 2026 with the checked-in fixture configs. The fixture
+counts come from `benchmarks/run.ts`; the Kibana rows use the imported
+`elastic/kibana#270237` Knip config and a one-run smoke sample.
 
 ```sh
 bazel build -c opt //crates/codescythe_cli:codescythe
