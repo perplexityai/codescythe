@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codescythe</title>
+    <meta
+      name="description"
+      content="Codescythe is a fast, deterministic dead-code analyzer and remover for TypeScript and JavaScript codebases."
+    />
+    <meta property="og:title" content="Codescythe" />
+    <meta
+      property="og:description"
+      content="Focused TypeScript and JavaScript dead-code cleanup for monorepos that know their entry and project boundaries."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#161513" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="Codescythe home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Codescythe</span>
+      </a>
+      <nav>
+        <a href="#benchmarks">Benchmarks</a>
+        <a href="#workflow">Workflow</a>
+        <a href="https://github.com/perplexityai/codescythe">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-visual" aria-hidden="true">
+          <div class="source-map">
+            <span class="node node-entry">entry</span>
+            <span class="node node-live">live exports</span>
+            <span class="node node-test">leaf tests</span>
+            <span class="node node-dead">dead files</span>
+            <span class="edge edge-one"></span>
+            <span class="edge edge-two"></span>
+            <span class="edge edge-three"></span>
+          </div>
+          <div class="terminal-window terminal-main">
+            <div class="window-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <pre><code>$ codescythe --fix --json
+{
+  "removedFiles": [
+    "src/legacy/dead-view.ts"
+  ],
+  "removedExports": 18,
+  "unresolved": []
+}</code></pre>
+          </div>
+          <div class="terminal-window terminal-side">
+            <div class="window-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <pre><code>entry: src/index.ts
+project: src/**/*.ts
+ignore: generated/**</code></pre>
+          </div>
+        </div>
+
+        <div class="hero-content">
+          <p class="eyebrow">Dead-code cleanup for TypeScript monorepos</p>
+          <h1 id="hero-title">Codescythe</h1>
+          <p class="hero-copy">
+            A focused analyzer and remover that starts from explicit entry
+            points, follows the import/export graph, and reports unused files
+            and exports with deterministic behavior.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a class="button button-primary" href="https://github.com/perplexityai/codescythe">
+              View on GitHub
+            </a>
+            <a class="button button-secondary" href="#workflow">See workflow</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="summary-strip" aria-label="Codescythe summary">
+        <div class="summary-item">
+          <span class="summary-kicker">Scope</span>
+          <strong>Files, exports, unresolved imports</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-kicker">Runtime</span>
+          <strong>Rust core, CLI, Node-API packages</strong>
+        </div>
+        <div class="summary-item">
+          <span class="summary-kicker">Fit</span>
+          <strong>Known project boundaries, repeatable cleanup</strong>
+        </div>
+      </section>
+
+      <section class="section section-light" id="benchmarks" aria-labelledby="benchmarks-title">
+        <div class="section-inner two-column">
+          <div>
+            <p class="eyebrow">Benchmarked on real repositories</p>
+            <h2 id="benchmarks-title">Built for large TypeScript trees</h2>
+            <p>
+              Codescythe keeps the contract narrow: discover the configured
+              project, follow reachable imports, and return the dead source
+              surface. That smaller model makes it straightforward to run in
+              automated cleanup jobs.
+            </p>
+          </div>
+          <div class="benchmark-panel" aria-label="Benchmark comparison">
+            <div class="benchmark-row">
+              <div>
+                <span class="fixture">microsoft/vscode</span>
+                <span class="files">9,398 files</span>
+              </div>
+              <div class="bars">
+                <span class="bar codescythe" style="--value: 26%">1.11s</span>
+                <span class="bar knip" style="--value: 100%">4.22s</span>
+              </div>
+            </div>
+            <div class="benchmark-row">
+              <div>
+                <span class="fixture">grafana/grafana</span>
+                <span class="files">8,358 files</span>
+              </div>
+              <div class="bars">
+                <span class="bar codescythe" style="--value: 9%">833ms</span>
+                <span class="bar knip" style="--value: 100%">9.51s</span>
+              </div>
+            </div>
+            <div class="benchmark-row">
+              <div>
+                <span class="fixture">elastic/kibana</span>
+                <span class="files">90,931 files</span>
+              </div>
+              <div class="bars">
+                <span class="bar codescythe" style="--value: 32%">13.61s</span>
+                <span class="bar knip" style="--value: 100%">43.04s</span>
+              </div>
+            </div>
+            <div class="legend" aria-hidden="true">
+              <span><i class="legend-codescythe"></i>Codescythe</span>
+              <span><i class="legend-knip"></i>Knip</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-ink" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-inner workflow-grid">
+          <div>
+            <p class="eyebrow">Config first</p>
+            <h2 id="workflow-title">Make the source boundary explicit</h2>
+            <p>
+              Codescythe is designed for repositories where entry points and
+              project files are known. The analyzer follows that graph rather
+              than guessing through framework plugins.
+            </p>
+          </div>
+          <pre class="code-sample"><code>{
+  "$schema": "./codescythe.schema.json",
+  "entry": ["src/index.ts"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "testFilePatterns": ["**/*.test.*"],
+  "ignore": ["src/generated/**"]
+}</code></pre>
+        </div>
+      </section>
+
+      <section class="section section-light" aria-labelledby="cleanup-title">
+        <div class="section-inner feature-grid">
+          <article class="feature-card">
+            <span class="feature-icon analyze" aria-hidden="true"></span>
+            <h3 id="cleanup-title">Analyze before editing</h3>
+            <p>
+              JSON output includes unused files, unused exports, unresolved
+              imports, matched config, and verbose diagnostics for reviewable
+              cleanup runs.
+            </p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-icon fix" aria-hidden="true"></span>
+            <h3>Apply supported fixes</h3>
+            <p>
+              The fix pass removes unused project files and export declarations,
+              then reports changed files and skipped export edits when resolver
+              uncertainty makes a change risky.
+            </p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-icon doctor" aria-hidden="true"></span>
+            <h3>Check config risk</h3>
+            <p>
+              Doctor mode flags broad ignores, unresolved imports, empty entry
+              globs, and generated-source patterns that overlap checked source.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section-install" aria-labelledby="install-title">
+        <div class="section-inner install-layout">
+          <div>
+            <p class="eyebrow">Package and binary releases</p>
+            <h2 id="install-title">Run it from npm or GitHub releases</h2>
+            <p>
+              The public npm package loads the matching native Node-API package
+              for supported platforms. Standalone CLI binaries are published for
+              macOS ARM64, Linux AMD64, and Linux ARM64.
+            </p>
+          </div>
+          <pre class="code-sample code-sample-light"><code>npm install -D codescythe
+npx codescythe --json --config codescythe.jsonc
+npx codescythe doctor --config codescythe.jsonc</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Codescythe</span>
+      <a href="https://github.com/perplexityai/codescythe">github.com/perplexityai/codescythe</a>
+    </footer>
+  </body>
+</html>
