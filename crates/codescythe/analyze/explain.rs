@@ -20,9 +20,9 @@ pub(super) fn build_export_usage_index(
         };
         let file = file.clone();
         let skip_reason = if test_file_indexes.contains(&index) {
-            Some("test file leaf".to_string())
+            Some(TEST_FILE_LEAF_REASON)
         } else if !used_files.contains(&index) && !entry_indexes.contains(&index) {
-            Some("importer unreachable".to_string())
+            Some(ExplanationReasonCode::ImporterUnreachable)
         } else {
             None
         };
@@ -32,14 +32,37 @@ pub(super) fn build_export_usage_index(
                 continue;
             };
             if let ImportResolution::Project(target) = resolver.resolve(&file, &import.source)? {
+                let mut reason = ExplanationReasonCode::NamedImport;
+                let mut skip_reason = skip_reason;
+                let internal_target = if skip_reason == Some(TEST_FILE_LEAF_REASON) {
+                    internal_export_target(files, resolver, target, imported)?
+                } else {
+                    None
+                };
+                let target = if let Some((internal_target, internal_name)) = internal_target {
+                    reason = ExplanationReasonCode::TestImportOfInternalExport;
+                    skip_reason = None;
+                    add_export_usage(
+                        &mut usage,
+                        internal_target,
+                        &internal_name,
+                        &file.relative,
+                        &import.source,
+                        reason,
+                        skip_reason,
+                    );
+                    continue;
+                } else {
+                    target
+                };
                 add_export_usage(
                     &mut usage,
                     target,
                     imported,
                     &file.relative,
                     &import.source,
-                    "named import",
-                    skip_reason.as_deref(),
+                    reason,
+                    skip_reason,
                 );
             }
         }
@@ -49,14 +72,33 @@ pub(super) fn build_export_usage_index(
                 continue;
             };
             if let ImportResolution::Project(target) = resolver.resolve(&file, source)? {
+                let mut reason = ExplanationReasonCode::NamespaceMemberAccess;
+                let mut skip_reason = skip_reason;
+                if skip_reason == Some(TEST_FILE_LEAF_REASON)
+                    && let Some((internal_target, internal_name)) =
+                        internal_export_target(files, resolver, target, member)?
+                {
+                    reason = ExplanationReasonCode::TestNamespaceAccessOfInternalExport;
+                    skip_reason = None;
+                    add_export_usage(
+                        &mut usage,
+                        internal_target,
+                        &internal_name,
+                        &file.relative,
+                        source,
+                        reason,
+                        skip_reason,
+                    );
+                    continue;
+                }
                 add_export_usage(
                     &mut usage,
                     target,
                     member,
                     &file.relative,
                     source,
-                    "namespace member access",
-                    skip_reason.as_deref(),
+                    reason,
+                    skip_reason,
                 );
             }
         }
@@ -71,8 +113,8 @@ pub(super) fn build_export_usage_index(
                     name,
                     &file.relative,
                     source,
-                    "re-export",
-                    skip_reason.as_deref(),
+                    ExplanationReasonCode::ReExport,
+                    skip_reason,
                 );
             }
         }
@@ -81,12 +123,14 @@ pub(super) fn build_export_usage_index(
             if let ImportResolution::Project(target) = resolver.resolve(&file, source)? {
                 add_all_export_usage(
                     files,
+                    resolver,
                     &mut usage,
                     target,
                     &file.relative,
                     source,
-                    "dynamic import marks all exports",
-                    skip_reason.as_deref(),
+                    ExplanationReasonCode::DynamicImportMarksAllExports,
+                    skip_reason,
+                    Some(ExplanationReasonCode::TestDynamicImportOfInternalExport),
                 )?;
             }
         }
@@ -95,12 +139,14 @@ pub(super) fn build_export_usage_index(
             if let ImportResolution::Project(target) = resolver.resolve(&file, source)? {
                 add_all_export_usage(
                     files,
+                    resolver,
                     &mut usage,
                     target,
                     &file.relative,
                     source,
-                    "export star marks all exports",
-                    skip_reason.as_deref(),
+                    ExplanationReasonCode::ExportStarMarksAllExports,
+                    skip_reason,
+                    Some(ExplanationReasonCode::TestExportStarImportOfInternalExport),
                 )?;
             }
         }
@@ -110,18 +156,34 @@ pub(super) fn build_export_usage_index(
 
 fn add_all_export_usage(
     files: &mut FileCache,
+    resolver: &ModuleResolver,
     usage: &mut ExportUsageIndex,
     target: usize,
     importer: &str,
     specifier: &str,
-    reason: &str,
-    skip_reason: Option<&str>,
+    reason: ExplanationReasonCode,
+    skip_reason: Option<ExplanationReasonCode>,
+    internal_test_reason: Option<ExplanationReasonCode>,
 ) -> Result<()> {
     let export_names = files
         .try_get(target)
         .map(|file| file.exports.keys().cloned().collect::<Vec<_>>())
         .unwrap_or_default();
     for export_name in export_names {
+        let mut target = target;
+        let mut export_name = export_name;
+        let mut reason = reason;
+        let mut skip_reason = skip_reason;
+        if skip_reason == Some(TEST_FILE_LEAF_REASON)
+            && let Some((internal_target, internal_name)) =
+                internal_export_target(files, resolver, target, &export_name)?
+            && let Some(internal_test_reason) = internal_test_reason
+        {
+            target = internal_target;
+            export_name = internal_name;
+            reason = internal_test_reason;
+            skip_reason = None;
+        }
         add_export_usage(
             usage,
             target,
@@ -141,8 +203,8 @@ fn add_export_usage(
     symbol: &str,
     importer: &str,
     specifier: &str,
-    reason: &str,
-    skip_reason: Option<&str>,
+    reason: ExplanationReasonCode,
+    skip_reason: Option<ExplanationReasonCode>,
 ) {
     let key = (target, symbol.to_string());
     if let Some(skip_reason) = skip_reason {
@@ -153,7 +215,7 @@ fn add_export_usage(
             .push(SkippedImporterExplanation {
                 importer: importer.to_string(),
                 specifier: specifier.to_string(),
-                reason: skip_reason.to_string(),
+                reason: ExplanationReason::new(skip_reason),
             });
     } else {
         usage
@@ -163,7 +225,7 @@ fn add_export_usage(
             .push(ExportImportExplanation {
                 importer: importer.to_string(),
                 specifier: specifier.to_string(),
-                reason: reason.to_string(),
+                reason: ExplanationReason::new(reason),
             });
     }
 }
@@ -185,6 +247,7 @@ pub(super) fn add_export_explanations(
                 files,
                 index,
                 &issue.symbol,
+                issue.internal,
                 used_files,
                 usage,
                 aliases,
@@ -208,7 +271,7 @@ pub(super) fn explain_requested_export(
             exporting_file: request.file.clone(),
             symbol: request.symbol.clone(),
             status: ExplainExportStatus::FileNotFound,
-            reason: "file is outside the analyzed project set".to_string(),
+            reason: ExplanationReason::new(ExplanationReasonCode::FileOutsideProject),
             explanation: None,
         });
     };
@@ -220,26 +283,31 @@ pub(super) fn explain_requested_export(
                 exporting_file: request.file.clone(),
                 symbol: request.symbol.clone(),
                 status: ExplainExportStatus::FileUnused,
-                reason: format!("file is unreachable and could not be parsed: {error}"),
+                reason: ExplanationReason::with_detail(
+                    ExplanationReasonCode::FileUnparseable,
+                    error,
+                ),
                 explanation: None,
             });
         }
     };
-    if !file.exports.contains_key(&request.symbol) {
+    let Some(export) = file.exports.get(&request.symbol) else {
         return Ok(ExplainExportResult {
             exporting_file: request.file.clone(),
             symbol: request.symbol.clone(),
             status: ExplainExportStatus::SymbolNotExported,
-            reason: "symbol is not exported by the requested file".to_string(),
+            reason: ExplanationReason::new(ExplanationReasonCode::SymbolNotExported),
             explanation: None,
         });
-    }
+    };
+    let internal = export.internal;
 
     let usage = usage.expect("export usage is built when explain_export is requested");
     let explanation = export_explanation(
         files,
         index,
         &request.symbol,
+        internal,
         used_files,
         usage,
         aliases,
@@ -259,13 +327,28 @@ pub(super) fn explain_requested_export(
     let reason = match status {
         ExplainExportStatus::Alive => {
             if explanation.importers_considered.is_empty() {
-                "export is kept alive by entry/public-file semantics".to_string()
+                ExplanationReason::new(ExplanationReasonCode::EntryPublicFileSemantics)
+            } else if explanation.importers_considered.iter().any(|importer| {
+                matches!(
+                    importer.reason.code,
+                    ExplanationReasonCode::TestImportOfInternalExport
+                        | ExplanationReasonCode::TestNamespaceAccessOfInternalExport
+                        | ExplanationReasonCode::TestDynamicImportOfInternalExport
+                        | ExplanationReasonCode::TestImportMetaGlobOfInternalExport
+                        | ExplanationReasonCode::TestExportStarImportOfInternalExport
+                )
+            }) {
+                ExplanationReason::new(ExplanationReasonCode::InternalExportUsedByTests)
             } else {
-                "export is used by reachable importers".to_string()
+                ExplanationReason::new(ExplanationReasonCode::ReachableImporters)
             }
         }
-        ExplainExportStatus::Dead => "export is not used by reachable importers".to_string(),
-        ExplainExportStatus::FileUnused => "exporting file is unreachable".to_string(),
+        ExplainExportStatus::Dead => {
+            ExplanationReason::new(ExplanationReasonCode::NoReachableImporters)
+        }
+        ExplainExportStatus::FileUnused => {
+            ExplanationReason::new(ExplanationReasonCode::ExportingFileUnreachable)
+        }
         ExplainExportStatus::FileNotFound | ExplainExportStatus::SymbolNotExported => {
             unreachable!("handled before explanation")
         }
@@ -284,6 +367,7 @@ fn export_explanation(
     files: &FileCache,
     index: usize,
     symbol: &str,
+    internal: bool,
     used_files: &UsedFiles,
     usage: &ExportUsageIndex,
     aliases: &[AliasMapping],
@@ -308,6 +392,7 @@ fn export_explanation(
     ExportExplanation {
         exporting_file: files.relative(index),
         symbol: symbol.to_string(),
+        internal,
         file_reachable: used_files.contains(&index),
         importers_considered,
         importers_skipped,

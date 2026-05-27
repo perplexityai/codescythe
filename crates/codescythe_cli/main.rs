@@ -289,22 +289,38 @@ fn parse_explain_export(value: &str) -> Result<codescythe::ExplainExportRequest>
     })
 }
 
+fn reason_text(reason: &codescythe::ExplanationReason) -> String {
+    if let Some(detail) = &reason.detail {
+        format!("{} [{}]: {}", reason.description, reason.code, detail)
+    } else {
+        format!("{} [{}]", reason.description, reason.code)
+    }
+}
+
 fn print_explain_export(analysis: &codescythe::Analysis) {
     let Some(result) = &analysis.explain_export else {
         return;
     };
     println!(
         "{}:{} is {:?}: {}",
-        result.exporting_file, result.symbol, result.status, result.reason
+        result.exporting_file,
+        result.symbol,
+        result.status,
+        reason_text(&result.reason)
     );
     if let Some(explanation) = &result.explanation {
+        if explanation.internal {
+            println!("  internal: true");
+        }
         println!("  file reachable: {}", explanation.file_reachable);
         if !explanation.importers_considered.is_empty() {
             println!("  importers considered:");
             for importer in &explanation.importers_considered {
                 println!(
                     "    {} imports {} ({})",
-                    importer.importer, importer.specifier, importer.reason
+                    importer.importer,
+                    importer.specifier,
+                    reason_text(&importer.reason)
                 );
             }
         }
@@ -313,7 +329,9 @@ fn print_explain_export(analysis: &codescythe::Analysis) {
             for importer in &explanation.importers_skipped {
                 println!(
                     "    {} imports {} ({})",
-                    importer.importer, importer.specifier, importer.reason
+                    importer.importer,
+                    importer.specifier,
+                    reason_text(&importer.reason)
                 );
             }
         }
@@ -332,7 +350,10 @@ fn print_explain_export(analysis: &codescythe::Analysis) {
 }
 
 fn print_doctor_report(result: &codescythe::ConfigDoctorResult) {
-    if result.warnings.is_empty() && result.unresolved_imports.is_empty() {
+    if result.warnings.is_empty()
+        && result.unresolved_imports.is_empty()
+        && result.internal_exports_used_by_tests.is_empty()
+    {
         println!("No risky Codescythe config found");
         return;
     }
@@ -363,6 +384,24 @@ fn print_doctor_report(result: &codescythe::ConfigDoctorResult) {
                         candidate.path, candidate.exists, candidate.in_project
                     );
                 }
+            }
+        }
+    }
+
+    if !result.internal_exports_used_by_tests.is_empty() {
+        println!(
+            "@internal exports kept alive by tests ({})",
+            result.internal_exports_used_by_tests.len()
+        );
+        for usage in &result.internal_exports_used_by_tests {
+            println!("  {}:{}", usage.exporting_file, usage.symbol);
+            for importer in &usage.test_importers {
+                println!(
+                    "    {} imports {} ({})",
+                    importer.importer,
+                    importer.specifier,
+                    reason_text(&importer.reason)
+                );
             }
         }
     }

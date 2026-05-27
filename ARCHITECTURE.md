@@ -375,6 +375,13 @@ for removal are reported instead. That keeps tests from counting as production
 usage while letting `--fix` remove tests attached to the dead code being
 removed.
 
+Leading JSDoc `@internal` tags let tests act as a narrow usage root for an
+export. A test import of an `@internal` export marks that export reachable and
+queues the exporting file, so dependencies needed by the internal export are
+preserved. The tag does not make unused internals immortal: an `@internal` export
+with no production or test importer is still reported like any other unused
+export.
+
 An export is reported under `issues.exports` when:
 
 - The file is eligible for export reporting.
@@ -383,6 +390,10 @@ An export is reported under `issues.exports` when:
   not referenced inside the declaring file.
 
 Entry-file exports are skipped unless `includeEntryExports` is true.
+`@internal` exports used from tests are present in `used_exports`, and verbose
+explanations show the test importer reason that preserved them. Reason fields
+use a fixed `ExplanationReasonCode` plus a human description, which keeps JSON
+output machine-readable without making callers parse prose.
 
 Unresolved imports are filtered through the configured unresolved-import policy
 and sorted per importer before they are added to the final report. Counters are

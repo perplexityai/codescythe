@@ -4,10 +4,11 @@ mod fix;
 
 pub use analyze::{
     Analysis, AnalysisOptions, AnalysisSummary, ConfigDoctorResult, ConfigDoctorWarning, Counters,
-    ExplainExportRequest, ExplainExportResult, ExplainExportStatus, ExportExplanation, FileIssue,
-    IgnoredUnresolvedImportSample, IgnoredUnresolvedImportsByPattern, Issues,
-    SourceAliasIgnoreWarning, SymbolIssue, UnresolvedImportCandidateFile,
-    UnresolvedImportExplanation, UnresolvedImportMatchedAlias, analyze_path, doctor_config,
+    ExplainExportRequest, ExplainExportResult, ExplainExportStatus, ExplanationReason,
+    ExplanationReasonCode, ExportExplanation, FileIssue, IgnoredUnresolvedImportSample,
+    IgnoredUnresolvedImportsByPattern, InternalExportTestUsage, Issues, SourceAliasIgnoreWarning,
+    SymbolIssue, UnresolvedImportCandidateFile, UnresolvedImportExplanation,
+    UnresolvedImportMatchedAlias, analyze_path, doctor_config,
     source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
 };
 pub use config::{

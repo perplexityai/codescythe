@@ -19,9 +19,9 @@ pub use resolver::{
 use discovery::{discover_entry_files, discover_project_files, discover_test_file_indexes};
 use explain::{add_export_explanations, build_export_usage_index, explain_requested_export};
 use graph::{
-    discover_live_test_support_files, discover_removable_test_files, mark_all_exports,
-    mark_glob_import, mark_member_import, mark_reexport, mark_reexport_source_file,
-    mark_source_file, mark_used_export, mark_used_file,
+    discover_live_test_support_files, discover_removable_test_files, internal_export_target,
+    mark_all_exports, mark_glob_import, mark_internal_exports_used_by_tests, mark_member_import,
+    mark_reexport, mark_reexport_source_file, mark_source_file, mark_used_export, mark_used_file,
 };
 use parse::{ExportInfo, FileCache, FileData};
 use profile::AnalysisProfile;
@@ -38,7 +38,7 @@ use util::{
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    env, fs, io,
+    env, fmt, fs, io,
     path::{Component, Path, PathBuf},
     sync::Arc,
     thread,
@@ -71,6 +71,9 @@ type QueuedFiles = HashSet<usize>;
 type TestFiles = HashSet<usize>;
 type UnresolvedImports = HashMap<String, HashSet<String>>;
 type ExportUsageKey = (usize, String);
+type InternalTestUsages = BTreeMap<ExportUsageKey, BTreeSet<ExportImportExplanation>>;
+
+const TEST_FILE_LEAF_REASON: ExplanationReasonCode = ExplanationReasonCode::TestFileLeaf;
 
 #[derive(Debug, Clone, Default)]
 pub struct AnalysisOptions {
@@ -92,6 +95,8 @@ pub struct Analysis {
     pub ignored_unresolved_imports_by_pattern: BTreeMap<String, IgnoredUnresolvedImportsByPattern>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_alias_ignore_warnings: Vec<SourceAliasIgnoreWarning>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub internal_exports_used_by_tests: Vec<InternalExportTestUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explain_export: Option<ExplainExportResult>,
 }
@@ -116,6 +121,8 @@ pub struct FileIssue {
 pub struct SymbolIssue {
     pub symbol: String,
     pub kind: ExportKind,
+    #[serde(skip_serializing_if = "is_false")]
+    pub internal: bool,
     pub line: usize,
     pub col: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -163,6 +170,8 @@ pub struct ConfigDoctorResult {
     pub summary: AnalysisSummary,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unresolved_imports: Vec<UnresolvedImportExplanation>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub internal_exports_used_by_tests: Vec<InternalExportTestUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +245,8 @@ struct AliasMapping {
 pub struct ExportExplanation {
     pub exporting_file: String,
     pub symbol: String,
+    #[serde(skip_serializing_if = "is_false")]
+    pub internal: bool,
     pub file_reachable: bool,
     pub importers_considered: Vec<ExportImportExplanation>,
     pub importers_skipped: Vec<SkippedImporterExplanation>,
@@ -245,10 +256,132 @@ pub struct ExportExplanation {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
+pub struct ExplanationReason {
+    pub code: ExplanationReasonCode,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ExplanationReason {
+    pub fn new(code: ExplanationReasonCode) -> Self {
+        Self {
+            code,
+            description: code.description().to_string(),
+            detail: None,
+        }
+    }
+
+    pub fn with_detail(code: ExplanationReasonCode, detail: String) -> Self {
+        Self {
+            code,
+            description: code.description().to_string(),
+            detail: Some(detail),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub enum ExplanationReasonCode {
+    NamedImport,
+    NamespaceMemberAccess,
+    ReExport,
+    DynamicImportMarksAllExports,
+    ExportStarMarksAllExports,
+    TestImportOfInternalExport,
+    TestNamespaceAccessOfInternalExport,
+    TestDynamicImportOfInternalExport,
+    TestImportMetaGlobOfInternalExport,
+    TestExportStarImportOfInternalExport,
+    TestFileLeaf,
+    ImporterUnreachable,
+    FileOutsideProject,
+    FileUnparseable,
+    SymbolNotExported,
+    EntryPublicFileSemantics,
+    InternalExportUsedByTests,
+    ReachableImporters,
+    NoReachableImporters,
+    ExportingFileUnreachable,
+}
+
+impl ExplanationReasonCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NamedImport => "namedImport",
+            Self::NamespaceMemberAccess => "namespaceMemberAccess",
+            Self::ReExport => "reExport",
+            Self::DynamicImportMarksAllExports => "dynamicImportMarksAllExports",
+            Self::ExportStarMarksAllExports => "exportStarMarksAllExports",
+            Self::TestImportOfInternalExport => "testImportOfInternalExport",
+            Self::TestNamespaceAccessOfInternalExport => "testNamespaceAccessOfInternalExport",
+            Self::TestDynamicImportOfInternalExport => "testDynamicImportOfInternalExport",
+            Self::TestImportMetaGlobOfInternalExport => "testImportMetaGlobOfInternalExport",
+            Self::TestExportStarImportOfInternalExport => "testExportStarImportOfInternalExport",
+            Self::TestFileLeaf => "testFileLeaf",
+            Self::ImporterUnreachable => "importerUnreachable",
+            Self::FileOutsideProject => "fileOutsideProject",
+            Self::FileUnparseable => "fileUnparseable",
+            Self::SymbolNotExported => "symbolNotExported",
+            Self::EntryPublicFileSemantics => "entryPublicFileSemantics",
+            Self::InternalExportUsedByTests => "internalExportUsedByTests",
+            Self::ReachableImporters => "reachableImporters",
+            Self::NoReachableImporters => "noReachableImporters",
+            Self::ExportingFileUnreachable => "exportingFileUnreachable",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::NamedImport => "named import",
+            Self::NamespaceMemberAccess => "namespace member access",
+            Self::ReExport => "re-export",
+            Self::DynamicImportMarksAllExports => "dynamic import marks all exports",
+            Self::ExportStarMarksAllExports => "export star marks all exports",
+            Self::TestImportOfInternalExport => "test import of @internal export",
+            Self::TestNamespaceAccessOfInternalExport => {
+                "test namespace access of @internal export"
+            }
+            Self::TestDynamicImportOfInternalExport => "test dynamic import of @internal export",
+            Self::TestImportMetaGlobOfInternalExport => "test import.meta.glob of @internal export",
+            Self::TestExportStarImportOfInternalExport => {
+                "test export star import of @internal export"
+            }
+            Self::TestFileLeaf => "test file leaf",
+            Self::ImporterUnreachable => "importer unreachable",
+            Self::FileOutsideProject => "file is outside the analyzed project set",
+            Self::FileUnparseable => "file is unreachable and could not be parsed",
+            Self::SymbolNotExported => "symbol is not exported by the requested file",
+            Self::EntryPublicFileSemantics => "export is kept alive by entry/public-file semantics",
+            Self::InternalExportUsedByTests => "export is marked @internal and used by tests",
+            Self::ReachableImporters => "export is used by reachable importers",
+            Self::NoReachableImporters => "export is not used by reachable importers",
+            Self::ExportingFileUnreachable => "exporting file is unreachable",
+        }
+    }
+}
+
+impl fmt::Display for ExplanationReasonCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportImportExplanation {
     pub importer: String,
     pub specifier: String,
-    pub reason: String,
+    pub reason: ExplanationReason,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InternalExportTestUsage {
+    pub exporting_file: String,
+    pub symbol: String,
+    pub test_importers: Vec<ExportImportExplanation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -256,7 +389,7 @@ pub struct ExportImportExplanation {
 pub struct SkippedImporterExplanation {
     pub importer: String,
     pub specifier: String,
-    pub reason: String,
+    pub reason: ExplanationReason,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,7 +405,7 @@ pub struct ExplainExportResult {
     pub exporting_file: String,
     pub symbol: String,
     pub status: ExplainExportStatus,
-    pub reason: String,
+    pub reason: ExplanationReason,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explanation: Option<ExportExplanation>,
 }
@@ -289,6 +422,272 @@ pub enum ExplainExportStatus {
 
 fn is_zero(value: &usize) -> bool {
     *value == 0
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn process_reachable_queue(
+    profile: &mut AnalysisProfile,
+    config: &CodescytheConfig,
+    entry_indexes: &HashSet<usize>,
+    test_file_indexes: &TestFiles,
+    module_resolver: &ModuleResolver,
+    unresolved_policy: &UnresolvedImportPolicy,
+    files: &mut FileCache,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    unresolved: &mut UnresolvedImports,
+    ignored_unresolved_imports_by_pattern: &mut BTreeMap<String, IgnoredUnresolvedImportsByPattern>,
+    queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
+) -> Result<()> {
+    while !queue.is_empty() {
+        let batch = queue.drain(..).collect::<Vec<_>>();
+        profile.record_frontier(batch.len());
+        queued_files.clear();
+        let parse_started = profile.start();
+        files.parse_many(&batch)?;
+        profile.record_frontier_parse(parse_started);
+
+        let inspect_started = profile.start();
+        for index in batch {
+            let file = files.get(index)?.clone();
+            let public_entry = entry_indexes.contains(&index) && !config.include_entry_exports;
+
+            let mut static_imports_by_source = BTreeMap::<&str, BTreeSet<Option<&str>>>::new();
+            for import in &file.imports {
+                static_imports_by_source
+                    .entry(import.source.as_str())
+                    .or_default()
+                    .insert(import.imported.as_deref());
+            }
+            for source in &file.side_effect_imports {
+                static_imports_by_source
+                    .entry(source.as_str())
+                    .or_default()
+                    .insert(None);
+            }
+
+            for (source, imported_names) in static_imports_by_source {
+                match module_resolver.resolve(&file, source)? {
+                    ImportResolution::Project(target) => {
+                        for imported in imported_names {
+                            if let Some(name) = imported {
+                                mark_used_export(
+                                    target,
+                                    name.to_string(),
+                                    used_files,
+                                    used_exports,
+                                    queue,
+                                    queued_files,
+                                    test_file_indexes,
+                                );
+                            } else {
+                                mark_used_file(
+                                    target,
+                                    test_file_indexes,
+                                    used_files,
+                                    queue,
+                                    queued_files,
+                                );
+                            }
+                        }
+                    }
+                    ImportResolution::Unresolved => {
+                        unresolved_policy.record(
+                            unresolved,
+                            ignored_unresolved_imports_by_pattern,
+                            &file.relative,
+                            source,
+                        )?;
+                    }
+                    ImportResolution::External => {}
+                }
+            }
+
+            for source in &file.dynamic_imports {
+                mark_all_exports(
+                    &file,
+                    source,
+                    files,
+                    module_resolver,
+                    used_files,
+                    used_exports,
+                    queue,
+                    queued_files,
+                    unresolved,
+                    ignored_unresolved_imports_by_pattern,
+                    unresolved_policy,
+                    test_file_indexes,
+                )?;
+            }
+
+            for pattern in &file.glob_imports {
+                mark_glob_import(
+                    &file,
+                    pattern,
+                    files,
+                    used_files,
+                    used_exports,
+                    queue,
+                    queued_files,
+                    test_file_indexes,
+                )?;
+            }
+
+            for (local, member) in &file.member_uses {
+                if let Some(source) = file.namespace_imports.get(local) {
+                    mark_member_import(
+                        &file,
+                        source,
+                        member,
+                        files,
+                        module_resolver,
+                        used_files,
+                        used_exports,
+                        queue,
+                        queued_files,
+                        unresolved,
+                        ignored_unresolved_imports_by_pattern,
+                        unresolved_policy,
+                        &file.relative,
+                        test_file_indexes,
+                    )?;
+                }
+
+                if let Some(named) = file.named_imports.get(local) {
+                    if let ImportResolution::Project(target) =
+                        module_resolver.resolve(&file, &named.source)?
+                    {
+                        let namespace_source = files
+                            .get(target)?
+                            .exports
+                            .get(&named.imported)
+                            .and_then(|export| export.namespace_source.clone());
+                        if let Some(namespace_source) = namespace_source {
+                            let target_file = files.get(target)?.clone();
+                            mark_member_import(
+                                &target_file,
+                                &namespace_source,
+                                member,
+                                files,
+                                module_resolver,
+                                used_files,
+                                used_exports,
+                                queue,
+                                queued_files,
+                                unresolved,
+                                ignored_unresolved_imports_by_pattern,
+                                unresolved_policy,
+                                &file.relative,
+                                test_file_indexes,
+                            )?;
+                        }
+                    }
+                }
+            }
+
+            for export in file.exports.values() {
+                mark_reexport_source_file(
+                    &file,
+                    export,
+                    module_resolver,
+                    used_files,
+                    queue,
+                    queued_files,
+                    unresolved,
+                    ignored_unresolved_imports_by_pattern,
+                    unresolved_policy,
+                    test_file_indexes,
+                )?;
+            }
+            for source in &file.reexport_all {
+                mark_source_file(
+                    &file,
+                    source,
+                    module_resolver,
+                    used_files,
+                    queue,
+                    queued_files,
+                    unresolved,
+                    ignored_unresolved_imports_by_pattern,
+                    unresolved_policy,
+                    test_file_indexes,
+                )?;
+            }
+
+            if public_entry {
+                for export in file.exports.values() {
+                    mark_reexport(
+                        &file,
+                        export,
+                        module_resolver,
+                        used_files,
+                        used_exports,
+                        queue,
+                        queued_files,
+                        unresolved,
+                        ignored_unresolved_imports_by_pattern,
+                        unresolved_policy,
+                        test_file_indexes,
+                    )?;
+                }
+                for source in &file.reexport_all {
+                    mark_all_exports(
+                        &file,
+                        source,
+                        files,
+                        module_resolver,
+                        used_files,
+                        used_exports,
+                        queue,
+                        queued_files,
+                        unresolved,
+                        ignored_unresolved_imports_by_pattern,
+                        unresolved_policy,
+                        test_file_indexes,
+                    )?;
+                }
+            }
+
+            let current_used_exports = used_exports.get(&index).cloned().unwrap_or_default();
+            for export_name in current_used_exports {
+                if let Some(export) = file.exports.get(&export_name) {
+                    mark_reexport(
+                        &file,
+                        export,
+                        module_resolver,
+                        used_files,
+                        used_exports,
+                        queue,
+                        queued_files,
+                        unresolved,
+                        ignored_unresolved_imports_by_pattern,
+                        unresolved_policy,
+                        test_file_indexes,
+                    )?;
+                }
+            }
+        }
+        profile.record_frontier_inspect(inspect_started);
+    }
+    Ok(())
+}
+
+fn internal_test_usages_report(
+    files: &FileCache,
+    usages: InternalTestUsages,
+) -> Vec<InternalExportTestUsage> {
+    usages
+        .into_iter()
+        .map(|((index, symbol), importers)| InternalExportTestUsage {
+            exporting_file: files.relative(index),
+            symbol,
+            test_importers: importers.into_iter().collect(),
+        })
+        .collect()
 }
 
 pub fn analyze_path(
@@ -368,236 +767,47 @@ pub fn analyze_path(
     }
 
     let graph_started = profile.start();
-    while !queue.is_empty() {
-        let batch = queue.drain(..).collect::<Vec<_>>();
-        profile.record_frontier(batch.len());
-        queued_files.clear();
-        let parse_started = profile.start();
-        files.parse_many(&batch)?;
-        profile.record_frontier_parse(parse_started);
+    process_reachable_queue(
+        &mut profile,
+        config,
+        &entry_indexes,
+        &test_file_indexes,
+        &module_resolver,
+        &unresolved_policy,
+        &mut files,
+        &mut used_files,
+        &mut used_exports,
+        &mut unresolved,
+        &mut ignored_unresolved_imports_by_pattern,
+        &mut queue,
+        &mut queued_files,
+    )?;
 
-        let inspect_started = profile.start();
-        for index in batch {
-            let file = files.get(index)?.clone();
-            let public_entry = entry_indexes.contains(&index) && !config.include_entry_exports;
+    let internal_test_usages = mark_internal_exports_used_by_tests(
+        &mut files,
+        &module_resolver,
+        &test_file_indexes,
+        &mut used_files,
+        &mut used_exports,
+        &mut queue,
+        &mut queued_files,
+    )?;
 
-            let mut static_imports_by_source = BTreeMap::<&str, BTreeSet<Option<&str>>>::new();
-            for import in &file.imports {
-                static_imports_by_source
-                    .entry(import.source.as_str())
-                    .or_default()
-                    .insert(import.imported.as_deref());
-            }
-            for source in &file.side_effect_imports {
-                static_imports_by_source
-                    .entry(source.as_str())
-                    .or_default()
-                    .insert(None);
-            }
-
-            for (source, imported_names) in static_imports_by_source {
-                match module_resolver.resolve(&file, source)? {
-                    ImportResolution::Project(target) => {
-                        for imported in imported_names {
-                            if let Some(name) = imported {
-                                mark_used_export(
-                                    target,
-                                    name.to_string(),
-                                    &mut used_files,
-                                    &mut used_exports,
-                                    &mut queue,
-                                    &mut queued_files,
-                                    &test_file_indexes,
-                                );
-                            } else {
-                                mark_used_file(
-                                    target,
-                                    &test_file_indexes,
-                                    &mut used_files,
-                                    &mut queue,
-                                    &mut queued_files,
-                                );
-                            }
-                        }
-                    }
-                    ImportResolution::Unresolved => {
-                        unresolved_policy.record(
-                            &mut unresolved,
-                            &mut ignored_unresolved_imports_by_pattern,
-                            &file.relative,
-                            source,
-                        )?;
-                    }
-                    ImportResolution::External => {}
-                }
-            }
-
-            for source in &file.dynamic_imports {
-                mark_all_exports(
-                    &file,
-                    source,
-                    &mut files,
-                    &module_resolver,
-                    &mut used_files,
-                    &mut used_exports,
-                    &mut queue,
-                    &mut queued_files,
-                    &mut unresolved,
-                    &mut ignored_unresolved_imports_by_pattern,
-                    &unresolved_policy,
-                    &test_file_indexes,
-                )?;
-            }
-
-            for pattern in &file.glob_imports {
-                mark_glob_import(
-                    &file,
-                    pattern,
-                    &mut files,
-                    &mut used_files,
-                    &mut used_exports,
-                    &mut queue,
-                    &mut queued_files,
-                    &test_file_indexes,
-                )?;
-            }
-
-            for (local, member) in &file.member_uses {
-                if let Some(source) = file.namespace_imports.get(local) {
-                    mark_member_import(
-                        &file,
-                        source,
-                        member,
-                        &mut files,
-                        &module_resolver,
-                        &mut used_files,
-                        &mut used_exports,
-                        &mut queue,
-                        &mut queued_files,
-                        &mut unresolved,
-                        &mut ignored_unresolved_imports_by_pattern,
-                        &unresolved_policy,
-                        &file.relative,
-                        &test_file_indexes,
-                    )?;
-                }
-
-                if let Some(named) = file.named_imports.get(local) {
-                    if let ImportResolution::Project(target) =
-                        module_resolver.resolve(&file, &named.source)?
-                    {
-                        let namespace_source = files
-                            .get(target)?
-                            .exports
-                            .get(&named.imported)
-                            .and_then(|export| export.namespace_source.clone());
-                        if let Some(namespace_source) = namespace_source {
-                            let target_file = files.get(target)?.clone();
-                            mark_member_import(
-                                &target_file,
-                                &namespace_source,
-                                member,
-                                &mut files,
-                                &module_resolver,
-                                &mut used_files,
-                                &mut used_exports,
-                                &mut queue,
-                                &mut queued_files,
-                                &mut unresolved,
-                                &mut ignored_unresolved_imports_by_pattern,
-                                &unresolved_policy,
-                                &file.relative,
-                                &test_file_indexes,
-                            )?;
-                        }
-                    }
-                }
-            }
-
-            for export in file.exports.values() {
-                mark_reexport_source_file(
-                    &file,
-                    export,
-                    &module_resolver,
-                    &mut used_files,
-                    &mut queue,
-                    &mut queued_files,
-                    &mut unresolved,
-                    &mut ignored_unresolved_imports_by_pattern,
-                    &unresolved_policy,
-                    &test_file_indexes,
-                )?;
-            }
-            for source in &file.reexport_all {
-                mark_source_file(
-                    &file,
-                    source,
-                    &module_resolver,
-                    &mut used_files,
-                    &mut queue,
-                    &mut queued_files,
-                    &mut unresolved,
-                    &mut ignored_unresolved_imports_by_pattern,
-                    &unresolved_policy,
-                    &test_file_indexes,
-                )?;
-            }
-
-            if public_entry {
-                for export in file.exports.values() {
-                    mark_reexport(
-                        &file,
-                        export,
-                        &module_resolver,
-                        &mut used_files,
-                        &mut used_exports,
-                        &mut queue,
-                        &mut queued_files,
-                        &mut unresolved,
-                        &mut ignored_unresolved_imports_by_pattern,
-                        &unresolved_policy,
-                        &test_file_indexes,
-                    )?;
-                }
-                for source in &file.reexport_all {
-                    mark_all_exports(
-                        &file,
-                        source,
-                        &mut files,
-                        &module_resolver,
-                        &mut used_files,
-                        &mut used_exports,
-                        &mut queue,
-                        &mut queued_files,
-                        &mut unresolved,
-                        &mut ignored_unresolved_imports_by_pattern,
-                        &unresolved_policy,
-                        &test_file_indexes,
-                    )?;
-                }
-            }
-
-            let current_used_exports = used_exports.get(&index).cloned().unwrap_or_default();
-            for export_name in current_used_exports {
-                if let Some(export) = file.exports.get(&export_name) {
-                    mark_reexport(
-                        &file,
-                        export,
-                        &module_resolver,
-                        &mut used_files,
-                        &mut used_exports,
-                        &mut queue,
-                        &mut queued_files,
-                        &mut unresolved,
-                        &mut ignored_unresolved_imports_by_pattern,
-                        &unresolved_policy,
-                        &test_file_indexes,
-                    )?;
-                }
-            }
-        }
-        profile.record_frontier_inspect(inspect_started);
-    }
+    process_reachable_queue(
+        &mut profile,
+        config,
+        &entry_indexes,
+        &test_file_indexes,
+        &module_resolver,
+        &unresolved_policy,
+        &mut files,
+        &mut used_files,
+        &mut used_exports,
+        &mut unresolved,
+        &mut ignored_unresolved_imports_by_pattern,
+        &mut queue,
+        &mut queued_files,
+    )?;
     profile.record("walk reachable graph", graph_started);
 
     let issue_started = profile.start();
@@ -650,6 +860,7 @@ pub fn analyze_path(
                         SymbolIssue {
                             symbol: name.clone(),
                             kind: export.kind,
+                            internal: export.internal,
                             line: export.line,
                             col: export.col,
                             explanation: None,
@@ -698,6 +909,7 @@ pub fn analyze_path(
 
     let mut effective_used_files = used_files.clone();
     effective_used_files.extend(live_test_support_files.iter().copied());
+    let internal_exports_used_by_tests = internal_test_usages_report(&files, internal_test_usages);
 
     let export_usage = profile.time("build export usage explanations", || {
         if options.verbose || options.explain_export.is_some() {
@@ -810,6 +1022,7 @@ pub fn analyze_path(
         summary,
         ignored_unresolved_imports_by_pattern,
         source_alias_ignore_warnings,
+        internal_exports_used_by_tests,
         explain_export,
     })
 }

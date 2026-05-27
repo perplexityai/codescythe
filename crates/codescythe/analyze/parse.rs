@@ -18,7 +18,8 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
         anyhow::bail!("failed to parse {}:\n{}", path.display(), rendered);
     }
 
-    let mut visitor = FileVisitor::new(cwd, path);
+    let internal_annotation_starts = internal_annotation_starts(&source, &program.comments);
+    let mut visitor = FileVisitor::new(cwd, path, internal_annotation_starts);
     visitor.visit_program(&program);
     let mut file = visitor.finish();
     for export in file.exports.values_mut() {
@@ -167,6 +168,25 @@ fn env_thread_count(name: &str) -> Option<usize> {
         .map(|count| count.max(1))
 }
 
+fn internal_annotation_starts(source: &str, comments: &[Comment]) -> BTreeSet<u32> {
+    comments
+        .iter()
+        .filter(|comment| {
+            comment.is_jsdoc()
+                && source
+                    .get(comment.content_span().start as usize..comment.content_span().end as usize)
+                    .is_some_and(jsdoc_starts_with_internal)
+        })
+        .map(|comment| comment.attached_to)
+        .collect()
+}
+
+fn jsdoc_starts_with_internal(text: &str) -> bool {
+    let text = text.trim();
+    let text = text.strip_prefix('*').map(str::trim_start).unwrap_or(text);
+    text.starts_with("@internal")
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct FileData {
     pub(super) path: PathBuf,
@@ -186,6 +206,7 @@ pub(super) struct FileData {
 #[derive(Debug, Clone)]
 pub(super) struct ExportInfo {
     pub(super) kind: ExportKind,
+    pub(super) internal: bool,
     pub(super) local_name: Option<String>,
     pub(super) name_span: Span,
     pub(super) line: usize,
@@ -221,10 +242,12 @@ struct FileVisitor {
     member_uses: Vec<(String, String)>,
     reexport_all: Vec<String>,
     local_references: BTreeSet<String>,
+    local_internal_declarations: BTreeSet<String>,
+    internal_annotation_starts: BTreeSet<u32>,
 }
 
 impl FileVisitor {
-    pub(super) fn new(cwd: &Path, path: &Path) -> Self {
+    pub(super) fn new(cwd: &Path, path: &Path, internal_annotation_starts: BTreeSet<u32>) -> Self {
         Self {
             path: path.to_path_buf(),
             relative: relative_path(cwd, path),
@@ -238,10 +261,22 @@ impl FileVisitor {
             member_uses: Vec::new(),
             reexport_all: Vec::new(),
             local_references: BTreeSet::new(),
+            local_internal_declarations: BTreeSet::new(),
+            internal_annotation_starts,
         }
     }
 
     fn finish(mut self) -> FileData {
+        for export in self.exports.values_mut() {
+            if export
+                .local_name
+                .as_ref()
+                .is_some_and(|local| self.local_internal_declarations.contains(local))
+            {
+                export.internal = true;
+            }
+        }
+
         dedupe_preserving_order(&mut self.imports);
         dedupe_preserving_order(&mut self.side_effect_imports);
         dedupe_preserving_order(&mut self.dynamic_imports);
@@ -269,6 +304,7 @@ impl FileVisitor {
         &mut self,
         name: String,
         kind: ExportKind,
+        internal: bool,
         local_name: Option<String>,
         name_span: Span,
         remove_span: Span,
@@ -277,6 +313,7 @@ impl FileVisitor {
             name,
             ExportInfo {
                 kind,
+                internal,
                 local_name,
                 name_span,
                 line: 0,
@@ -295,6 +332,7 @@ impl FileVisitor {
         local: String,
         source: String,
         kind: ExportKind,
+        internal: bool,
         name_span: Span,
         remove_span: Span,
     ) {
@@ -302,6 +340,7 @@ impl FileVisitor {
             exported,
             ExportInfo {
                 kind,
+                internal,
                 local_name: None,
                 name_span,
                 line: 0,
@@ -329,6 +368,10 @@ impl FileVisitor {
                 imported: Some(name),
             });
         }
+    }
+
+    fn has_internal_annotation(&self, span: Span) -> bool {
+        self.internal_annotation_starts.contains(&span.start)
     }
 }
 
@@ -380,6 +423,7 @@ impl<'a> Visit<'a> for FileVisitor {
 
     fn visit_export_named_declaration(&mut self, declaration: &ExportNamedDeclaration<'a>) {
         let declaration_kind = export_kind(declaration.export_kind);
+        let declaration_internal = self.has_internal_annotation(declaration.span);
         if let Some(source) = &declaration.source {
             let source = source.value.as_str().to_string();
             for specifier in &declaration.specifiers {
@@ -388,13 +432,19 @@ impl<'a> Visit<'a> for FileVisitor {
                     module_export_name(&specifier.local),
                     source.clone(),
                     declaration_kind.max(export_kind(specifier.export_kind)),
+                    declaration_internal,
                     specifier.exported.span(),
                     declaration.span,
                 );
             }
         } else {
             if let Some(inner) = &declaration.declaration {
-                self.add_declaration_exports(inner, declaration.span, declaration_kind);
+                self.add_declaration_exports(
+                    inner,
+                    declaration.span,
+                    declaration_kind,
+                    declaration_internal || self.has_internal_annotation(inner.span()),
+                );
             }
             for specifier in &declaration.specifiers {
                 let exported = module_export_name(&specifier.exported);
@@ -402,6 +452,7 @@ impl<'a> Visit<'a> for FileVisitor {
                 self.add_export(
                     exported,
                     declaration_kind.max(export_kind(specifier.export_kind)),
+                    declaration_internal,
                     Some(local),
                     specifier.exported.span(),
                     declaration.span,
@@ -424,6 +475,7 @@ impl<'a> Visit<'a> for FileVisitor {
         self.add_export(
             "default".to_string(),
             ExportKind::Value,
+            self.has_internal_annotation(declaration.span),
             local_name,
             declaration.span,
             declaration.span,
@@ -439,6 +491,7 @@ impl<'a> Visit<'a> for FileVisitor {
                 name,
                 ExportInfo {
                     kind: export_kind(declaration.export_kind),
+                    internal: self.has_internal_annotation(declaration.span),
                     local_name: None,
                     name_span: exported.span(),
                     line: 0,
@@ -491,6 +544,15 @@ impl<'a> Visit<'a> for FileVisitor {
         self.local_references
             .insert(identifier.name.as_str().to_string());
     }
+
+    fn visit_declaration(&mut self, declaration: &Declaration<'a>) {
+        if self.has_internal_annotation(declaration.span()) {
+            let mut names = Vec::new();
+            collect_declaration_names(declaration, &mut names);
+            self.local_internal_declarations.extend(names);
+        }
+        walk::walk_declaration(self, declaration);
+    }
 }
 
 fn dedupe_preserving_order<T>(items: &mut Vec<T>)
@@ -507,6 +569,7 @@ impl FileVisitor {
         declaration: &Declaration<'_>,
         remove_span: Span,
         default_kind: ExportKind,
+        internal: bool,
     ) {
         match declaration {
             Declaration::VariableDeclaration(variable) => {
@@ -517,6 +580,7 @@ impl FileVisitor {
                         self.add_export(
                             name.clone(),
                             default_kind,
+                            internal,
                             Some(name),
                             declarator.id.span(),
                             remove_span,
@@ -529,6 +593,7 @@ impl FileVisitor {
                     self.add_export(
                         id.name.as_str().to_string(),
                         ExportKind::Value,
+                        internal,
                         Some(id.name.as_str().to_string()),
                         id.span,
                         remove_span,
@@ -540,6 +605,7 @@ impl FileVisitor {
                     self.add_export(
                         id.name.as_str().to_string(),
                         ExportKind::Value,
+                        internal,
                         Some(id.name.as_str().to_string()),
                         id.span,
                         remove_span,
@@ -550,6 +616,7 @@ impl FileVisitor {
                 self.add_export(
                     alias.id.name.as_str().to_string(),
                     ExportKind::Type,
+                    internal,
                     Some(alias.id.name.as_str().to_string()),
                     alias.id.span,
                     remove_span,
@@ -559,6 +626,7 @@ impl FileVisitor {
                 self.add_export(
                     interface.id.name.as_str().to_string(),
                     ExportKind::Type,
+                    internal,
                     Some(interface.id.name.as_str().to_string()),
                     interface.id.span,
                     remove_span,
@@ -568,6 +636,7 @@ impl FileVisitor {
                 self.add_export(
                     enumeration.id.name.as_str().to_string(),
                     ExportKind::Type,
+                    internal,
                     Some(enumeration.id.name.as_str().to_string()),
                     enumeration.id.span,
                     remove_span,
@@ -578,6 +647,7 @@ impl FileVisitor {
                     self.add_export(
                         name.clone(),
                         ExportKind::Type,
+                        internal,
                         Some(name),
                         module.span,
                         remove_span,
@@ -613,6 +683,41 @@ fn collect_binding_names(pattern: &BindingPattern<'_>, names: &mut Vec<String>) 
         BindingPattern::AssignmentPattern(pattern) => {
             collect_binding_names(&pattern.left, names);
         }
+    }
+}
+
+fn collect_declaration_names(declaration: &Declaration<'_>, names: &mut Vec<String>) {
+    match declaration {
+        Declaration::VariableDeclaration(variable) => {
+            for declarator in &variable.declarations {
+                collect_binding_names(&declarator.id, names);
+            }
+        }
+        Declaration::FunctionDeclaration(function) => {
+            if let Some(id) = &function.id {
+                names.push(id.name.as_str().to_string());
+            }
+        }
+        Declaration::ClassDeclaration(class) => {
+            if let Some(id) = &class.id {
+                names.push(id.name.as_str().to_string());
+            }
+        }
+        Declaration::TSTypeAliasDeclaration(alias) => {
+            names.push(alias.id.name.as_str().to_string());
+        }
+        Declaration::TSInterfaceDeclaration(interface) => {
+            names.push(interface.id.name.as_str().to_string());
+        }
+        Declaration::TSEnumDeclaration(enumeration) => {
+            names.push(enumeration.id.name.as_str().to_string());
+        }
+        Declaration::TSModuleDeclaration(module) => {
+            if let Some(name) = ts_module_name(module) {
+                names.push(name);
+            }
+        }
+        Declaration::TSGlobalDeclaration(_) | Declaration::TSImportEqualsDeclaration(_) => {}
     }
 }
 
