@@ -11,6 +11,8 @@ The package entrypoints are TypeScript files and require Node's
 `--experimental-transform-types` support. The package declares
 `node >=22.18.0`.
 
+Documentation: https://perplexityai.github.io/codescythe/
+
 The public API exposes `analyze(options)`, `fix(options)`, and
 `doctor(options)`. Options mirror the Rust CLI: pass `cwd`, `config`,
 `verbose`, `force`, or `explainExport` as needed. Results are parsed JavaScript
