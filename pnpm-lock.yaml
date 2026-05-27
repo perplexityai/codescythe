@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@types/node':
+        specifier: ^24.12.4
+        version: 24.12.4
       benchmark:
         specifier: ^2.1.4
         version: 2.1.4
@@ -29,13 +32,13 @@ importers:
 
   packages/codescythe:
     optionalDependencies:
-      'codescythe-darwin-arm64':
+      codescythe-darwin-arm64:
         specifier: workspace:*
         version: link:../codescythe-darwin-arm64
-      'codescythe-linux-amd64':
+      codescythe-linux-amd64:
         specifier: workspace:*
         version: link:../codescythe-linux-amd64
-      'codescythe-linux-arm64':
+      codescythe-linux-arm64:
         specifier: workspace:*
         version: link:../codescythe-linux-arm64
 
@@ -310,6 +313,9 @@ packages:
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
+
+  '@types/node@24.12.4':
+    resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -654,6 +660,9 @@ packages:
     resolution: {integrity: sha512-FeFPZ/WFT0mbRCuydiZzpPFlrYN8ZUpphQKoq4EeElVIYjYyGzPMxQR/simUwCOJIyVhpFk4RbtyO7RuMpMnHA==}
     engines: {node: '>=14'}
 
+  undici-types@7.16.0:
+    resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
+
   walk-up-path@4.0.0:
     resolution: {integrity: sha512-3hu+tD8YzSLGuFYtPRb48vdhKMi0KQV5sn+uWr8+7dMEq/2G/dtLrdDinkLjqq5TIbIBjYJ4Ax/n3YiaW7QM8A==}
     engines: {node: 20 || >=22}
@@ -874,6 +883,10 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
+
+  '@types/node@24.12.4':
+    dependencies:
+      undici-types: 7.16.0
 
   ansi-regex@5.0.1: {}
 
@@ -1235,6 +1248,8 @@ snapshots:
     optional: true
 
   unbash@3.0.0: {}
+
+  undici-types@7.16.0: {}
 
   walk-up-path@4.0.0: {}
 

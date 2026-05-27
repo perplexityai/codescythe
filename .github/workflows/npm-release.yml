@@ -36,47 +36,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          bazel build \
-            //crates/codescythe_napi:release_node_darwin_arm64 \
-            //crates/codescythe_napi:release_node_linux_amd64 \
-            //crates/codescythe_napi:release_node_linux_arm64 \
-            //packages/codescythe:package \
-            //packages/codescythe-darwin-arm64:package \
-            //packages/codescythe-linux-amd64:package \
-            //packages/codescythe-linux-arm64:package
+          bazel build :dist
 
-      - name: Prepare npm smoke artifacts
+      - name: Prepare npm dist artifact
         run: |
           set -euo pipefail
 
-          node --experimental-transform-types tools/prepare_npm_publish_artifacts.ts artifacts
+          dist_path="$(bazel cquery --output=files :dist)"
+          cp -R "$dist_path" release
+          chmod -R +w release
 
-      - name: Upload loader package
+      - name: Upload npm dist
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: npm-package-codescythe
-          path: artifacts/codescythe
-          retention-days: 7
-
-      - name: Upload Darwin arm64 package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: npm-package-codescythe-darwin-arm64
-          path: artifacts/codescythe-darwin-arm64
-          retention-days: 7
-
-      - name: Upload Linux amd64 package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: npm-package-codescythe-linux-amd64
-          path: artifacts/codescythe-linux-amd64
-          retention-days: 7
-
-      - name: Upload Linux arm64 package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: npm-package-codescythe-linux-arm64
-          path: artifacts/codescythe-linux-arm64
+          name: npm-dist
+          path: release
           retention-days: 7
 
   verify:
@@ -112,28 +86,22 @@ jobs:
       - name: Install npm test dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download loader package
+      - name: Download npm dist
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: npm-package-codescythe
-          path: smoke/codescythe
-
-      - name: Download native package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: npm-package-${{ matrix.package }}
-          path: smoke/${{ matrix.package }}
+          name: npm-dist
+          path: release
 
       - name: Smoke test package
         run: |
           set -euo pipefail
 
-          CODESCYTHE_PACKAGE_DIR=smoke/codescythe \
-          CODESCYTHE_NATIVE_PACKAGE_DIR=smoke/${{ matrix.package }} \
+          CODESCYTHE_PACKAGE_DIR=release/packages/codescythe \
+          CODESCYTHE_NATIVE_PACKAGE_DIR=release/packages/${{ matrix.package }} \
           pnpm test:npm
 
           if [ "${{ runner.os }}" = "Linux" ]; then
-            native_node="$(find "smoke/${{ matrix.package }}" -name '*.node' -print -quit)"
+            native_node="$(find "release/packages/${{ matrix.package }}" -name '*.node' -print -quit)"
             file "$native_node"
             ldd_output="$(ldd "$native_node" 2>&1 || true)"
             echo "$ldd_output"
@@ -168,42 +136,13 @@ jobs:
       - name: Enable pnpm
         run: corepack enable pnpm
 
-      - name: Download loader package
+      - name: Download npm dist
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: npm-package-codescythe
-          path: release/packages/codescythe
+          name: npm-dist
+          path: release
 
-      - name: Download Darwin arm64 package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: npm-package-codescythe-darwin-arm64
-          path: release/packages/codescythe-darwin-arm64
-
-      - name: Download Linux amd64 package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: npm-package-codescythe-linux-amd64
-          path: release/packages/codescythe-linux-amd64
-
-      - name: Download Linux arm64 package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: npm-package-codescythe-linux-arm64
-          path: release/packages/codescythe-linux-arm64
-
-      - name: Prepare release workspace
-        run: |
-          set -euo pipefail
-
-          cp package.json release/package.json
-          cp pnpm-lock.yaml release/pnpm-lock.yaml
-          cat > release/pnpm-workspace.yaml <<'EOF'
-          packages:
-            - packages/*
-          EOF
-
-      - name: Install release workspace
+      - name: Install publish dependencies
         working-directory: release
         run: pnpm install --frozen-lockfile --ignore-scripts
 

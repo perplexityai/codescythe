@@ -1,5 +1,6 @@
-#!/usr/bin/env -S node --experimental-transform-types
-'use strict';
+#!/usr/bin/env node
+
+import {analyze, doctor, fix} from '../index.js';
 
 type CliOptions = {
   config?: string;
@@ -32,12 +33,6 @@ type FixResult = {
 
 type DoctorResult = {
   warnings: {code: string; message: string}[];
-};
-
-const { analyze, doctor, fix } = require('codescythe') as {
-  analyze(options: CliOptions): AnalysisResult;
-  doctor(options: CliOptions): DoctorResult;
-  fix(options: CliOptions): FixResult;
 };
 
 const args = process.argv.slice(2);

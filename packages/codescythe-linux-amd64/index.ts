@@ -1,5 +1,15 @@
-'use strict';
+import {createRequire} from 'node:module';
 
-const native: unknown = require('./codescythe.linux-amd64.node');
+type NativeBinding = {
+  analyze(options: unknown): string;
+  doctor(options: unknown): string;
+  fix(options: unknown): string;
+};
 
-module.exports = native;
+const require = createRequire(import.meta.url);
+const native = require('./codescythe.linux-amd64.node') as NativeBinding;
+
+export const analyze = native.analyze;
+export const doctor = native.doctor;
+export const fix = native.fix;
+export default native;
