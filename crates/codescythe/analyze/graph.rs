@@ -296,6 +296,312 @@ pub(super) fn mark_all_exports(
     Ok(())
 }
 
+pub(super) fn mark_internal_exports_used_by_tests(
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    test_file_indexes: &TestFiles,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
+) -> Result<InternalTestUsages> {
+    let mut usages = InternalTestUsages::new();
+    let mut indexes = test_file_indexes.iter().copied().collect::<Vec<_>>();
+    indexes.sort_unstable();
+
+    for index in indexes {
+        let file = files.get(index)?.clone();
+
+        for import in &file.imports {
+            if let Some(imported) = &import.imported {
+                mark_internal_import(
+                    &file,
+                    &import.source,
+                    imported,
+                    files,
+                    resolver,
+                    used_files,
+                    used_exports,
+                    queue,
+                    queued_files,
+                    test_file_indexes,
+                    &mut usages,
+                    &file.relative,
+                    ExplanationReasonCode::TestImportOfInternalExport,
+                )?;
+            }
+        }
+
+        for source in &file.dynamic_imports {
+            mark_all_internal_exports(
+                &file,
+                source,
+                files,
+                resolver,
+                used_files,
+                used_exports,
+                queue,
+                queued_files,
+                test_file_indexes,
+                &mut usages,
+                ExplanationReasonCode::TestDynamicImportOfInternalExport,
+            )?;
+        }
+
+        for pattern in &file.glob_imports {
+            let Some(pattern) = project_glob_from_import(&file.relative, pattern) else {
+                continue;
+            };
+            for target in files.matching_relative_glob(&pattern)? {
+                mark_all_internal_exports_from_target(
+                    &file,
+                    target,
+                    &pattern,
+                    files,
+                    resolver,
+                    used_files,
+                    used_exports,
+                    queue,
+                    queued_files,
+                    test_file_indexes,
+                    &mut usages,
+                    ExplanationReasonCode::TestImportMetaGlobOfInternalExport,
+                )?;
+            }
+        }
+
+        for (local, member) in &file.member_uses {
+            if let Some(source) = file.namespace_imports.get(local) {
+                mark_internal_import(
+                    &file,
+                    source,
+                    member,
+                    files,
+                    resolver,
+                    used_files,
+                    used_exports,
+                    queue,
+                    queued_files,
+                    test_file_indexes,
+                    &mut usages,
+                    &file.relative,
+                    ExplanationReasonCode::TestNamespaceAccessOfInternalExport,
+                )?;
+            }
+
+            if let Some(named) = file.named_imports.get(local)
+                && let ImportResolution::Project(target) = resolver.resolve(&file, &named.source)?
+            {
+                let namespace_source = files
+                    .get(target)?
+                    .exports
+                    .get(&named.imported)
+                    .and_then(|export| export.namespace_source.clone());
+                if let Some(namespace_source) = namespace_source {
+                    let target_file = files.get(target)?.clone();
+                    mark_internal_import(
+                        &target_file,
+                        &namespace_source,
+                        member,
+                        files,
+                        resolver,
+                        used_files,
+                        used_exports,
+                        queue,
+                        queued_files,
+                        test_file_indexes,
+                        &mut usages,
+                        &file.relative,
+                        ExplanationReasonCode::TestNamespaceAccessOfInternalExport,
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(usages)
+}
+
+fn mark_internal_import(
+    file: &FileData,
+    source: &str,
+    imported: &str,
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
+    test_file_indexes: &TestFiles,
+    usages: &mut InternalTestUsages,
+    usage_importer: &str,
+    reason: ExplanationReasonCode,
+) -> Result<()> {
+    let ImportResolution::Project(target) = resolver.resolve(file, source)? else {
+        return Ok(());
+    };
+
+    let Some((internal_target, internal_name)) =
+        internal_export_target(files, resolver, target, imported)?
+    else {
+        return Ok(());
+    };
+
+    mark_used_export(
+        target,
+        imported.to_string(),
+        used_files,
+        used_exports,
+        queue,
+        queued_files,
+        test_file_indexes,
+    );
+    record_internal_test_usage(
+        usages,
+        internal_target,
+        internal_name,
+        usage_importer,
+        source,
+        reason,
+    );
+    Ok(())
+}
+
+fn mark_all_internal_exports(
+    file: &FileData,
+    source: &str,
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
+    test_file_indexes: &TestFiles,
+    usages: &mut InternalTestUsages,
+    reason: ExplanationReasonCode,
+) -> Result<()> {
+    let ImportResolution::Project(target) = resolver.resolve(file, source)? else {
+        return Ok(());
+    };
+
+    mark_all_internal_exports_from_target(
+        file,
+        target,
+        source,
+        files,
+        resolver,
+        used_files,
+        used_exports,
+        queue,
+        queued_files,
+        test_file_indexes,
+        usages,
+        reason,
+    )
+}
+
+fn mark_all_internal_exports_from_target(
+    file: &FileData,
+    target: usize,
+    source: &str,
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    used_files: &mut UsedFiles,
+    used_exports: &mut UsedExports,
+    queue: &mut VecDeque<usize>,
+    queued_files: &mut QueuedFiles,
+    test_file_indexes: &TestFiles,
+    usages: &mut InternalTestUsages,
+    reason: ExplanationReasonCode,
+) -> Result<()> {
+    let export_names = files
+        .get(target)?
+        .exports
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    for export_name in export_names {
+        if let Some((internal_target, internal_name)) =
+            internal_export_target(files, resolver, target, &export_name)?
+        {
+            mark_used_export(
+                target,
+                export_name.clone(),
+                used_files,
+                used_exports,
+                queue,
+                queued_files,
+                test_file_indexes,
+            );
+            record_internal_test_usage(
+                usages,
+                internal_target,
+                internal_name,
+                &file.relative,
+                source,
+                reason,
+            );
+        }
+    }
+    Ok(())
+}
+
+fn record_internal_test_usage(
+    usages: &mut InternalTestUsages,
+    target: usize,
+    symbol: String,
+    importer: &str,
+    specifier: &str,
+    reason: ExplanationReasonCode,
+) {
+    usages
+        .entry((target, symbol))
+        .or_default()
+        .insert(ExportImportExplanation {
+            importer: importer.to_string(),
+            specifier: specifier.to_string(),
+            reason: ExplanationReason::new(reason),
+        });
+}
+
+pub(super) fn internal_export_target(
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    target: usize,
+    name: &str,
+) -> Result<Option<(usize, String)>> {
+    let mut seen = HashSet::new();
+    internal_export_target_inner(files, resolver, target, name, &mut seen)
+}
+
+fn internal_export_target_inner(
+    files: &mut FileCache,
+    resolver: &ModuleResolver,
+    target: usize,
+    name: &str,
+    seen: &mut HashSet<ExportUsageKey>,
+) -> Result<Option<(usize, String)>> {
+    if !seen.insert((target, name.to_string())) {
+        return Ok(None);
+    }
+
+    let file = files.get(target)?.clone();
+    let Some(export) = file.exports.get(name).cloned() else {
+        return Ok(None);
+    };
+    if export.internal {
+        return Ok(Some((target, name.to_string())));
+    }
+
+    if let (Some(source), Some(reexport_name)) = (&export.reexport_source, &export.reexport_name)
+        && let ImportResolution::Project(reexport_target) = resolver.resolve(&file, source)?
+    {
+        return internal_export_target_inner(files, resolver, reexport_target, reexport_name, seen);
+    }
+
+    Ok(None)
+}
+
 pub(super) fn discover_live_test_support_files(
     files: &mut FileCache,
     resolver: &ModuleResolver,

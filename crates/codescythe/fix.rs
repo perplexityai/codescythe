@@ -211,6 +211,7 @@ mod tests {
             SymbolIssue {
                 symbol: "dead".to_string(),
                 kind: ExportKind::Value,
+                internal: false,
                 line: 1,
                 col: 14,
                 explanation: None,
@@ -232,6 +233,7 @@ mod tests {
                 summary: None,
                 ignored_unresolved_imports_by_pattern: BTreeMap::new(),
                 source_alias_ignore_warnings: Vec::new(),
+                internal_exports_used_by_tests: Vec::new(),
                 explain_export: None,
             },
         )
@@ -382,6 +384,7 @@ mod tests {
             SymbolIssue {
                 symbol: "maybeUsed".to_string(),
                 kind: ExportKind::Value,
+                internal: false,
                 line: 1,
                 col: 14,
                 explanation: None,
@@ -416,6 +419,7 @@ mod tests {
                 summary: None,
                 ignored_unresolved_imports_by_pattern: ignored,
                 source_alias_ignore_warnings: Vec::new(),
+                internal_exports_used_by_tests: Vec::new(),
                 explain_export: None,
             },
             false,

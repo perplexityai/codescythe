@@ -392,6 +392,81 @@ fn namespace_usage_of_test_only_exports_marks_test_unused() {
 }
 
 #[test]
+fn internal_exports_used_by_tests_are_kept_alive() {
+    let analysis = analyze_inline_project(&[
+        ("src/entry.ts", "console.log('entry');\n"),
+        (
+            "src/internal.ts",
+            "/** @internal */\nexport const helper = 1;\n/** @internal */\nexport const unusedInternal = 2;\nexport const regular = 3;\n",
+        ),
+        (
+            "src/internal.test.ts",
+            "import { helper } from './internal';\nconsole.log(helper);\n",
+        ),
+    ]);
+
+    assert!(!analysis.issues.files.contains_key("src/internal.ts"));
+    assert!(!analysis.issues.files.contains_key("src/internal.test.ts"));
+    assert_no_unused_export(&analysis, "src/internal.ts", "helper");
+    assert_unused_export(&analysis, "src/internal.ts", "unusedInternal");
+    assert_unused_export(&analysis, "src/internal.ts", "regular");
+    assert_eq!(analysis.internal_exports_used_by_tests.len(), 1);
+    assert_eq!(
+        analysis.internal_exports_used_by_tests[0].exporting_file,
+        "src/internal.ts"
+    );
+    assert_eq!(analysis.internal_exports_used_by_tests[0].symbol, "helper");
+    assert_eq!(
+        analysis.internal_exports_used_by_tests[0].test_importers,
+        vec![ExportImportExplanation {
+            importer: "src/internal.test.ts".to_string(),
+            specifier: "./internal".to_string(),
+            reason: ExplanationReason::new(ExplanationReasonCode::TestImportOfInternalExport),
+        }]
+    );
+}
+
+#[test]
+fn internal_annotations_on_local_declarations_apply_to_later_exports() {
+    let analysis = analyze_inline_project(&[
+        ("src/entry.ts", "console.log('entry');\n"),
+        (
+            "src/internal.ts",
+            "/** @internal */\nconst helper = 1;\nexport { helper };\n",
+        ),
+        (
+            "src/internal.test.ts",
+            "import { helper } from './internal';\nconsole.log(helper);\n",
+        ),
+    ]);
+
+    assert!(!analysis.issues.files.contains_key("src/internal.ts"));
+    assert_no_unused_export(&analysis, "src/internal.ts", "helper");
+}
+
+#[test]
+fn non_leading_internal_text_does_not_mark_export_internal() {
+    let analysis = analyze_inline_project(&[
+        (
+            "src/entry.ts",
+            "import { used } from './internal';\nconsole.log(used);\n",
+        ),
+        (
+            "src/internal.ts",
+            "export const used = 1;\n/** Use @internal helpers carefully. */\nexport const helper = 2;\n",
+        ),
+        (
+            "src/internal.test.ts",
+            "import { helper } from './internal';\nconsole.log(helper);\n",
+        ),
+    ]);
+
+    assert_unused_export(&analysis, "src/internal.ts", "helper");
+    assert_unused_file(&analysis, "src/internal.test.ts");
+    assert!(analysis.internal_exports_used_by_tests.is_empty());
+}
+
+#[test]
 fn type_imports_in_tests_mark_test_only_types_unused() {
     let analysis = analyze_inline_project(&[
         (
@@ -762,6 +837,42 @@ fn doctor_explains_unresolved_alias_candidates() {
     );
     assert!(!alias.candidate_files[0].exists);
     assert!(!alias.candidate_files[0].in_project);
+}
+
+#[test]
+fn doctor_reports_internal_exports_used_by_tests() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+    );
+    write_file(cwd, "src/main.ts", "console.log('entry');\n");
+    write_file(
+        cwd,
+        "src/internal.ts",
+        "/** @internal */\nexport const helper = 1;\n",
+    );
+    write_file(
+        cwd,
+        "src/internal.test.ts",
+        "import { helper } from './internal';\nconsole.log(helper);\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let result = doctor_config(cwd, &config, None).unwrap();
+
+    assert_eq!(result.internal_exports_used_by_tests.len(), 1);
+    assert_eq!(
+        result.internal_exports_used_by_tests[0].exporting_file,
+        "src/internal.ts"
+    );
+    assert_eq!(result.internal_exports_used_by_tests[0].symbol, "helper");
 }
 
 #[test]
@@ -1243,9 +1354,67 @@ fn verbose_explains_unused_exports_with_skipped_importers() {
         vec![SkippedImporterExplanation {
             importer: "src/module.spec.ts".to_string(),
             specifier: "./module".to_string(),
-            reason: "test file leaf".to_string(),
+            reason: ExplanationReason::new(ExplanationReasonCode::TestFileLeaf),
         }]
     );
+}
+
+#[test]
+fn explain_reports_internal_test_usage_as_considered() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+    );
+    write_file(cwd, "src/main.ts", "console.log('entry');\n");
+    write_file(
+        cwd,
+        "src/internal.ts",
+        "/** @internal */\nexport const helper = 1;\n",
+    );
+    write_file(
+        cwd,
+        "src/internal.test.ts",
+        "import { helper } from './internal';\nconsole.log(helper);\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let analysis = analyze_path(
+        cwd,
+        &config,
+        AnalysisOptions {
+            explain_export: Some(ExplainExportRequest {
+                file: "src/internal.ts".to_string(),
+                symbol: "helper".to_string(),
+            }),
+            ..AnalysisOptions::default()
+        },
+    )
+    .unwrap();
+
+    let result = analysis.explain_export.as_ref().unwrap();
+    assert_eq!(result.status, ExplainExportStatus::Alive);
+    assert_eq!(
+        result.reason,
+        ExplanationReason::new(ExplanationReasonCode::InternalExportUsedByTests)
+    );
+    let explanation = result.explanation.as_ref().unwrap();
+    assert!(explanation.internal);
+    assert_eq!(
+        explanation.importers_considered,
+        vec![ExportImportExplanation {
+            importer: "src/internal.test.ts".to_string(),
+            specifier: "./internal".to_string(),
+            reason: ExplanationReason::new(ExplanationReasonCode::TestImportOfInternalExport),
+        }]
+    );
+    assert!(explanation.importers_skipped.is_empty());
 }
 
 #[test]

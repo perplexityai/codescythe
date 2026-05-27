@@ -69,6 +69,16 @@ project-file imports are also kept out of the unused-file report. `.spec.*`
 files are not matched by default; model detached end-to-end specs as entries
 instead.
 
+Exports annotated with a leading JSDoc `@internal` tag are the exception to the
+test leaf rule. If a matching test imports an `@internal` export, Codescythe
+keeps that export and its reachable dependency graph. If the `@internal` export
+is not used by production code or tests, it is still reported as unused. Verbose
+analysis and `--explain-export` show test importers that kept an internal export
+alive, and `codescythe doctor` lists internal exports preserved by tests.
+Importer and explain reasons are serialized as `{ code, description }` objects
+with fixed `code` values so JSON consumers can branch on stable reason codes
+instead of parsing display text.
+
 Use `--verbose --json` when validating config changes or comparing runs. Verbose
 analysis includes the Codescythe version, config path, project and entry counts,
 package import keys, ignored unresolved-import patterns, source-alias ignore

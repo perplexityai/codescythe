@@ -26,12 +26,41 @@ export interface SourceAliasIgnoreWarning {
   message: string;
 }
 
+export type ExplanationReasonCode =
+  | 'namedImport'
+  | 'namespaceMemberAccess'
+  | 'reExport'
+  | 'dynamicImportMarksAllExports'
+  | 'exportStarMarksAllExports'
+  | 'testImportOfInternalExport'
+  | 'testNamespaceAccessOfInternalExport'
+  | 'testDynamicImportOfInternalExport'
+  | 'testImportMetaGlobOfInternalExport'
+  | 'testExportStarImportOfInternalExport'
+  | 'testFileLeaf'
+  | 'importerUnreachable'
+  | 'fileOutsideProject'
+  | 'fileUnparseable'
+  | 'symbolNotExported'
+  | 'entryPublicFileSemantics'
+  | 'internalExportUsedByTests'
+  | 'reachableImporters'
+  | 'noReachableImporters'
+  | 'exportingFileUnreachable';
+
+export interface ExplanationReason {
+  code: ExplanationReasonCode;
+  description: string;
+  detail?: string;
+}
+
 export interface ExportExplanation {
   exportingFile: string;
   symbol: string;
+  internal?: boolean;
   fileReachable: boolean;
-  importersConsidered: { importer: string; specifier: string; reason: string }[];
-  importersSkipped: { importer: string; specifier: string; reason: string }[];
+  importersConsidered: { importer: string; specifier: string; reason: ExplanationReason }[];
+  importersSkipped: { importer: string; specifier: string; reason: ExplanationReason }[];
   ignoredUnresolvedImportsThatMightHavePointedAtThisFile: IgnoredUnresolvedImportSample[];
 }
 
@@ -39,7 +68,7 @@ export interface ExplainExportResult {
   exportingFile: string;
   symbol: string;
   status: 'alive' | 'dead' | 'fileUnused' | 'fileNotFound' | 'symbolNotExported';
-  reason: string;
+  reason: ExplanationReason;
   explanation?: ExportExplanation;
 }
 
@@ -58,6 +87,13 @@ export interface ConfigDoctorResult {
   warnings: { code: string; message: string }[];
   summary: AnalysisSummary;
   unresolvedImports?: UnresolvedImportExplanation[];
+  internalExportsUsedByTests?: InternalExportTestUsage[];
+}
+
+export interface InternalExportTestUsage {
+  exportingFile: string;
+  symbol: string;
+  testImporters: { importer: string; specifier: string; reason: ExplanationReason }[];
 }
 
 export interface UnresolvedImportExplanation {
@@ -84,7 +120,7 @@ export interface UnresolvedImportCandidateFile {
 export interface Analysis {
   issues: {
     files: Record<string, { path: string }>;
-    exports: Record<string, Record<string, { symbol: string; kind: 'value' | 'type'; line: number; col: number; explanation?: ExportExplanation }>>;
+    exports: Record<string, Record<string, { symbol: string; kind: 'value' | 'type'; internal?: boolean; line: number; col: number; explanation?: ExportExplanation }>>;
     unresolved?: Record<string, string[]>;
   };
   counters: {
@@ -98,6 +134,7 @@ export interface Analysis {
   summary?: AnalysisSummary;
   ignoredUnresolvedImportsByPattern?: Record<string, IgnoredUnresolvedImportsByPattern>;
   sourceAliasIgnoreWarnings?: SourceAliasIgnoreWarning[];
+  internalExportsUsedByTests?: InternalExportTestUsage[];
   explainExport?: ExplainExportResult;
 }
 

@@ -84,6 +84,10 @@ pub fn doctor_config(
         .map(|analysis| doctor_unresolved_imports(&cwd, config, &project_files, analysis))
         .transpose()?
         .unwrap_or_default();
+    let internal_exports_used_by_tests = analysis
+        .as_ref()
+        .map(|analysis| analysis.internal_exports_used_by_tests.clone())
+        .unwrap_or_default();
 
     warnings.sort_by(|left, right| {
         left.code
@@ -105,6 +109,7 @@ pub fn doctor_config(
             configured_alias_keys: config.aliases.keys().cloned().collect(),
         },
         unresolved_imports,
+        internal_exports_used_by_tests,
     })
 }
 
