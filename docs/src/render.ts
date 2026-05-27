@@ -51,6 +51,7 @@ type BuildPaths = {
   publicDir: string;
   rootDir: string;
   srcDir: string;
+  vendorDir: string;
 };
 
 function workspaceRoot() {
@@ -65,16 +66,13 @@ function resolveBuildPaths(options: BuildOptions = {}): BuildPaths {
     ? path.resolve(rootDir, options.outDir)
     : path.join(docsDir, 'public');
   const assetDir = path.join(publicDir, 'assets');
+  const vendorDir = path.join(publicDir, 'vendor');
 
-  return { assetDir, docsDir, publicDir, rootDir, srcDir };
+  return { assetDir, docsDir, publicDir, rootDir, srcDir, vendorDir };
 }
 
 const primaryNav: NavItem[] = [
-  { href: './getting-started/', label: 'Getting Started' },
-  { href: './configuration/', label: 'Configuration' },
-  { href: './features/', label: 'Features' },
-  { href: './troubleshooting/', label: 'Troubleshooting' },
-  { href: './performance/', label: 'Performance' },
+  { href: './getting-started/', label: 'Docs' },
 ];
 
 const homeCards: DocLink[] = [
@@ -92,6 +90,11 @@ const homeCards: DocLink[] = [
     href: './features/',
     title: 'Features',
     description: 'Review the analyzer, fix mode, verbose JSON, export explanations, and doctor diagnostics.',
+  },
+  {
+    href: './reports/',
+    title: 'Reports',
+    description: 'Read analyzer JSON, doctor warnings, unresolved import diagnostics, and explain-export decisions.',
   },
   {
     href: './troubleshooting/',
@@ -129,7 +132,14 @@ function Callout({ title, children }: { title: string; children: React.ReactNode
 function FieldTable({
   rows,
 }: {
-  rows: Array<{ field: string; purpose: string; notes: string }>;
+  rows: Array<{
+    example?: string;
+    field: string;
+    notes: string;
+    purpose: string;
+    type?: string;
+    values?: string;
+  }>;
 }) {
   return h(
     'div',
@@ -139,7 +149,20 @@ function FieldTable({
         'div',
         { className: 'field-row', role: 'row', key: row.field },
         h('div', { className: 'field-name', role: 'cell' }, h('code', null, row.field)),
-        h('div', { role: 'cell' }, h('strong', null, row.purpose), h('p', null, row.notes)),
+        h(
+          'div',
+          { role: 'cell' },
+          h('strong', null, row.purpose),
+          row.type && h('p', { className: 'field-meta' }, h('span', null, 'Type'), row.type),
+          row.values && h('p', { className: 'field-meta' }, h('span', null, 'Values'), row.values),
+          h('p', null, row.notes),
+          row.example &&
+            h(
+              'pre',
+              { className: 'field-example' },
+              h('code', null, row.example.trim()),
+            ),
+        ),
       ),
     ),
   );
@@ -512,14 +535,89 @@ const pages: Page[] = [
         { id: 'fields', title: 'Config Fields' },
         h(FieldTable, {
           rows: [
-            { field: 'entry', purpose: 'Reachability roots', notes: 'Files and globs that keep imports and exports alive.' },
-            { field: 'project', purpose: 'Reportable source files', notes: 'Files Codescythe can flag as unused project files.' },
-            { field: 'testFilePatterns', purpose: 'Leaf test classification', notes: 'Patterns for tests that should not mark production source as used.' },
-            { field: 'ignore', purpose: 'Exclude files', notes: 'Generated, vendored, or otherwise intentionally detached files.' },
-            { field: 'aliases', purpose: 'Import resolution', notes: 'Explicit source alias mappings when package metadata is not enough.' },
-            { field: 'unresolvedImports', purpose: 'Resolver policy', notes: 'Control when unresolved imports warn, fail, or are ignored by pattern.' },
-            { field: 'includeEntryExports', purpose: 'Entry export handling', notes: 'Preserve exports from entry files when they are public package boundaries.' },
-            { field: 'ignoreExportsUsedInFile', purpose: 'Local export usage', notes: 'Suppress per-file export checks for known patterns.' },
+            {
+              field: 'entry',
+              purpose: 'Reachability roots',
+              type: 'string or string[]',
+              values: 'File paths or glob patterns, relative to the analysis root.',
+              notes: 'Files and globs that keep imports and exports alive. Use one entry per application, CLI, package boundary, or detached spec root that should anchor reachability.',
+              example: `"entry": [
+  "src/index.ts",
+  "src/cli.ts",
+  "src/routes/**/*.tsx"
+]`,
+            },
+            {
+              field: 'project',
+              purpose: 'Reportable source files',
+              type: 'string or string[]',
+              values: 'File paths or glob patterns for source files Codescythe may report.',
+              notes: 'Keep generated output, vendored files, build output, and intentional examples outside this set or covered by ignore rules.',
+              example: `"project": [
+  "src/**/*.{js,jsx,ts,tsx}",
+  "packages/*/src/**/*.{ts,tsx}"
+]`,
+            },
+            {
+              field: 'testFilePatterns',
+              purpose: 'Leaf test classification',
+              type: 'string or string[]',
+              values: 'Glob patterns. Default: ["**/*.test.*"].',
+              notes: 'Matching files do not mark production imports as used. Configure .spec files explicitly if they should behave like test leaves.',
+              example: `"testFilePatterns": [
+  "**/*.test.*",
+  "**/*.spec.*"
+]`,
+            },
+            {
+              field: 'ignore',
+              purpose: 'Exclude files',
+              type: 'string or string[]',
+              values: 'Glob patterns matched before analysis.',
+              notes: 'Use for generated, vendored, or otherwise intentionally detached files. Doctor warns when generated-looking ignore patterns also match checked source files.',
+              example: `"ignore": [
+  "src/generated/**",
+  "**/*.stories.tsx"
+]`,
+            },
+            {
+              field: 'aliases',
+              purpose: 'Import resolution',
+              type: 'object mapping string keys to string or string[] targets',
+              values: 'Keys may use wildcards such as "#app/*"; values are relative target patterns such as "src/*".',
+              notes: 'Explicit source alias mappings override or supplement package metadata when package.json imports are not enough.',
+              example: `"aliases": {
+  "#app/*": "src/*",
+  "#generated/*": ["src/generated/*"]
+}`,
+            },
+            {
+              field: 'unresolvedImports',
+              purpose: 'Resolver policy',
+              type: 'object',
+              values: 'mode: "report" | "ignore" | "error"; ignore: string or string[]. Default mode is "report".',
+              notes: 'Use report while tuning config, error in CI when unresolved source imports are unacceptable, and ignore only for reviewed non-source patterns.',
+              example: `"unresolvedImports": {
+  "mode": "error",
+  "ignore": ["*.svg?raw", "virtual:*"]
+}`,
+            },
+            {
+              field: 'includeEntryExports',
+              purpose: 'Entry export handling',
+              type: 'boolean',
+              values: 'Default: false.',
+              notes: 'Set true when entry files are also public export surfaces and their exports should be checked instead of automatically preserved.',
+              example: `"includeEntryExports": true`,
+            },
+            {
+              field: 'ignoreExportsUsedInFile',
+              purpose: 'Local export usage',
+              type: 'boolean',
+              values: 'Default: false.',
+              notes: 'Suppresses exported symbols that are referenced inside their declaring file. Use sparingly for modules with deliberate local export patterns.',
+              example: `"ignoreExportsUsedInFile": true`,
+            },
           ],
         }),
       ),
@@ -566,14 +664,217 @@ const pages: Page[] = [
       h(
         PageSection,
         { id: 'explain', title: 'Explanations' },
-        h('p', null, 'Use export explanations when reviewing a surprising result. Codescythe will explain why one symbol is dead or alive from the graph it built.'),
+        h(
+          'p',
+          null,
+          'Use export explanations when reviewing a surprising result. Codescythe reports the requested symbol status, the reason for that decision, which importers counted, and which importers were skipped. The ',
+          h(InlineLink, { href: '../reports/#explain-report' }, 'report guide'),
+          ' shows how to read each field.',
+        ),
         h(CodeBlock, null, `npx codescythe --explain-export src/constants.ts:getServerId`),
       ),
       h(
         PageSection,
         { id: 'doctor', title: 'Doctor' },
-        h('p', null, 'Doctor mode checks config risk without editing files. It is the fastest way to diagnose suspicious ignores, empty globs, unresolved imports, and source-alias overlap.'),
+        h(
+          'p',
+          null,
+          'Doctor mode checks config risk without editing files. It is the fastest way to diagnose suspicious ignores, empty globs, unresolved imports, and source-alias overlap. Read doctor warnings as config risk signals, then use unresolved import diagnostics to see the alias candidates Codescythe tried.',
+        ),
         h(CodeBlock, null, `npx codescythe doctor --config codescythe.jsonc`),
+      ),
+    ),
+  },
+  {
+    slug: 'reports',
+    title: 'Reports',
+    eyebrow: 'Reading output',
+    description: 'Understand analyzer JSON, doctor warnings, unresolved import diagnostics, and explain-export reports.',
+    sections: [
+      { id: 'analysis-json', title: 'Analysis JSON' },
+      { id: 'doctor-output', title: 'Doctor Output' },
+      { id: 'doctor-warning-codes', title: 'Doctor Warning Codes' },
+      { id: 'unresolved-diagnostics', title: 'Unresolved Diagnostics' },
+      { id: 'explain-report', title: 'Explain Export Report' },
+      { id: 'review-workflow', title: 'Review Workflow' },
+    ],
+    body: h(
+      React.Fragment,
+      null,
+      h(
+        PageSection,
+        { id: 'analysis-json', title: 'Analysis JSON' },
+        h('p', null, 'The normal JSON report is the compact machine-readable surface for automation. Use it to gate CI or drive cleanup review, then switch to verbose JSON only when you need config and discovery diagnostics.'),
+        h(CodeBlock, { language: 'json' }, `{
+  "issues": {
+    "files": { "src/legacy/dead-view.ts": {} },
+    "exports": {
+      "src/constants.ts": {
+        "oldFlag": { "symbol": "oldFlag", "line": 4, "col": 14 }
+      }
+    },
+    "unresolved": {}
+  },
+  "counters": {
+    "files": 1,
+    "exports": 1,
+    "unresolved": 0,
+    "processed": 42,
+    "total": 42
+  }
+}`),
+        h(
+          Callout,
+          { title: 'Verbose mode is for diagnosis' },
+          h('p', null, h('code', null, '--verbose --json'), ' adds resolved config, matched glob counts, ignored unresolved import samples, and unused export explanations. Keep non-verbose JSON for stable automation.'),
+        ),
+      ),
+      h(
+        PageSection,
+        { id: 'doctor-output', title: 'Doctor Output' },
+        h('p', null, 'Doctor returns a summary, sorted warning list, and sampled unresolved import diagnostics. It exits with findings when warnings or unresolved diagnostics are present, but it never edits files.'),
+        h(CodeBlock, { language: 'json' }, `{
+  "warnings": [
+    {
+      "code": "entryGlobZeroMatches",
+      "message": "entry pattern \\"src/app/**/*.tsx\\" matched no project files"
+    }
+  ],
+  "summary": {
+    "version": "0.4.13",
+    "configPath": "codescythe.jsonc",
+    "projectCount": 184,
+    "entryCount": 2,
+    "ignoredUnresolvedCount": 0,
+    "ignoredUnresolvedPatterns": ["*.svg?raw"],
+    "packageImportKeys": ["#app/*"],
+    "configuredAliasKeys": ["#generated/*"]
+  }
+}`),
+        h(FieldTable, {
+          rows: [
+            { field: 'warnings', purpose: 'Config risk list', type: 'ConfigDoctorWarning[]', values: 'Each item has code and message.', notes: 'Treat every warning as a config review item before widening scope or forcing a fix.' },
+            { field: 'summary.projectCount', purpose: 'Project file count', type: 'number', values: 'Count after project, ignore, and gitignore filtering.', notes: 'A very high count with a tiny entry count often means project is too broad for the current entries.' },
+            { field: 'summary.entryCount', purpose: 'Matched entry count', type: 'number', values: 'Count of entry files that matched project files.', notes: 'Zero entries means analysis cannot establish reachability from the configured roots.' },
+            { field: 'summary.ignoredUnresolvedPatterns', purpose: 'Ignored resolver patterns', type: 'string[]', values: 'Patterns from unresolvedImports.ignore.', notes: 'Broad JS/TS-family source patterns should be reviewed with extra care because they can hide real usage.' },
+            { field: 'summary.packageImportKeys', purpose: 'Package import aliases', type: 'string[]', values: 'Keys discovered from package metadata.', notes: 'Useful when source alias overlap makes unresolved ignore rules risky.' },
+            { field: 'summary.configuredAliasKeys', purpose: 'Config aliases', type: 'string[]', values: 'Keys from aliases in Codescythe config.', notes: 'If an ignored unresolved import overlaps one of these, resolve before ignore.' },
+          ],
+        }),
+      ),
+      h(
+        PageSection,
+        { id: 'doctor-warning-codes', title: 'Doctor Warning Codes' },
+        h(FieldTable, {
+          rows: [
+            { field: 'entryGlobZeroMatches', purpose: 'Entry matched nothing', type: 'warning code', values: 'Emitted per entry pattern.', notes: 'Fix the path, widen project, or remove the stale entry. A zero-match entry cannot keep anything reachable.' },
+            { field: 'unresolvedImports', purpose: 'Analysis has unresolved imports', type: 'warning code', values: 'Emitted when analysis reported unresolved import edges.', notes: 'Use the unresolved diagnostics section to inspect resolver errors and alias candidate files.' },
+            { field: 'sourceAliasUnresolvedIgnore', purpose: 'Ignore overlaps source alias', type: 'warning code', values: 'Emitted for unresolvedImports.ignore patterns that may match local aliases.', notes: 'This is the main resolve-before-ignore warning. Fix mode can refuse risky source-like patterns unless forced.' },
+            { field: 'projectScopeMuchBroaderThanEntryCoverage', purpose: 'Project likely too broad', type: 'warning code', values: 'Emitted when most project files are unused from current entries.', notes: 'Add missing entries or narrow project before trusting a large deletion report.' },
+            { field: 'ignoredGeneratedPatternMatchesSource', purpose: 'Generated ignore catches source', type: 'warning code', values: 'Emitted when an ignore pattern containing generated also matches checked source.', notes: 'Narrow generated ignores so they do not mask hand-written code.' },
+          ],
+        }),
+      ),
+      h(
+        PageSection,
+        { id: 'unresolved-diagnostics', title: 'Unresolved Diagnostics' },
+        h('p', null, 'Doctor samples unresolved imports and asks the resolver to explain what it tried. Use this section to decide whether an import is a real missing file, an alias mapping gap, or a safe non-source asset.'),
+        h(CodeBlock, { language: 'json' }, `{
+  "unresolvedImports": [
+    {
+      "importer": "src/routes/home.tsx",
+      "specifier": "#generated/client",
+      "resolverError": "module not found",
+      "matchedAliases": [
+        {
+          "source": "config",
+          "key": "#generated/*",
+          "target": "src/generated/*",
+          "expandedTarget": "src/generated/client",
+          "candidateFiles": [
+            {
+              "path": "src/generated/client.ts",
+              "exists": false,
+              "inProject": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}`),
+        h(
+          'ul',
+          null,
+          h('li', null, h('code', null, 'importer'), ' is the file that contains the unresolved import.'),
+          h('li', null, h('code', null, 'specifier'), ' is the raw import string.'),
+          h('li', null, h('code', null, 'matchedAliases'), ' shows package or config aliases that looked relevant.'),
+          h('li', null, h('code', null, 'candidateFiles'), ' shows resolver candidates and whether each exists or is inside project scope.'),
+        ),
+      ),
+      h(
+        PageSection,
+        { id: 'explain-report', title: 'Explain Export Report' },
+        h('p', null, 'Use ', h('code', null, '--explain-export <file>:<symbol>'), ' when an export result is surprising. In text mode, Codescythe prints a human-readable explanation. With JSON, the explanation is available under ', h('code', null, 'explainExport'), '.'),
+        h(CodeBlock, null, `npx codescythe --explain-export src/constants.ts:oldFlag
+npx codescythe --json --explain-export src/constants.ts:oldFlag`),
+        h(CodeBlock, { language: 'json' }, `{
+  "explainExport": {
+    "exportingFile": "src/constants.ts",
+    "symbol": "oldFlag",
+    "status": "dead",
+    "reason": "export is not used by reachable importers",
+    "explanation": {
+      "fileReachable": true,
+      "importersConsidered": [],
+      "importersSkipped": [
+        {
+          "importer": "src/constants.test.ts",
+          "specifier": "./constants",
+          "reason": "test file leaf"
+        }
+      ],
+      "ignoredUnresolvedImportsThatMightHavePointedAtThisFile": []
+    }
+  }
+}`),
+        h(FieldTable, {
+          rows: [
+            { field: 'status', purpose: 'Decision', type: 'enum', values: 'alive | dead | fileUnused | fileNotFound | symbolNotExported', notes: 'Alive exports are kept; dead exports can be removed if no safety guard blocks the edit.' },
+            { field: 'reason', purpose: 'Short explanation', type: 'string', values: 'Generated from the graph decision.', notes: 'Read this first, then inspect importer details when it disagrees with expectation.' },
+            { field: 'fileReachable', purpose: 'Reachability check', type: 'boolean', values: 'true when the exporting file is reachable from configured entries.', notes: 'If false, the export is usually secondary to an unused-file finding.' },
+            { field: 'importersConsidered', purpose: 'Importers that count', type: 'ExportImportExplanation[]', values: 'Each item has importer, specifier, and reason.', notes: 'Reasons include named import, namespace member access, re-export, dynamic import marks all exports, and export star marks all exports.' },
+            { field: 'importersSkipped', purpose: 'Importers that do not count', type: 'SkippedImporterExplanation[]', values: 'Each item has importer, specifier, and reason.', notes: 'Common reasons are test file leaf or importer unreachable.' },
+            { field: 'ignoredUnresolvedImportsThatMightHavePointedAtThisFile', purpose: 'Uncertainty from ignored imports', type: 'IgnoredUnresolvedImportSample[]', values: 'Samples with specifier and importer.', notes: 'If this is non-empty, review unresolvedImports.ignore before trusting an export edit.' },
+          ],
+        }),
+      ),
+      h(
+        PageSection,
+        { id: 'review-workflow', title: 'Review Workflow' },
+        h(
+          Steps,
+          {
+            items: [
+              {
+                title: 'Start with doctor',
+                body: h(React.Fragment, null, h(CodeBlock, null, `npx codescythe doctor --json --config codescythe.jsonc`)),
+              },
+              {
+                title: 'Fix config-risk warnings first',
+                body: h('p', null, 'Zero-match entries, broad project scopes, and source-alias unresolved ignores can all make the main cleanup report less trustworthy.'),
+              },
+              {
+                title: 'Explain surprising exports',
+                body: h(React.Fragment, null, h(CodeBlock, null, `npx codescythe --json --explain-export src/module.ts:legacyExport`)),
+              },
+              {
+                title: 'Only then run fix mode',
+                body: h('p', null, 'A clean doctor report and explain output that matches your expectations give fix mode a much narrower review surface.'),
+              },
+            ],
+          },
+        ),
       ),
     ),
   },
@@ -595,9 +896,14 @@ const pages: Page[] = [
       h(
         PageSection,
         { id: 'doctor', title: 'Start with Doctor' },
-        h('p', null, 'Doctor is built for config triage. Run it before widening project scope or forcing a fix.'),
+        h(
+          'p',
+          null,
+          'Doctor is built for config triage. Run it before widening project scope or forcing a fix, then read the warning code first and the message second. The code tells you what class of risk Codescythe found; the message names the concrete pattern, count, or file involved.',
+        ),
         h(CodeBlock, null, `npx codescythe doctor --config codescythe.jsonc
 npx codescythe doctor --json --config codescythe.jsonc`),
+        h('p', null, 'Use the ', h(InlineLink, { href: '../reports/#doctor-output' }, 'doctor output guide'), ' when JSON includes unresolved import diagnostics or alias candidates.'),
       ),
       h(
         PageSection,
@@ -608,7 +914,17 @@ npx codescythe doctor --json --config codescythe.jsonc`),
       h(
         PageSection,
         { id: 'unresolved', title: 'Unresolved Imports' },
-        h('p', null, 'Unresolved imports can make cleanup unsafe because an unresolved source import may hide real usage. Inspect resolver diagnostics before ignoring broad patterns.'),
+        h(
+          'p',
+          null,
+          'Unresolved imports can make cleanup unsafe because an unresolved source import may hide real usage. Inspect resolver diagnostics before ignoring broad patterns: candidate files with ',
+          h('code', null, 'exists=false'),
+          ' usually point to missing generated output or a bad alias target; candidates with ',
+          h('code', null, 'exists=true'),
+          ' but ',
+          h('code', null, 'inProject=false'),
+          ' usually mean project scope is too narrow.',
+        ),
         h(CodeBlock, { language: 'json' }, `"unresolvedImports": {
   "mode": "error",
   "ignore": ["*.svg?raw"]
@@ -623,8 +939,13 @@ npx codescythe doctor --json --config codescythe.jsonc`),
       h(
         PageSection,
         { id: 'surprising-live', title: 'Surprising Live Code' },
-        h('p', null, 'When a symbol stays live unexpectedly, use export explanations and inspect whether a test, entry glob, barrel export, or dynamic import is keeping it reachable.'),
+        h(
+          'p',
+          null,
+          'When a symbol stays live unexpectedly, use export explanations and inspect whether a reachable importer, entry export rule, barrel export, dynamic import, or ignored unresolved import is keeping it reachable.',
+        ),
         h(CodeBlock, null, `npx codescythe --explain-export src/module.ts:legacyExport`),
+        h('p', null, 'If JSON reports ', h('code', null, 'importersSkipped'), ', those imports were observed but did not count because the importer was unreachable or treated as a test leaf. If ', h('code', null, 'ignoredUnresolvedImportsThatMightHavePointedAtThisFile'), ' is non-empty, resolve that uncertainty before editing exports.'),
       ),
     ),
   },
@@ -692,13 +1013,6 @@ function DocPage({ page }: { page: Page }) {
           ),
         ),
       ),
-      page.sections.length > 0 &&
-        h(
-          'div',
-          { className: 'section-nav' },
-          h('span', null, 'On this page'),
-          page.sections.map((section) => h('a', { href: `#${section.id}`, key: section.id }, section.title)),
-        ),
     ),
     h(
       'article',
@@ -708,6 +1022,13 @@ function DocPage({ page }: { page: Page }) {
       h('p', { className: 'doc-description' }, page.description),
       page.body,
     ),
+    page.sections.length > 0 &&
+      h(
+        'aside',
+        { className: 'page-toc', 'aria-label': 'On this page' },
+        h('span', null, 'On this page'),
+        page.sections.map((section) => h('a', { href: `#${section.id}`, key: section.id }, section.title)),
+      ),
   );
 }
 
@@ -737,8 +1058,10 @@ function SiteShell({
       h('meta', { property: 'og:title', content: title }),
       h('meta', { property: 'og:description', content: description }),
       h('meta', { property: 'og:type', content: 'website' }),
-      h('meta', { name: 'theme-color', content: '#111827' }),
+      h('meta', { name: 'theme-color', content: '#101113' }),
       h('link', { rel: 'icon', type: 'image/png', href: `${assetPrefix}codescythe-logo.png` }),
+      h('link', { rel: 'stylesheet', href: `${relativePrefix}vendor/open-props.min.css` }),
+      h('link', { rel: 'stylesheet', href: `${relativePrefix}vendor/normalize.dark.min.css` }),
       h('link', { rel: 'stylesheet', href: `${relativePrefix}styles.css` }),
     ),
     h(
@@ -802,15 +1125,19 @@ function parseBuildArgs(argv = process.argv.slice(2)): BuildOptions {
 }
 
 function build(options: BuildOptions = {}): BuildPaths {
-  const { assetDir, publicDir, rootDir, srcDir } = resolveBuildPaths(options);
+  const { assetDir, publicDir, rootDir, srcDir, vendorDir } = resolveBuildPaths(options);
+  const openPropsRoot = path.dirname(require.resolve('open-props/package.json'));
 
   if (existsSync(publicDir)) {
     rmSync(publicDir, { recursive: true, force: true });
   }
   mkdirSync(assetDir, { recursive: true });
+  mkdirSync(vendorDir, { recursive: true });
 
   copyFileSync(path.join(srcDir, 'site.css'), path.join(publicDir, 'styles.css'));
   copyFileSync(path.join(srcDir, 'assets', 'codescythe-logo.png'), path.join(assetDir, 'codescythe-logo.png'));
+  copyFileSync(path.join(openPropsRoot, 'open-props.min.css'), path.join(vendorDir, 'open-props.min.css'));
+  copyFileSync(path.join(openPropsRoot, 'normalize.dark.min.css'), path.join(vendorDir, 'normalize.dark.min.css'));
   writeFileSync(path.join(publicDir, '.nojekyll'), '# Static GitHub Pages site for Codescythe.\n');
 
   writePage(
