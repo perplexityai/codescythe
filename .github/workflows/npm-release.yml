@@ -92,6 +92,9 @@ jobs:
           name: npm-dist
           path: release
 
+      - name: Restore npm bin mode
+        run: chmod +x release/packages/codescythe/bin/codescythe.js
+
       - name: Smoke test package
         run: |
           set -euo pipefail
@@ -141,6 +144,9 @@ jobs:
         with:
           name: npm-dist
           path: release
+
+      - name: Restore npm bin mode
+        run: chmod +x release/packages/codescythe/bin/codescythe.js
 
       - name: Install publish dependencies
         working-directory: release
