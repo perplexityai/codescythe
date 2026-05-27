@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.14](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.13...codescythe_cli_v0.4.14) (2026-05-27)
+
+
+### Bug Fixes
+
+* **npm:** publish ESM JS dist packages ([#73](https://github.com/perplexityai/codescythe/issues/73)) ([4c5d492](https://github.com/perplexityai/codescythe/commit/4c5d49264a3ce707baf332d72fc13a2085155fbd))
+
 ## [0.4.13](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.12...codescythe_cli_v0.4.13) (2026-05-26)
 
 
