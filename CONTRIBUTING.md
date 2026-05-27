@@ -18,7 +18,7 @@ package root instead of hidden under `src/` folders.
 |   |-- codescythe_cli/        # Standalone CLI binary
 |   `-- codescythe_napi/       # Node-API shared library adapter
 |-- packages/
-|   |-- codescythe/            # Public npm package and TypeScript loader
+|   |-- codescythe/            # Public npm package and TypeScript source loader
 |   |-- codescythe-darwin-arm64/
 |   |-- codescythe-linux-amd64/
 |   `-- codescythe-linux-arm64/
@@ -62,7 +62,7 @@ with `2` for runtime/config errors.
 
 `crates/codescythe_napi` exposes the same core behavior to Node through N-API:
 `analyze`, `fix`, and `doctor` all return JSON strings from Rust, while the
-public TypeScript loader parses those strings into JavaScript objects.
+public package loader parses those strings into JavaScript objects.
 
 ### Npm Package Boundary
 
@@ -70,16 +70,17 @@ The pnpm workspace treats `packages/*` as public distribution boundaries. The
 root `package.json` owns workspace imports and scripts; public packages own
 their own `package.json` files.
 
-`codescythe` is the public npm package. Its TypeScript loader chooses one
+`codescythe` is the public npm package. Its TypeScript source loader chooses one
 optional native package from `process.platform` and `process.arch`:
 
 - `codescythe-darwin-arm64`
 - `codescythe-linux-amd64`
 - `codescythe-linux-arm64`
 
-The package entrypoints are TypeScript files and are executed with Node's
-`--experimental-transform-types` support. The package CLI shim is also
-TypeScript.
+Package manifests point at generated JavaScript entrypoints. The npm dist target
+uses `ts_project` to compile the TypeScript package loaders to CommonJS `.js`
+files so installed packages do not rely on Node type stripping under
+`node_modules`.
 
 ## Build Graph
 
@@ -100,8 +101,8 @@ Bazel is the source of truth for release artifacts.
   |-- codescythe.linux-amd64.node   # GNU Linux shared object
   `-- codescythe.linux-arm64.node   # GNU Linux shared object
 
-//packages/...:package
-  `-- copies the matching TypeScript loader/package files plus native output
+//:dist
+  `-- writes a pnpm workspace containing JS package entrypoints and native output
 ```
 
 The release transitions in `crates/codescythe_cli/release_binary.bzl` and
@@ -127,7 +128,7 @@ Build release artifacts:
 ```sh
 bazel build //crates/codescythe_cli:release_binaries
 bazel build //crates/codescythe_napi:release_nodes
-bazel build //packages/codescythe:package //packages/codescythe-darwin-arm64:package //packages/codescythe-linux-amd64:package //packages/codescythe-linux-arm64:package
+bazel build :dist
 ```
 
 Run the colocated npm smoke test against unpacked package artifacts by setting

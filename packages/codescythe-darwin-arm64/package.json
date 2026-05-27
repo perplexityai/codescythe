@@ -10,10 +10,11 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "./index.ts",
+  "type": "module",
+  "main": "./index.js",
   "files": [
     "codescythe.darwin-arm64.node",
-    "index.ts",
+    "index.js",
     "README.md"
   ],
   "os": [

@@ -1,3 +1,4 @@
+load("@aspect_bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 
@@ -9,6 +10,29 @@ package(default_visibility = ["//visibility:public"])
 # gazelle:map_kind ts_library ts_library //tools:ts.bzl
 
 npm_link_all_packages()
+
+PACKAGES_TO_DIST = [
+    "//packages/codescythe",
+    "//packages/codescythe-darwin-arm64",
+    "//packages/codescythe-linux-amd64",
+    "//packages/codescythe-linux-arm64",
+]
+
+PACKAGE_DIRNAMES = [p.split("packages/")[1] for p in PACKAGES_TO_DIST]
+
+copy_to_directory(
+    name = "dist",
+    srcs = [
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+    ] + ["%s:pkg" % pkg for pkg in PACKAGES_TO_DIST],
+    out = "codescythe_dist",
+    replace_prefixes = {k: v for k, v in [(
+        "packages/%s/pkg" % p,
+        "packages/%s" % p,
+    ) for p in PACKAGE_DIRNAMES]},
+)
 
 gazelle_binary(
     name = "gazelle_bin",

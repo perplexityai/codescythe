@@ -10,14 +10,15 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "./index.ts",
+  "type": "module",
+  "main": "./index.js",
   "types": "./index.d.ts",
   "bin": {
-    "codescythe": "./bin/codescythe.ts"
+    "codescythe": "./bin/codescythe.js"
   },
   "files": [
     "bin",
-    "index.ts",
+    "index.js",
     "index.d.ts",
     "README.md"
   ],

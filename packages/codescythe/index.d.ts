@@ -109,6 +109,22 @@ export interface FixResult {
   analysis: Analysis;
 }
 
+export interface NativeBinding {
+  analyze(options?: RunOptions): string;
+  doctor(options?: RunOptions): string;
+  fix(options?: RunOptions): string;
+}
+
 export function analyze(options?: RunOptions): Analysis;
 export function doctor(options?: RunOptions): ConfigDoctorResult;
 export function fix(options?: RunOptions): FixResult;
+export const native: NativeBinding;
+
+declare const codescythe: {
+  analyze: typeof analyze;
+  doctor: typeof doctor;
+  fix: typeof fix;
+  native: NativeBinding;
+};
+
+export default codescythe;

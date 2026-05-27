@@ -1,4 +1,5 @@
-load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("@aspect_rules_js//npm:defs.bzl", "npm_package")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//tools:ts.bzl", "ts_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -8,6 +9,17 @@ exports_files([
     "index.ts",
     "package.json",
 ])
+
+TS_DIST_TSCONFIG = {
+    "compilerOptions": {
+        "module": "ES2022",
+        "moduleResolution": "Bundler",
+        "noEmitOnError": False,
+        "skipLibCheck": False,
+        "target": "ES2022",
+        "types": ["node"],
+    },
+}
 
 genrule(
     name = "native_node",
@@ -27,9 +39,25 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-js_library(
+ts_project(
+    name = "dist_js",
+    srcs = ["index.ts"],
+    tsconfig = TS_DIST_TSCONFIG,
+    transpiler = "tsc",
+    validate = False,
+    deps = ["//:node_modules/@types/node"],
+)
+
+npm_package(
     name = "pkg",
-    srcs = [":package"],
+    srcs = [
+        "README.md",
+        "package.json",
+        ":dist_js",
+        ":native_node",
+    ],
+    package = "codescythe-linux-arm64",
+    visibility = ["//visibility:public"],
 )
 
 ts_library(
