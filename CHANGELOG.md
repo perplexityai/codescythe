@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.15](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.14...codescythe_cli_v0.4.15) (2026-05-27)
+
+
+### Bug Fixes
+
+* **npm:** restore bin mode after dist download ([#76](https://github.com/perplexityai/codescythe/issues/76)) ([fa3d1d6](https://github.com/perplexityai/codescythe/commit/fa3d1d616ce5a83947ad9453914bf5008525a33a))
+
 ## [0.4.14](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.13...codescythe_cli_v0.4.14) (2026-05-27)
 
 
