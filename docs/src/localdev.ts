@@ -1,8 +1,9 @@
 #!/usr/bin/env -S node --experimental-transform-types
 
 const { createServer } = require('node:http');
-const { createReadStream, existsSync, statSync } = require('node:fs');
+const { createReadStream, existsSync, mkdtempSync, statSync } = require('node:fs');
 const path = require('node:path');
+const { tmpdir } = require('node:os');
 const { build } = require('./render.ts');
 
 type ParsedArgs = {
@@ -76,7 +77,8 @@ function resolveRequestPath(publicDir: string, requestUrl: string | undefined) {
 
 function serve() {
   const { host, port } = parseArgs();
-  const { publicDir } = build({ quiet: true });
+  const outDir = process.env.DOCS_OUT_DIR ?? mkdtempSync(path.join(tmpdir(), 'codescythe-docs-'));
+  const { publicDir } = build({ outDir, quiet: true });
 
   const server = createServer((request, response) => {
     const filePath = resolveRequestPath(publicDir, request.url);

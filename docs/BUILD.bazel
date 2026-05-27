@@ -1,4 +1,4 @@
-load("@aspect_rules_js//js:defs.bzl", "js_binary")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -14,10 +14,21 @@ DOCS_TOOL_DATA = [
 ]
 
 js_binary(
-    name = "build",
+    name = "render_docs",
     data = DOCS_TOOL_DATA,
     entry_point = "src/render.ts",
     node_options = ["--experimental-transform-types"],
+)
+
+js_run_binary(
+    name = "build",
+    args = [
+        "--out-dir",
+        "docs/public",
+        "--quiet",
+    ],
+    out_dirs = ["public"],
+    tool = ":render_docs",
 )
 
 js_binary(
