@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.15...codescythe_cli_v0.5.0) (2026-05-27)
+
+
+### Features
+
+* support [@internal](https://github.com/internal) test usage ([#78](https://github.com/perplexityai/codescythe/issues/78)) ([2900d09](https://github.com/perplexityai/codescythe/commit/2900d093b1659a10a89945a44cf9e6dafecb7a67))
+
 ## [0.4.15](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.14...codescythe_cli_v0.4.15) (2026-05-27)
 
 
