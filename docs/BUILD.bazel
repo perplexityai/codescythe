@@ -1,0 +1,34 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+DOCS_TOOL_DATA = [
+    "src/assets/codescythe-logo.png",
+    "src/deploy.ts",
+    "src/localdev.ts",
+    "src/render.ts",
+    "src/site.css",
+    "//:node_modules/react",
+    "//:node_modules/react-dom",
+]
+
+js_binary(
+    name = "build",
+    data = DOCS_TOOL_DATA,
+    entry_point = "src/render.ts",
+    node_options = ["--experimental-transform-types"],
+)
+
+js_binary(
+    name = "localdev",
+    data = DOCS_TOOL_DATA,
+    entry_point = "src/localdev.ts",
+    node_options = ["--experimental-transform-types"],
+)
+
+js_binary(
+    name = "deploy",
+    data = DOCS_TOOL_DATA,
+    entry_point = "src/deploy.ts",
+    node_options = ["--experimental-transform-types"],
+)

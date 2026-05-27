@@ -19,12 +19,17 @@
     "benchmark:kibana": "node --experimental-transform-types benchmarks/run.ts --fixture kibana",
     "benchmark:renovate": "node --experimental-transform-types benchmarks/run.ts --fixture renovate",
     "benchmark:vscode": "node --experimental-transform-types benchmarks/run.ts --fixture vscode",
-    "conformance:kibana": "node --experimental-transform-types benchmarks/kibana_conformance.ts"
+    "conformance:kibana": "node --experimental-transform-types benchmarks/kibana_conformance.ts",
+    "build:docs": "bazel run //docs:build",
+    "localdev:docs": "bazel run //docs:localdev",
+    "deploy:docs": "bazel run //docs:deploy"
   },
   "devDependencies": {
     "benchmark": "^2.1.4",
     "knip": "^6.12.2",
-    "mocha": "^11.0.0"
+    "mocha": "^11.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "workspaces": [
     "packages/*"
