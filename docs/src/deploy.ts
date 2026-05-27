@@ -1,7 +1,6 @@
 #!/usr/bin/env -S node --experimental-transform-types
 
 const { spawnSync } = require('node:child_process');
-const { build } = require('./render.ts');
 
 type DeployOptions = {
   dryRun: boolean;
@@ -51,9 +50,8 @@ function run(command: string, args: string[], options: { dryRun?: boolean } = {}
 
 function deploy() {
   const options = parseArgs();
-  const { publicDir } = build({ quiet: true });
 
-  console.log(`Built docs at ${publicDir}`);
+  console.log('Docs are built in CI with: bazel build //docs:build');
   run('gh', ['workflow', 'run', 'pages.yml', '--ref', options.ref], {
     dryRun: options.dryRun,
   });

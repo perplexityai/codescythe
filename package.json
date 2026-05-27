@@ -20,7 +20,7 @@
     "benchmark:renovate": "node --experimental-transform-types benchmarks/run.ts --fixture renovate",
     "benchmark:vscode": "node --experimental-transform-types benchmarks/run.ts --fixture vscode",
     "conformance:kibana": "node --experimental-transform-types benchmarks/kibana_conformance.ts",
-    "build:docs": "bazel run //docs:build",
+    "build:docs": "bazel build //docs:build",
     "localdev:docs": "bazel run //docs:localdev",
     "deploy:docs": "bazel run //docs:deploy"
   },
