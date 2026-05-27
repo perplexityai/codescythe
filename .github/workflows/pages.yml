@@ -24,7 +24,7 @@ permissions:
 jobs:
   build:
     name: Build static site
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-16core
 
     steps:
       - name: Checkout repository
@@ -53,7 +53,7 @@ jobs:
   deploy:
     name: Deploy static site
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-16core
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

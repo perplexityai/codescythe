@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     name: Build release binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-16core
 
     steps:
       - name: Checkout repository
@@ -91,7 +91,7 @@ jobs:
             artifact: codescythe-darwin-arm64
             binary: codescythe-darwin-arm64
           - name: Linux AMD64
-            runner: ubuntu-24.04
+            runner: ubuntu-24.04-16core
             artifact: codescythe-linux-amd64
             binary: codescythe-linux-amd64
           - name: Linux ARM64
@@ -151,7 +151,7 @@ jobs:
     needs:
       - build
       - verify
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-16core
     permissions:
       contents: write
     if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'codescythe_cli_v')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && startsWith(github.ref_name, 'codescythe_cli_v')) }}
