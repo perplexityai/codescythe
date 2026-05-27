@@ -1,6 +1,6 @@
 {
   "name": "codescythe",
-  "version": "0.4.15",
+  "version": "0.5.0",
   "description": "Focused TypeScript dead-code analysis and removal",
   "license": "Apache-2.0",
   "repository": {
