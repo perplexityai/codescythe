@@ -79,36 +79,10 @@ code {
 }
 
 .brand-mark {
-  width: 2rem;
-  height: 2rem;
-  border: 2px solid var(--teal);
-  border-radius: 8px;
-  position: relative;
-  display: inline-block;
-  transform: rotate(-8deg);
-}
-
-.brand-mark::before,
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  background: var(--red);
-}
-
-.brand-mark::before {
-  width: 1.2rem;
-  height: 2px;
-  top: 0.85rem;
-  left: 0.3rem;
-  transform: rotate(38deg);
-}
-
-.brand-mark::after {
-  width: 2px;
-  height: 1.2rem;
-  top: 0.3rem;
-  left: 0.85rem;
-  transform: rotate(38deg);
+  display: block;
+  width: 2.3rem;
+  height: 2.3rem;
+  object-fit: contain;
 }
 
 .site-header nav {
@@ -755,8 +729,8 @@ h3 {
   }
 
   .brand-mark {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 2rem;
+    height: 2rem;
   }
 
   .site-header nav a {
