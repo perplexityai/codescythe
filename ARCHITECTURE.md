@@ -329,11 +329,11 @@ Selectors are resolved after graph construction:
 - Directory selectors match every project file node under that directory.
 - Export selectors match one exported-symbol node.
 
-`somepath` and `somepaths` run breadth-first search from the resolved source
-nodes. They keep one visited bit and one parent edge per node, so dependency
-cycles cannot create infinite walks. `somepath` stops after the first matched
-target. `somepaths` keeps traversing and reconstructs one shortest path for each
-reachable matched target.
+`somepath` runs breadth-first search from the resolved source nodes. It keeps
+one visited bit and one parent edge per node, so dependency cycles cannot create
+infinite walks. It keeps traversing after the first matched target and
+reconstructs one shortest path for each reachable matched target. File and
+export selectors usually match one target; directory selectors can match many.
 
 `allpaths` intentionally does not enumerate every simple path. It computes the
 set of nodes reachable forward from the sources, the set of nodes that can reach

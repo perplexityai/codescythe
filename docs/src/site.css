@@ -608,9 +608,11 @@ li code,
 .query-samples {
   display: grid;
   gap: 1.2rem;
+  min-width: 0;
 }
 
 .query-sample {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1rem;
@@ -623,6 +625,22 @@ li code,
 
 .query-sample .code-block + .code-block {
   margin-top: 0.75rem;
+}
+
+.query-svg {
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #ffffff;
+  overflow-x: auto;
+}
+
+.query-svg img {
+  display: block;
+  width: auto;
+  max-width: none;
+  height: auto;
 }
 
 .steps {
@@ -752,7 +770,7 @@ li code,
   .benchmark-grid,
   .doc-card-grid,
   .doc-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .summary-item {

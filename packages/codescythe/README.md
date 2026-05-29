@@ -25,7 +25,7 @@ The package bin also exposes dependency-path queries:
 
 ```sh
 npx codescythe query somepath src/main.ts src/module.ts
-npx codescythe query somepaths src/main.ts src/features/ --output mermaid
+npx codescythe query somepath src/main.ts src/features/ --output mermaid
 npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg
 ```
 
