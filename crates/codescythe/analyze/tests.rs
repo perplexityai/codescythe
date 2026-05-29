@@ -1512,6 +1512,10 @@ fn query_somepath_tracks_named_export_edges() {
     assert!(mermaid.contains("src/main.ts"));
     assert!(mermaid.contains("src/module.ts:used"));
     assert!(mermaid.contains("named import ./module:used"));
+
+    let svg = render_query_svg(&result).unwrap();
+    assert!(svg.contains("<svg"), "{svg}");
+    assert!(svg.contains("src/module.ts:used"), "{svg}");
 }
 
 #[test]

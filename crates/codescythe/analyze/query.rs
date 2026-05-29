@@ -308,6 +308,11 @@ pub fn render_query_mermaid(result: &QueryResult) -> String {
     lines.join("\n")
 }
 
+pub fn render_query_svg(result: &QueryResult) -> Result<String> {
+    let mermaid = render_query_mermaid(result);
+    mermaid_rs_renderer::render(&mermaid).context("failed to render query Mermaid as SVG")
+}
+
 fn query_result_graph(result: &QueryResult) -> QueryGraph {
     if let Some(graph) = &result.graph {
         return graph.clone();

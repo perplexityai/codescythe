@@ -291,6 +291,25 @@ fn cli_queries_dependency_paths() {
     assert!(mermaid.contains("flowchart LR"), "{mermaid}");
     assert!(mermaid.contains("src/module.ts:used"), "{mermaid}");
     assert!(mermaid.contains("named import ./module:used"), "{mermaid}");
+
+    let svg_output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&runfile("tests/fixtures/test-file-usage")),
+            "--output",
+            "svg",
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query with svg output");
+
+    assert!(svg_output.status.success(), "{}", output_text(&svg_output));
+    let svg = String::from_utf8_lossy(&svg_output.stdout);
+    assert!(svg.contains("<svg"), "{svg}");
+    assert!(svg.contains("src/module.ts:used"), "{svg}");
 }
 
 #[test]

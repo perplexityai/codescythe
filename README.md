@@ -142,6 +142,7 @@ codescythe query somepath src/main.ts src/module.ts
 codescythe query somepaths src/main.ts src/features/
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output mermaid
+codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg
 ```
 
 Selectors can point at files, directories, or exported symbols written as
@@ -149,8 +150,9 @@ Selectors can point at files, directories, or exported symbols written as
 shortest path per reachable matched target, and `allpaths` returns the subgraph
 of every node and edge that lies on a path from the source selector to the target
 selector. JSON output includes stable file/export nodes and typed import or
-re-export edges, and Mermaid output renders the same query graph as a
-`flowchart LR` diagram.
+re-export edges. Mermaid output renders the same query graph as a `flowchart LR`
+diagram, and SVG output renders that Mermaid source with the pure-Rust
+`mermaid-rs-renderer` crate.
 
 ## Contributing
 
