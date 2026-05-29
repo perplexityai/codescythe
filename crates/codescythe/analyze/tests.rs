@@ -1594,6 +1594,90 @@ fn query_allpaths_returns_path_subgraph_without_dead_edges() {
     );
 }
 
+#[test]
+fn query_somepath_variants_handle_circular_dependencies() {
+    for kind in [QueryKind::Somepath, QueryKind::Somepaths] {
+        let result = query_inline_project(
+            cycle_query_files(),
+            QueryRequest {
+                kind,
+                from: "src/root.ts".to_string(),
+                to: "src/targets/sink.ts".to_string(),
+            },
+        );
+
+        assert_eq!(result.paths.len(), 1);
+        assert_eq!(
+            result.paths[0]
+                .nodes
+                .iter()
+                .map(query_node_label)
+                .collect::<Vec<_>>(),
+            vec![
+                "src/root.ts",
+                "src/cycle/a.ts:a",
+                "src/cycle/a.ts",
+                "src/cycle/b.ts:b",
+                "src/cycle/b.ts",
+                "src/targets/sink.ts:sink",
+                "src/targets/sink.ts",
+            ]
+        );
+        assert!(
+            result.paths[0].edges.len() < 10,
+            "{kind:?} should terminate after a finite acyclic shortest path"
+        );
+    }
+}
+
+#[test]
+fn query_allpaths_handles_circular_dependencies() {
+    let result = query_inline_project(
+        cycle_query_files(),
+        QueryRequest {
+            kind: QueryKind::Allpaths,
+            from: "src/root.ts".to_string(),
+            to: "src/targets/sink.ts".to_string(),
+        },
+    );
+
+    let graph = result.graph.expect("allpaths should return a graph");
+    let node_labels = graph
+        .nodes
+        .iter()
+        .map(query_node_label)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        node_labels,
+        BTreeSet::from([
+            "src/cycle/a.ts".to_string(),
+            "src/cycle/a.ts:a".to_string(),
+            "src/cycle/b.ts".to_string(),
+            "src/cycle/b.ts:b".to_string(),
+            "src/root.ts".to_string(),
+            "src/targets/sink.ts".to_string(),
+            "src/targets/sink.ts:sink".to_string(),
+        ])
+    );
+    assert!(
+        graph.edges.iter().any(|edge| {
+            edge.from == "file:src/cycle/b.ts" && edge.to == "export:src/cycle/a.ts:a"
+        }),
+        "path subgraph should preserve the cycle edge when it is on a route to the target"
+    );
+    assert!(
+        graph
+            .nodes
+            .iter()
+            .all(|node| node.path != "src/targets/dead.ts"),
+        "unreachable files should not be part of the path subgraph"
+    );
+    assert!(
+        graph.edges.len() < 16,
+        "cycle handling should produce a finite path subgraph"
+    );
+}
+
 fn analyze_missing_import(mode: Option<&str>) -> Result<Analysis> {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();
@@ -1656,6 +1740,25 @@ fn query_inline_project(files: &[(&str, &str)], request: QueryRequest) -> QueryR
 
     let config = crate::load_config(cwd, None).unwrap();
     query_path(cwd, &config, request).unwrap()
+}
+
+fn cycle_query_files() -> &'static [(&'static str, &'static str)] {
+    &[
+        (
+            "src/root.ts",
+            "import { a } from './cycle/a';\nconsole.log(a);\n",
+        ),
+        (
+            "src/cycle/a.ts",
+            "import { b } from './b';\nexport const a = b;\n",
+        ),
+        (
+            "src/cycle/b.ts",
+            "import { a } from './a';\nimport { sink } from '../targets/sink';\nexport const b = a + sink;\n",
+        ),
+        ("src/targets/sink.ts", "export const sink = 1;\n"),
+        ("src/targets/dead.ts", "export const dead = 1;\n"),
+    ]
 }
 
 fn query_node_label(node: &QueryNode) -> String {
