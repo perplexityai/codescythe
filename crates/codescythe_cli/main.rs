@@ -44,10 +44,39 @@ struct Args {
 #[derive(Debug, Subcommand)]
 enum Command {
     Doctor(DoctorArgs),
+    Query(QueryArgs),
 }
 
 #[derive(Debug, Parser)]
 struct DoctorArgs {
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
+    #[arg(short = 'C', long)]
+    directory: Option<PathBuf>,
+
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Parser)]
+struct QueryArgs {
+    #[command(subcommand)]
+    command: QueryCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum QueryCommand {
+    Somepath(QueryPathArgs),
+    Somepaths(QueryPathArgs),
+    Allpaths(QueryPathArgs),
+}
+
+#[derive(Debug, Parser)]
+struct QueryPathArgs {
+    from: String,
+    to: String,
+
     #[arg(short, long)]
     config: Option<PathBuf>,
 
@@ -167,7 +196,35 @@ fn run_command(command: Command) -> Result<bool> {
             }
             Ok(!result.warnings.is_empty() || !result.unresolved_imports.is_empty())
         }
+        Command::Query(args) => run_query_command(args),
     }
+}
+
+fn run_query_command(args: QueryArgs) -> Result<bool> {
+    let (kind, args) = match args.command {
+        QueryCommand::Somepath(args) => (codescythe::QueryKind::Somepath, args),
+        QueryCommand::Somepaths(args) => (codescythe::QueryKind::Somepaths, args),
+        QueryCommand::Allpaths(args) => (codescythe::QueryKind::Allpaths, args),
+    };
+    let config = args.config.as_deref();
+    let cwd = analysis_root(args.directory.as_deref(), config)?;
+    let result = codescythe::query(
+        &cwd,
+        config,
+        codescythe::QueryRequest {
+            kind,
+            from: args.from,
+            to: args.to,
+        },
+    )?;
+    if args.json {
+        let started = start_profile_timer();
+        println!("{}", serde_json::to_string(&result)?);
+        print_profile_stage("json serialization", started);
+    } else {
+        print_query_report(&result);
+    }
+    Ok(false)
 }
 
 #[cfg(feature = "profiling")]
@@ -346,6 +403,95 @@ fn print_explain_export(analysis: &codescythe::Analysis) {
                 println!("    {} from {}", ignored.specifier, ignored.importer);
             }
         }
+    }
+}
+
+fn print_query_report(result: &codescythe::QueryResult) {
+    match result.kind {
+        codescythe::QueryKind::Somepath | codescythe::QueryKind::Somepaths => {
+            if result.paths.is_empty() {
+                println!(
+                    "No path found from {} to {}",
+                    result.from.raw, result.to.raw
+                );
+                return;
+            }
+
+            for (index, path) in result.paths.iter().enumerate() {
+                if result.paths.len() > 1 {
+                    println!("Path {}:", index + 1);
+                }
+                print_query_path(path);
+            }
+        }
+        codescythe::QueryKind::Allpaths => {
+            let Some(graph) = &result.graph else {
+                println!("Path graph: 0 nodes, 0 edges");
+                return;
+            };
+            println!(
+                "Path graph: {} nodes, {} edges",
+                graph.nodes.len(),
+                graph.edges.len()
+            );
+            let node_by_id = graph
+                .nodes
+                .iter()
+                .map(|node| (node.id.as_str(), node))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            for edge in &graph.edges {
+                let from = node_by_id
+                    .get(edge.from.as_str())
+                    .map(|node| query_node_label(node))
+                    .unwrap_or_else(|| edge.from.clone());
+                let to = node_by_id
+                    .get(edge.to.as_str())
+                    .map(|node| query_node_label(node))
+                    .unwrap_or_else(|| edge.to.clone());
+                println!("  {} -- {} -> {}", from, query_edge_label(edge), to);
+            }
+        }
+    }
+}
+
+fn print_query_path(path: &codescythe::QueryPath) {
+    if let Some(first) = path.nodes.first() {
+        println!("  {}", query_node_label(first));
+    }
+    for (edge, node) in path.edges.iter().zip(path.nodes.iter().skip(1)) {
+        println!(
+            "  -- {} -> {}",
+            query_edge_label(edge),
+            query_node_label(node)
+        );
+    }
+}
+
+fn query_node_label(node: &codescythe::QueryNode) -> String {
+    if let Some(symbol) = &node.symbol {
+        format!("{}:{symbol}", node.path)
+    } else {
+        node.path.clone()
+    }
+}
+
+fn query_edge_label(edge: &codescythe::QueryEdge) -> String {
+    let kind = match edge.kind {
+        codescythe::QueryEdgeKind::NamedImport => "named import",
+        codescythe::QueryEdgeKind::SideEffectImport => "side-effect import",
+        codescythe::QueryEdgeKind::DynamicImport => "dynamic import",
+        codescythe::QueryEdgeKind::GlobImport => "glob import",
+        codescythe::QueryEdgeKind::ReExport => "re-export",
+        codescythe::QueryEdgeKind::ReExportSource => "re-export source",
+        codescythe::QueryEdgeKind::NamespaceExport => "namespace export",
+        codescythe::QueryEdgeKind::NamespaceMember => "namespace member",
+        codescythe::QueryEdgeKind::ExportDefinition => "defined in file",
+    };
+    match (&edge.specifier, &edge.imported) {
+        (Some(specifier), Some(imported)) => format!("{kind} {specifier}:{imported}"),
+        (Some(specifier), None) => format!("{kind} {specifier}"),
+        (None, Some(imported)) => format!("{kind} {imported}"),
+        (None, None) => kind.to_string(),
     }
 }
 

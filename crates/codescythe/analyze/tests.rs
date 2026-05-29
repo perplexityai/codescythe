@@ -1479,6 +1479,115 @@ console.log(missingExternal, missingExternalSubpath);
     );
 }
 
+#[test]
+fn query_somepath_tracks_named_export_edges() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import { used } from './module';\nconsole.log(used);\n",
+            ),
+            ("src/module.ts", "export const used = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Somepath,
+            from: "src/main.ts".to_string(),
+            to: "src/module.ts:used".to_string(),
+        },
+    );
+
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(
+        result.paths[0]
+            .nodes
+            .iter()
+            .map(query_node_label)
+            .collect::<Vec<_>>(),
+        vec!["src/main.ts", "src/module.ts:used"]
+    );
+    assert_eq!(result.paths[0].edges[0].kind, QueryEdgeKind::NamedImport);
+}
+
+#[test]
+fn query_somepaths_returns_one_path_per_reachable_directory_file() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import { a } from './deps/a';\nimport './deps/b';\nconsole.log(a);\n",
+            ),
+            ("src/deps/a.ts", "export const a = 1;\n"),
+            ("src/deps/b.ts", "console.log('b');\n"),
+            ("src/deps/dead.ts", "export const dead = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Somepaths,
+            from: "src/main.ts".to_string(),
+            to: "src/deps/".to_string(),
+        },
+    );
+
+    let targets = result
+        .paths
+        .iter()
+        .filter_map(|path| path.nodes.last())
+        .map(query_node_label)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        targets,
+        BTreeSet::from(["src/deps/a.ts".to_string(), "src/deps/b.ts".to_string()])
+    );
+}
+
+#[test]
+fn query_allpaths_returns_path_subgraph_without_dead_edges() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import { used } from './module';\nimport { live } from './live';\nconsole.log(used, live);\n",
+            ),
+            ("src/module.ts", "export const used = 1;\n"),
+            ("src/live.ts", "export const live = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Allpaths,
+            from: "src/main.ts".to_string(),
+            to: "src/module.ts".to_string(),
+        },
+    );
+
+    let graph = result.graph.expect("allpaths should return a graph");
+    assert_eq!(
+        graph
+            .nodes
+            .iter()
+            .map(query_node_label)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "src/main.ts".to_string(),
+            "src/module.ts".to_string(),
+            "src/module.ts:used".to_string(),
+        ])
+    );
+    assert!(
+        graph
+            .edges
+            .iter()
+            .any(|edge| edge.kind == QueryEdgeKind::NamedImport)
+    );
+    assert!(
+        graph
+            .edges
+            .iter()
+            .any(|edge| edge.kind == QueryEdgeKind::ExportDefinition)
+    );
+    assert!(
+        graph.nodes.iter().all(|node| node.path != "src/live.ts"),
+        "unrelated live import should not be part of the path subgraph"
+    );
+}
+
 fn analyze_missing_import(mode: Option<&str>) -> Result<Analysis> {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();
@@ -1522,6 +1631,33 @@ fn analyze_inline_project_with_config(config: &str, files: &[(&str, &str)]) -> A
 
     let config = crate::load_config(cwd, None).unwrap();
     analyze_path(cwd, &config, AnalysisOptions::default()).unwrap()
+}
+
+fn query_inline_project(files: &[(&str, &str)], request: QueryRequest) -> QueryResult {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+    );
+    for (relative, contents) in files {
+        write_file(cwd, relative, contents);
+    }
+
+    let config = crate::load_config(cwd, None).unwrap();
+    query_path(cwd, &config, request).unwrap()
+}
+
+fn query_node_label(node: &QueryNode) -> String {
+    if let Some(symbol) = &node.symbol {
+        format!("{}:{symbol}", node.path)
+    } else {
+        node.path.clone()
+    }
 }
 
 fn assert_no_unused_export(analysis: &Analysis, path: &str, name: &str) {

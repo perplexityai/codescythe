@@ -133,6 +133,23 @@ checked source files. When unresolved imports are present, JSON doctor output
 includes sampled resolver diagnostics with matched aliases, expanded targets,
 candidate files, and whether each candidate exists in the project.
 
+## Querying Dependency Paths
+
+Use `query` to inspect dependency paths through the same source graph:
+
+```sh
+codescythe query somepath src/main.ts src/module.ts
+codescythe query somepaths src/main.ts src/features/
+codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
+```
+
+Selectors can point at files, directories, or exported symbols written as
+`<file>:<symbol>`. `somepath` returns one shortest path, `somepaths` returns one
+shortest path per reachable matched target, and `allpaths` returns the subgraph
+of every node and edge that lies on a path from the source selector to the target
+selector. JSON output includes stable file/export nodes and typed import or
+re-export edges.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository layout, architecture,

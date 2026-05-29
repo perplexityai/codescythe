@@ -241,6 +241,35 @@ fn cli_tracks_tests_as_leaf_files_and_fixes_removed_code_tests() {
 }
 
 #[test]
+fn cli_queries_dependency_paths() {
+    let output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&runfile("tests/fixtures/test-file-usage")),
+            "--json",
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query");
+
+    assert!(output.status.success(), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let query: Value = serde_json::from_slice(&output.stdout).expect("query stdout should be JSON");
+    assert_eq!(query["kind"], "somepath");
+    assert_eq!(query["paths"][0]["nodes"][0]["path"], "src/main.ts");
+    assert_eq!(query["paths"][0]["nodes"][1]["path"], "src/module.ts");
+    assert_eq!(query["paths"][0]["nodes"][1]["symbol"], "used");
+    assert_eq!(query["paths"][0]["edges"][0]["kind"], "namedImport");
+}
+
+#[test]
 fn cli_explains_exports_and_doctors_config() {
     let cli = runfile("crates/codescythe_cli/codescythe");
     let fixture = env::temp_dir().join(format!(
