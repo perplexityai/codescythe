@@ -8,7 +8,7 @@ use std::{
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[cfg(feature = "profiling")]
 const PROFILE_ENV: &str = "CODESCYTHE_PROFILE";
@@ -85,6 +85,16 @@ struct QueryPathArgs {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, value_enum, default_value_t = QueryOutputFormat::Text)]
+    output: QueryOutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum QueryOutputFormat {
+    Text,
+    Json,
+    Mermaid,
 }
 
 fn main() -> ExitCode {
@@ -217,12 +227,23 @@ fn run_query_command(args: QueryArgs) -> Result<bool> {
             to: args.to,
         },
     )?;
-    if args.json {
-        let started = start_profile_timer();
-        println!("{}", serde_json::to_string(&result)?);
-        print_profile_stage("json serialization", started);
+    let output = if args.json {
+        QueryOutputFormat::Json
     } else {
-        print_query_report(&result);
+        args.output
+    };
+    match output {
+        QueryOutputFormat::Json => {
+            let started = start_profile_timer();
+            println!("{}", serde_json::to_string(&result)?);
+            print_profile_stage("json serialization", started);
+        }
+        QueryOutputFormat::Mermaid => {
+            print!("{}", codescythe::render_query_mermaid(&result));
+        }
+        QueryOutputFormat::Text => {
+            print_query_report(&result);
+        }
     }
     Ok(false)
 }
