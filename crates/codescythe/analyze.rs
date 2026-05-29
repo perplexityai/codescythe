@@ -4,6 +4,7 @@ mod explain;
 mod graph;
 mod parse;
 mod profile;
+mod query;
 mod resolver;
 mod util;
 
@@ -12,6 +13,10 @@ mod tests;
 
 pub use doctor::doctor_config;
 pub use explain::ignored_unresolved_patterns_for_file;
+pub use query::{
+    QueryEdge, QueryEdgeKind, QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath,
+    QueryRequest, QueryResult, QuerySelector, QuerySelectorKind, QueryUnresolvedImport, query_path,
+};
 pub use resolver::{
     source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
 };

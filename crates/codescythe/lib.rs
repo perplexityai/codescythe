@@ -6,10 +6,12 @@ pub use analyze::{
     Analysis, AnalysisOptions, AnalysisSummary, ConfigDoctorResult, ConfigDoctorWarning, Counters,
     ExplainExportRequest, ExplainExportResult, ExplainExportStatus, ExplanationReason,
     ExplanationReasonCode, ExportExplanation, FileIssue, IgnoredUnresolvedImportSample,
-    IgnoredUnresolvedImportsByPattern, InternalExportTestUsage, Issues, SourceAliasIgnoreWarning,
-    SymbolIssue, UnresolvedImportCandidateFile, UnresolvedImportExplanation,
-    UnresolvedImportMatchedAlias, analyze_path, doctor_config,
-    source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
+    IgnoredUnresolvedImportsByPattern, InternalExportTestUsage, Issues, QueryEdge, QueryEdgeKind,
+    QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath, QueryRequest, QueryResult,
+    QuerySelector, QuerySelectorKind, QueryUnresolvedImport, SourceAliasIgnoreWarning, SymbolIssue,
+    UnresolvedImportCandidateFile, UnresolvedImportExplanation, UnresolvedImportMatchedAlias,
+    analyze_path, doctor_config, query_path, source_alias_fix_blocking_ignore_warnings_for_config,
+    source_alias_ignore_warnings_for_config,
 };
 pub use config::{
     CodescytheConfig, LoadedConfig, UnresolvedImportsConfig, UnresolvedImportsMode, load_config,
@@ -39,6 +41,16 @@ pub fn run_with_options(
     let mut options = options;
     options.config_path = loaded.path;
     analyze_path(cwd, &loaded.config, options)
+}
+
+pub fn query(
+    cwd: impl AsRef<Path>,
+    config_path: Option<&Path>,
+    request: QueryRequest,
+) -> anyhow::Result<QueryResult> {
+    let cwd = cwd.as_ref();
+    let loaded = load_config_with_metadata(cwd, config_path)?;
+    query_path(cwd, &loaded.config, request)
 }
 
 pub fn run_and_fix(cwd: impl AsRef<Path>, config_path: Option<&Path>) -> anyhow::Result<FixResult> {

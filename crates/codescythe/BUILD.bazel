@@ -30,6 +30,7 @@ LIB_SRCS = [
     "analyze/graph.rs",
     "analyze/parse.rs",
     "analyze/profile.rs",
+    "analyze/query.rs",
     "analyze/resolver.rs",
     "analyze/tests.rs",
     "analyze/util.rs",
