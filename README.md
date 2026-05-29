@@ -139,7 +139,7 @@ Use `query` to inspect dependency paths through the same source graph:
 
 ```sh
 codescythe query somepath src/main.ts src/module.ts
-codescythe query somepaths src/main.ts src/features/
+codescythe query somepath src/main.ts src/features/
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output mermaid
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg
@@ -149,10 +149,9 @@ Selectors can point at files, directories, or exported symbols written as
 `<file>:<symbol>`. Relative selectors are resolved from the analysis root chosen
 by `-C` or `--config`.
 
-- `somepath` returns one shortest path from the source selector to any matched
-  target.
-- `somepaths` returns one shortest path per reachable matched target, which is
-  useful for file-to-folder queries.
+- `somepath` returns one shortest path per reachable matched target. File and
+  export targets usually match one target, while directory targets can match
+  many.
 - `allpaths` returns the subgraph of every node and edge that lies on a path
   from the source selector to the target selector.
 
@@ -161,15 +160,19 @@ file/export nodes and typed import or re-export edges. Mermaid output renders
 the same query graph as a `flowchart LR` diagram, and SVG output renders that
 Mermaid source with the pure-Rust `mermaid-rs-renderer` crate.
 
-`somepath` and `somepaths` use breadth-first search with visited nodes, while
-`allpaths` intersects forward reachability from the source with reverse
-reachability from the target. That makes dependency cycles finite without
-enumerating every possible walk through the graph.
+`somepath` uses breadth-first search with visited nodes, while `allpaths`
+intersects forward reachability from the source with reverse reachability from
+the target. That makes dependency cycles finite without enumerating every
+possible walk through the graph.
 
 Fixture-backed Mermaid examples:
 
 ```sh
-codescythe query somepath -C tests/fixtures/test-file-usage --output mermaid src/main.ts src/module.ts:used
+codescythe query somepath \
+  -C tests/fixtures/test-file-usage \
+  --output mermaid \
+  src/main.ts \
+  src/module.ts:used
 ```
 
 ```mermaid
@@ -180,7 +183,11 @@ flowchart LR
 ```
 
 ```sh
-codescythe query somepaths -C tests/fixtures/oxc-resolution --output mermaid app/index.ts app/
+codescythe query somepath \
+  -C tests/fixtures/oxc-resolution \
+  --output mermaid \
+  app/index.ts \
+  app/
 ```
 
 ```mermaid
@@ -201,7 +208,11 @@ flowchart LR
 ```
 
 ```sh
-codescythe query allpaths -C tests/fixtures/knip-export-basics --output mermaid index.ts my-namespace.ts:y
+codescythe query allpaths \
+  -C tests/fixtures/knip-export-basics \
+  --output mermaid \
+  index.ts \
+  my-namespace.ts:y
 ```
 
 ```mermaid
@@ -216,7 +227,11 @@ flowchart LR
 ```
 
 ```sh
-codescythe query somepath -C tests/fixtures/runfiles-fixture --output mermaid workspace/frontend/apps/client/platform/platformRuntime.ts protobuf/generated/client.ts:client
+codescythe query somepath \
+  -C tests/fixtures/runfiles-fixture \
+  --output mermaid \
+  workspace/frontend/apps/client/platform/platformRuntime.ts \
+  protobuf/generated/client.ts:client
 ```
 
 ```mermaid

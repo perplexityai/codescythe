@@ -68,7 +68,6 @@ struct QueryArgs {
 #[derive(Debug, Subcommand)]
 enum QueryCommand {
     Somepath(QueryPathArgs),
-    Somepaths(QueryPathArgs),
     Allpaths(QueryPathArgs),
 }
 
@@ -214,7 +213,6 @@ fn run_command(command: Command) -> Result<bool> {
 fn run_query_command(args: QueryArgs) -> Result<bool> {
     let (kind, args) = match args.command {
         QueryCommand::Somepath(args) => (codescythe::QueryKind::Somepath, args),
-        QueryCommand::Somepaths(args) => (codescythe::QueryKind::Somepaths, args),
         QueryCommand::Allpaths(args) => (codescythe::QueryKind::Allpaths, args),
     };
     let config = args.config.as_deref();
@@ -433,7 +431,7 @@ fn print_explain_export(analysis: &codescythe::Analysis) {
 
 fn print_query_report(result: &codescythe::QueryResult) {
     match result.kind {
-        codescythe::QueryKind::Somepath | codescythe::QueryKind::Somepaths => {
+        codescythe::QueryKind::Somepath => {
             if result.paths.is_empty() {
                 println!(
                     "No path found from {} to {}",

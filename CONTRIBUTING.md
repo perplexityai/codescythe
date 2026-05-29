@@ -51,7 +51,7 @@ The public Rust API is intentionally narrow:
   returns a fix report.
 - `codescythe::doctor(cwd, config_path)` returns config-risk diagnostics.
 - `codescythe::query(cwd, config_path, request)` returns dependency paths or a
-  path subgraph for `somepath`, `somepaths`, and `allpaths`.
+  path subgraph for `somepath` and `allpaths`.
 - `codescythe::render_query_mermaid(result)` and
   `codescythe::render_query_svg(result)` render query results as diagrams.
 

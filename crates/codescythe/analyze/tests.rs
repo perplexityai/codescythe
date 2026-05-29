@@ -1519,7 +1519,7 @@ fn query_somepath_tracks_named_export_edges() {
 }
 
 #[test]
-fn query_somepaths_returns_one_path_per_reachable_directory_file() {
+fn query_somepath_returns_one_path_per_reachable_directory_file() {
     let result = query_inline_project(
         &[
             (
@@ -1531,7 +1531,7 @@ fn query_somepaths_returns_one_path_per_reachable_directory_file() {
             ("src/deps/dead.ts", "export const dead = 1;\n"),
         ],
         QueryRequest {
-            kind: QueryKind::Somepaths,
+            kind: QueryKind::Somepath,
             from: "src/main.ts".to_string(),
             to: "src/deps/".to_string(),
         },
@@ -1599,39 +1599,37 @@ fn query_allpaths_returns_path_subgraph_without_dead_edges() {
 }
 
 #[test]
-fn query_somepath_variants_handle_circular_dependencies() {
-    for kind in [QueryKind::Somepath, QueryKind::Somepaths] {
-        let result = query_inline_project(
-            cycle_query_files(),
-            QueryRequest {
-                kind,
-                from: "src/root.ts".to_string(),
-                to: "src/targets/sink.ts".to_string(),
-            },
-        );
+fn query_somepath_handles_circular_dependencies() {
+    let result = query_inline_project(
+        cycle_query_files(),
+        QueryRequest {
+            kind: QueryKind::Somepath,
+            from: "src/root.ts".to_string(),
+            to: "src/targets/sink.ts".to_string(),
+        },
+    );
 
-        assert_eq!(result.paths.len(), 1);
-        assert_eq!(
-            result.paths[0]
-                .nodes
-                .iter()
-                .map(query_node_label)
-                .collect::<Vec<_>>(),
-            vec![
-                "src/root.ts",
-                "src/cycle/a.ts:a",
-                "src/cycle/a.ts",
-                "src/cycle/b.ts:b",
-                "src/cycle/b.ts",
-                "src/targets/sink.ts:sink",
-                "src/targets/sink.ts",
-            ]
-        );
-        assert!(
-            result.paths[0].edges.len() < 10,
-            "{kind:?} should terminate after a finite acyclic shortest path"
-        );
-    }
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(
+        result.paths[0]
+            .nodes
+            .iter()
+            .map(query_node_label)
+            .collect::<Vec<_>>(),
+        vec![
+            "src/root.ts",
+            "src/cycle/a.ts:a",
+            "src/cycle/a.ts",
+            "src/cycle/b.ts:b",
+            "src/cycle/b.ts",
+            "src/targets/sink.ts:sink",
+            "src/targets/sink.ts",
+        ]
+    );
+    assert!(
+        result.paths[0].edges.len() < 10,
+        "somepath should terminate after a finite acyclic shortest path"
+    );
 }
 
 #[test]

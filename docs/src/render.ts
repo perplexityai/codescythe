@@ -6,6 +6,7 @@ const {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -94,7 +95,7 @@ const homeCards: DocLink[] = [
   {
     href: './queries/',
     title: 'Dependency Queries',
-    description: 'Trace somepath, somepaths, and allpaths results with text, JSON, Mermaid, or SVG output.',
+    description: 'Trace somepath and allpaths results with text, JSON, Mermaid, or SVG output.',
   },
   {
     href: './reports/',
@@ -138,11 +139,13 @@ function QueryFixtureSample({
   command,
   description,
   mermaid,
+  svgSrc,
   title,
 }: {
   command: string;
   description: string;
   mermaid: string;
+  svgSrc?: string;
   title: string;
 }) {
   return h(
@@ -152,6 +155,12 @@ function QueryFixtureSample({
     h('p', null, description),
     h(CodeBlock, null, command),
     h(CodeBlock, { language: 'mermaid' }, mermaid),
+    svgSrc &&
+      h(
+        'figure',
+        { className: 'query-svg' },
+        h('img', { src: svgSrc, alt: `${title} rendered SVG` }),
+      ),
   );
 }
 
@@ -678,8 +687,6 @@ const pages: Page[] = [
           null,
           'Use ',
           h('code', null, 'query somepath'),
-          ', ',
-          h('code', null, 'query somepaths'),
           ', and ',
           h('code', null, 'query allpaths'),
           ' to inspect dependency routes through that graph. Queries can target files, folders, or exported symbols and can render text, JSON, Mermaid, or SVG output. The ',
@@ -733,7 +740,7 @@ const pages: Page[] = [
     slug: 'queries',
     title: 'Dependency Queries',
     eyebrow: 'Path inspection',
-    description: 'Use somepath, somepaths, and allpaths to explain dependency paths through the same graph Codescythe analyzes.',
+    description: 'Use somepath and allpaths to explain dependency paths through the same graph Codescythe analyzes.',
     sections: [
       { id: 'commands', title: 'Commands' },
       { id: 'selectors', title: 'Selectors' },
@@ -752,24 +759,25 @@ const pages: Page[] = [
           null,
           'The query command traces dependency paths between two selectors without changing analysis results or editing files. It uses the same parsed import, export, resolver, alias, dynamic import, and glob edges as normal analysis.',
         ),
-        h(CodeBlock, null, `npx codescythe query somepath src/main.ts src/module.ts
-npx codescythe query somepaths src/main.ts src/features/
-npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime`),
+        h(CodeBlock, null, `npx codescythe query somepath \\
+  src/main.ts \\
+  src/module.ts
+
+npx codescythe query somepath \\
+  src/main.ts \\
+  src/features/
+
+npx codescythe query allpaths \\
+  src/main.ts \\
+  src/runtime.ts:initRuntime`),
         h(FieldTable, {
           rows: [
             {
               field: 'somepath',
-              purpose: 'One shortest path',
+              purpose: 'One shortest path per reachable target',
               type: 'query verb',
               values: 'source selector, target selector',
-              notes: 'Returns the first shortest dependency path found from any matched source node to any matched target node.',
-            },
-            {
-              field: 'somepaths',
-              purpose: 'One path per target',
-              type: 'query verb',
-              values: 'source selector, target selector',
-              notes: 'Returns one shortest path for each reachable matched target, which is useful when the target selector is a directory.',
+              notes: 'Returns one shortest dependency path for each reachable matched target. File and export targets usually match one node; directory targets can match many.',
             },
             {
               field: 'allpaths',
@@ -802,10 +810,25 @@ npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime`),
         PageSection,
         { id: 'formats', title: 'Output Formats' },
         h('p', null, 'Text output is optimized for terminal inspection. JSON is the stable machine-readable surface. Mermaid and SVG render the same query graph as a diagram.'),
-        h(CodeBlock, null, `npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output text
-npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
-npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output mermaid
-npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg`),
+        h(CodeBlock, null, `npx codescythe query allpaths \\
+  --output text \\
+  src/main.ts \\
+  src/runtime.ts:initRuntime
+
+npx codescythe query allpaths \\
+  --json \\
+  src/main.ts \\
+  src/runtime.ts:initRuntime
+
+npx codescythe query allpaths \\
+  --output mermaid \\
+  src/main.ts \\
+  src/runtime.ts:initRuntime
+
+npx codescythe query allpaths \\
+  --output svg \\
+  src/main.ts \\
+  src/runtime.ts:initRuntime > graph.svg`),
         h(
           'p',
           null,
@@ -833,16 +856,26 @@ npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output sv
           h(QueryFixtureSample, {
             title: 'test-file-usage: somepath to one export',
             description: 'A file-to-export query shows a named import edge directly to the exported symbol.',
-            command: 'codescythe query somepath -C tests/fixtures/test-file-usage --output mermaid src/main.ts src/module.ts:used',
+            command: `codescythe query somepath \\
+  -C tests/fixtures/test-file-usage \\
+  --output mermaid \\
+  src/main.ts \\
+  src/module.ts:used`,
+            svgSrc: '../assets/query/test-file-usage-somepath.svg',
             mermaid: `flowchart LR
   n0["src/module.ts:used"]
   n1["src/main.ts"]
   n1 -->|"named import ./module:used"| n0`,
           }),
           h(QueryFixtureSample, {
-            title: 'oxc-resolution: somepaths to a folder',
+            title: 'oxc-resolution: somepath to a folder',
             description: 'A file-to-directory query returns one shortest path for each reachable matched target file.',
-            command: 'codescythe query somepaths -C tests/fixtures/oxc-resolution --output mermaid app/index.ts app/',
+            command: `codescythe query somepath \\
+  -C tests/fixtures/oxc-resolution \\
+  --output mermaid \\
+  app/index.ts \\
+  app/`,
+            svgSrc: '../assets/query/oxc-resolution-folder.svg',
             mermaid: `flowchart LR
   n0["app/aliased.ts:aliased"]
   n1["app/extension.ts:extension"]
@@ -861,7 +894,12 @@ npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output sv
           h(QueryFixtureSample, {
             title: 'knip-export-basics: allpaths through namespace use',
             description: 'An allpaths query keeps every node and edge that can carry the source file to the target export.',
-            command: 'codescythe query allpaths -C tests/fixtures/knip-export-basics --output mermaid index.ts my-namespace.ts:y',
+            command: `codescythe query allpaths \\
+  -C tests/fixtures/knip-export-basics \\
+  --output mermaid \\
+  index.ts \\
+  my-namespace.ts:y`,
+            svgSrc: '../assets/query/knip-export-basics-allpaths.svg',
             mermaid: `flowchart LR
   n0["index.ts"]
   n1["my-module.ts"]
@@ -874,7 +912,12 @@ npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output sv
           h(QueryFixtureSample, {
             title: 'runfiles-fixture: somepath through an alias',
             description: 'Alias resolution is represented in the edge label, while the target still resolves to the project file export.',
-            command: 'codescythe query somepath -C tests/fixtures/runfiles-fixture --output mermaid workspace/frontend/apps/client/platform/platformRuntime.ts protobuf/generated/client.ts:client',
+            command: `codescythe query somepath \\
+  -C tests/fixtures/runfiles-fixture \\
+  --output mermaid \\
+  workspace/frontend/apps/client/platform/platformRuntime.ts \\
+  protobuf/generated/client.ts:client`,
+            svgSrc: '../assets/query/runfiles-alias-somepath.svg',
             mermaid: `flowchart LR
   n0["protobuf/generated/client.ts:client"]
   n1["workspace/frontend/apps/client/platform/platformRuntime.ts"]
@@ -890,9 +933,7 @@ npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output sv
           null,
           'Dependency cycles are finite in query output. ',
           h('code', null, 'somepath'),
-          ' and ',
-          h('code', null, 'somepaths'),
-          ' run breadth-first search with visited nodes and parent edges, so they return shortest acyclic paths. ',
+          ' runs breadth-first search with visited nodes and parent edges, so it returns shortest acyclic paths. ',
           h('code', null, 'allpaths'),
           ' does not enumerate paths; it intersects forward reachability from the source with reverse reachability from the target, then returns the induced path subgraph.',
         ),
@@ -1376,6 +1417,22 @@ function parseBuildArgs(argv = process.argv.slice(2)): BuildOptions {
   return options;
 }
 
+function copyQueryAssets(srcDir: string, assetDir: string) {
+  const queryAssetSrcDir = path.join(srcDir, 'assets', 'query');
+  if (!existsSync(queryAssetSrcDir)) {
+    return;
+  }
+
+  const queryAssetOutDir = path.join(assetDir, 'query');
+  mkdirSync(queryAssetOutDir, { recursive: true });
+
+  for (const file of readdirSync(queryAssetSrcDir)) {
+    if (file.endsWith('.svg')) {
+      copyFileSync(path.join(queryAssetSrcDir, file), path.join(queryAssetOutDir, file));
+    }
+  }
+}
+
 function build(options: BuildOptions = {}): BuildPaths {
   const { assetDir, publicDir, rootDir, srcDir, vendorDir } = resolveBuildPaths(options);
   const openPropsRoot = path.dirname(require.resolve('open-props/package.json'));
@@ -1388,6 +1445,7 @@ function build(options: BuildOptions = {}): BuildPaths {
 
   copyFileSync(path.join(srcDir, 'site.css'), path.join(publicDir, 'styles.css'));
   copyFileSync(path.join(srcDir, 'assets', 'codescythe-logo.png'), path.join(assetDir, 'codescythe-logo.png'));
+  copyQueryAssets(srcDir, assetDir);
   copyFileSync(path.join(openPropsRoot, 'open-props.min.css'), path.join(vendorDir, 'open-props.min.css'));
   copyFileSync(path.join(openPropsRoot, 'normalize.dark.min.css'), path.join(vendorDir, 'normalize.dark.min.css'));
   writeFileSync(path.join(publicDir, '.nojekyll'), '# Static GitHub Pages site for Codescythe.\n');

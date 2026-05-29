@@ -4,7 +4,6 @@ use super::*;
 #[serde(rename_all = "camelCase")]
 pub enum QueryKind {
     Somepath,
-    Somepaths,
     Allpaths,
 }
 
@@ -256,13 +255,12 @@ pub fn query_path(
 
     let target_set = target_indexes.iter().copied().collect::<HashSet<_>>();
     let paths = match request.kind {
-        QueryKind::Somepath => shortest_paths(&graph, &source_indexes, &target_set, true),
-        QueryKind::Somepaths => shortest_paths(&graph, &source_indexes, &target_set, false),
+        QueryKind::Somepath => shortest_paths(&graph, &source_indexes, &target_set),
         QueryKind::Allpaths => Vec::new(),
     };
     let path_graph = match request.kind {
         QueryKind::Allpaths => Some(allpaths_graph(&graph, &source_indexes, &target_set)),
-        QueryKind::Somepath | QueryKind::Somepaths => None,
+        QueryKind::Somepath => None,
     };
 
     Ok(QueryResult {
@@ -873,7 +871,6 @@ fn shortest_paths(
     graph: &QueryGraphIndex,
     sources: &[usize],
     targets: &HashSet<usize>,
-    stop_after_first: bool,
 ) -> Vec<QueryPath> {
     let mut queue = VecDeque::new();
     let mut seen = vec![false; graph.nodes.len()];
@@ -887,8 +884,8 @@ fn shortest_paths(
 
     let mut found = BTreeSet::<usize>::new();
     while let Some(node) = queue.pop_front() {
-        if targets.contains(&node) && found.insert(node) && stop_after_first {
-            break;
+        if targets.contains(&node) {
+            found.insert(node);
         }
 
         for edge in &graph.outgoing[node] {
