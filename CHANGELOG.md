@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.5.0...codescythe_cli_v0.6.0) (2026-05-29)
+
+
+### Features
+
+* add dependency path query command ([#80](https://github.com/perplexityai/codescythe/issues/80)) ([70d4482](https://github.com/perplexityai/codescythe/commit/70d4482ecd2456a03cd503c3762c553f4f3e5284))
+* merge somepath query modes ([#85](https://github.com/perplexityai/codescythe/issues/85)) ([eeb0bb6](https://github.com/perplexityai/codescythe/commit/eeb0bb60ab85c1512c81a79a7ceea5704a5302a8))
+* render query output as svg ([#83](https://github.com/perplexityai/codescythe/issues/83)) ([aeb7974](https://github.com/perplexityai/codescythe/commit/aeb797422dccdfb18d62df48c861fe927f09e973))
+* render query results as mermaid ([#81](https://github.com/perplexityai/codescythe/issues/81)) ([b6667d9](https://github.com/perplexityai/codescythe/commit/b6667d92cf80ceb8eb69d2194c1330614354c668))
+
 ## [0.5.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.4.15...codescythe_cli_v0.5.0) (2026-05-27)
 
 
