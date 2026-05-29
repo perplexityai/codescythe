@@ -312,6 +312,68 @@ fn cli_queries_dependency_paths() {
     assert!(svg.contains("src/module.ts:used"), "{svg}");
 }
 
+#[cfg(unix)]
+#[test]
+fn cli_query_honors_global_directory_and_config_flags() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = env::temp_dir().join(format!(
+        "codescythe-e2e-query-global-flags-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after UNIX_EPOCH")
+            .as_nanos()
+    ));
+    fs::create_dir_all(fixture.join("app")).unwrap();
+    fs::create_dir_all(fixture.join(".agents/plugins")).unwrap();
+    fs::write(
+        fixture.join("custom-codescythe.json"),
+        r#"{
+          "project": "app/**/*.ts",
+          "ignore": [".agents", ".agents/**"]
+        }"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("app/main.ts"),
+        "import { used } from './module';\nconsole.log(used);\n",
+    )
+    .unwrap();
+    fs::write(fixture.join("app/module.ts"), "export const used = 1;\n").unwrap();
+    std::os::unix::fs::symlink(
+        fixture.join("missing-symlink-target"),
+        fixture.join(".agents/plugins/broken"),
+    )
+    .unwrap();
+
+    let output = Command::new(&cli)
+        .args([
+            "-C",
+            path_arg(&fixture),
+            "-c",
+            path_arg(&fixture.join("custom-codescythe.json")),
+            "query",
+            "somepath",
+            "--json",
+            "app/main.ts",
+            "app/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query");
+
+    assert!(output.status.success(), "{}", output_text(&output));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let query: Value = serde_json::from_slice(&output.stdout).expect("query stdout should be JSON");
+    assert_eq!(query["kind"], "somepath");
+    assert_eq!(query["paths"][0]["nodes"][0]["path"], "app/main.ts");
+    assert_eq!(query["paths"][0]["nodes"][1]["path"], "app/module.ts");
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
 #[test]
 fn cli_explains_exports_and_doctors_config() {
     let cli = runfile("crates/codescythe_cli/codescythe");

@@ -115,12 +115,18 @@ fn main() -> ExitCode {
 
 fn run() -> Result<bool> {
     let args = Args::parse();
+    let global_config = args.config;
+    let global_directory = args.directory;
     if let Some(command) = args.command {
-        return run_command(command);
+        return run_command(
+            command,
+            global_config.as_deref(),
+            global_directory.as_deref(),
+        );
     }
 
-    let config = args.config.as_deref();
-    let cwd = analysis_root(args.directory.as_deref(), config)?;
+    let config = global_config.as_deref();
+    let cwd = analysis_root(global_directory.as_deref(), config)?;
 
     if args.fix {
         let result = codescythe::run_and_fix_with_options(
@@ -191,11 +197,15 @@ fn run() -> Result<bool> {
         || !analysis.issues.unresolved.is_empty())
 }
 
-fn run_command(command: Command) -> Result<bool> {
+fn run_command(
+    command: Command,
+    global_config: Option<&Path>,
+    global_directory: Option<&Path>,
+) -> Result<bool> {
     match command {
         Command::Doctor(args) => {
-            let config = args.config.as_deref();
-            let cwd = analysis_root(args.directory.as_deref(), config)?;
+            let config = args.config.as_deref().or(global_config);
+            let cwd = analysis_root(args.directory.as_deref().or(global_directory), config)?;
             let result = codescythe::doctor(&cwd, config)?;
             if args.json {
                 let started = start_profile_timer();
@@ -206,17 +216,21 @@ fn run_command(command: Command) -> Result<bool> {
             }
             Ok(!result.warnings.is_empty() || !result.unresolved_imports.is_empty())
         }
-        Command::Query(args) => run_query_command(args),
+        Command::Query(args) => run_query_command(args, global_config, global_directory),
     }
 }
 
-fn run_query_command(args: QueryArgs) -> Result<bool> {
+fn run_query_command(
+    args: QueryArgs,
+    global_config: Option<&Path>,
+    global_directory: Option<&Path>,
+) -> Result<bool> {
     let (kind, args) = match args.command {
         QueryCommand::Somepath(args) => (codescythe::QueryKind::Somepath, args),
         QueryCommand::Allpaths(args) => (codescythe::QueryKind::Allpaths, args),
     };
-    let config = args.config.as_deref();
-    let cwd = analysis_root(args.directory.as_deref(), config)?;
+    let config = args.config.as_deref().or(global_config);
+    let cwd = analysis_root(args.directory.as_deref().or(global_directory), config)?;
     let result = codescythe::query(
         &cwd,
         config,
