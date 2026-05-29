@@ -313,6 +313,38 @@ project unresolved issues. Missing local paths, root-like paths, package imports
 starting with `#`, and common alias forms such as `@/` and `~/` are reported as
 unresolved.
 
+## Dependency Query Graph
+
+The `query` command builds a graph from the same parsed file metadata and module
+resolver used by normal analysis. Query nodes are either project files or
+exported symbols written as `<file>:<symbol>`. Edges preserve the source shape
+that created the dependency: named imports, side-effect imports, string-literal
+dynamic imports, `import.meta.glob`, re-exports, namespace exports, namespace
+member reads, and export-definition edges from symbols back to their declaring
+files.
+
+Selectors are resolved after graph construction:
+
+- File selectors match one project file node.
+- Directory selectors match every project file node under that directory.
+- Export selectors match one exported-symbol node.
+
+`somepath` and `somepaths` run breadth-first search from the resolved source
+nodes. They keep one visited bit and one parent edge per node, so dependency
+cycles cannot create infinite walks. `somepath` stops after the first matched
+target. `somepaths` keeps traversing and reconstructs one shortest path for each
+reachable matched target.
+
+`allpaths` intentionally does not enumerate every simple path. It computes the
+set of nodes reachable forward from the sources, the set of nodes that can reach
+the targets by reverse traversal, intersects those sets, and returns every edge
+whose endpoints are both in that intersection. This returns the finite path
+subgraph even when the dependency graph contains cycles.
+
+Query output supports text, JSON, Mermaid, and SVG. Mermaid is the diagram IR
+(`flowchart LR`), and SVG is rendered from that Mermaid source with
+`mermaid-rs-renderer`.
+
 ## Reachability Algorithm
 
 `analyze_path` seeds three mutable collections:

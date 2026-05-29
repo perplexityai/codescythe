@@ -50,15 +50,20 @@ The public Rust API is intentionally narrow:
 - `codescythe::run_and_fix(cwd, config_path)` applies supported removals and
   returns a fix report.
 - `codescythe::doctor(cwd, config_path)` returns config-risk diagnostics.
+- `codescythe::query(cwd, config_path, request)` returns dependency paths or a
+  path subgraph for `somepath`, `somepaths`, and `allpaths`.
+- `codescythe::render_query_mermaid(result)` and
+  `codescythe::render_query_svg(result)` render query results as diagrams.
 
 The core crate has no npm or CLI concerns. That keeps conformance tests and
 future analysis work centered on one library boundary.
 
 ### Runtime Adapters
 
-`crates/codescythe_cli` is a thin `clap` wrapper around the core crate. It
-supports text and JSON output, exits with `1` when issues are found, and exits
-with `2` for runtime/config errors.
+`crates/codescythe_cli` is a thin `clap` wrapper around the core crate. Normal
+analysis supports text and JSON output, exits with `1` when issues are found,
+and exits with `2` for runtime/config errors. The `query` subcommand supports
+text, JSON, Mermaid, and SVG output for dependency-path inspection.
 
 `crates/codescythe_napi` exposes the same core behavior to Node through N-API:
 `analyze`, `fix`, and `doctor` all return JSON strings from Rust, while the

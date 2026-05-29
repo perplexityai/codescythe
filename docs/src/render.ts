@@ -92,6 +92,11 @@ const homeCards: DocLink[] = [
     description: 'Review the analyzer, fix mode, verbose JSON, export explanations, and doctor diagnostics.',
   },
   {
+    href: './queries/',
+    title: 'Dependency Queries',
+    description: 'Trace somepath, somepaths, and allpaths results with text, JSON, Mermaid, or SVG output.',
+  },
+  {
     href: './reports/',
     title: 'Reports',
     description: 'Read analyzer JSON, doctor warnings, unresolved import diagnostics, and explain-export decisions.',
@@ -126,6 +131,27 @@ function Callout({ title, children }: { title: string; children: React.ReactNode
     { className: 'callout' },
     h('strong', null, title),
     h('div', null, children),
+  );
+}
+
+function QueryFixtureSample({
+  command,
+  description,
+  mermaid,
+  title,
+}: {
+  command: string;
+  description: string;
+  mermaid: string;
+  title: string;
+}) {
+  return h(
+    'article',
+    { className: 'query-sample' },
+    h('h3', null, title),
+    h('p', null, description),
+    h(CodeBlock, null, command),
+    h(CodeBlock, { language: 'mermaid' }, mermaid),
   );
 }
 
@@ -630,6 +656,7 @@ const pages: Page[] = [
     description: 'Review the analyzer, fix mode, verbose diagnostics, export explanations, and doctor checks.',
     sections: [
       { id: 'graph', title: 'Import Graph' },
+      { id: 'query', title: 'Dependency Queries' },
       { id: 'unused', title: 'Unused Files and Exports' },
       { id: 'fix', title: 'Fix Mode' },
       { id: 'explain', title: 'Explanations' },
@@ -642,6 +669,23 @@ const pages: Page[] = [
         PageSection,
         { id: 'graph', title: 'Import Graph' },
         h('p', null, 'Codescythe follows static imports, re-exports, string-literal dynamic imports, destructured CommonJS requires, and supported ', h('code', null, 'import.meta.glob'), ' patterns.'),
+      ),
+      h(
+        PageSection,
+        { id: 'query', title: 'Dependency Queries' },
+        h(
+          'p',
+          null,
+          'Use ',
+          h('code', null, 'query somepath'),
+          ', ',
+          h('code', null, 'query somepaths'),
+          ', and ',
+          h('code', null, 'query allpaths'),
+          ' to inspect dependency routes through that graph. Queries can target files, folders, or exported symbols and can render text, JSON, Mermaid, or SVG output. The ',
+          h(InlineLink, { href: '../queries/' }, 'dependency query guide'),
+          ' includes fixture-backed Mermaid samples.',
+        ),
       ),
       h(
         PageSection,
@@ -686,6 +730,176 @@ const pages: Page[] = [
     ),
   },
   {
+    slug: 'queries',
+    title: 'Dependency Queries',
+    eyebrow: 'Path inspection',
+    description: 'Use somepath, somepaths, and allpaths to explain dependency paths through the same graph Codescythe analyzes.',
+    sections: [
+      { id: 'commands', title: 'Commands' },
+      { id: 'selectors', title: 'Selectors' },
+      { id: 'formats', title: 'Output Formats' },
+      { id: 'fixture-examples', title: 'Fixture Examples' },
+      { id: 'cycles', title: 'Cycles' },
+    ],
+    body: h(
+      React.Fragment,
+      null,
+      h(
+        PageSection,
+        { id: 'commands', title: 'Commands' },
+        h(
+          'p',
+          null,
+          'The query command traces dependency paths between two selectors without changing analysis results or editing files. It uses the same parsed import, export, resolver, alias, dynamic import, and glob edges as normal analysis.',
+        ),
+        h(CodeBlock, null, `npx codescythe query somepath src/main.ts src/module.ts
+npx codescythe query somepaths src/main.ts src/features/
+npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime`),
+        h(FieldTable, {
+          rows: [
+            {
+              field: 'somepath',
+              purpose: 'One shortest path',
+              type: 'query verb',
+              values: 'source selector, target selector',
+              notes: 'Returns the first shortest dependency path found from any matched source node to any matched target node.',
+            },
+            {
+              field: 'somepaths',
+              purpose: 'One path per target',
+              type: 'query verb',
+              values: 'source selector, target selector',
+              notes: 'Returns one shortest path for each reachable matched target, which is useful when the target selector is a directory.',
+            },
+            {
+              field: 'allpaths',
+              purpose: 'Every path edge as a subgraph',
+              type: 'query verb',
+              values: 'source selector, target selector',
+              notes: 'Returns every node and edge that lies on at least one route from the source selector to the target selector.',
+            },
+          ],
+        }),
+      ),
+      h(
+        PageSection,
+        { id: 'selectors', title: 'Selectors' },
+        h('p', null, 'Selectors can point at files, directories, or exported symbols. Relative selectors are resolved from the analysis root selected by ', h('code', null, '-C'), ' or ', h('code', null, '--config'), '.'),
+        h(
+          'ul',
+          null,
+          h('li', null, h('code', null, 'src/main.ts'), ' selects a project file.'),
+          h('li', null, h('code', null, 'src/features/'), ' selects every project file under a directory.'),
+          h('li', null, h('code', null, 'src/module.ts:used'), ' selects one exported symbol from a file.'),
+        ),
+        h(
+          Callout,
+          { title: 'Export selectors stay symbol-aware' },
+          h('p', null, 'A named import path can stop at ', h('code', null, 'file.ts:symbol'), ' before following the export-definition edge into the file node. This keeps file reachability and export usage distinguishable.'),
+        ),
+      ),
+      h(
+        PageSection,
+        { id: 'formats', title: 'Output Formats' },
+        h('p', null, 'Text output is optimized for terminal inspection. JSON is the stable machine-readable surface. Mermaid and SVG render the same query graph as a diagram.'),
+        h(CodeBlock, null, `npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output text
+npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
+npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output mermaid
+npx codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg`),
+        h(
+          'p',
+          null,
+          h('code', null, '--json'),
+          ' is a shortcut for ',
+          h('code', null, '--output json'),
+          '. SVG output is rendered from the Mermaid graph with ',
+          h('code', null, 'mermaid-rs-renderer'),
+          '.',
+        ),
+      ),
+      h(
+        PageSection,
+        { id: 'fixture-examples', title: 'Fixture Examples' },
+        h(
+          'p',
+          null,
+          'These examples are generated from checked-in repository fixtures. The Mermaid snippets below are exact CLI output from ',
+          h('code', null, '--output mermaid'),
+          '.',
+        ),
+        h(
+          'div',
+          { className: 'query-samples' },
+          h(QueryFixtureSample, {
+            title: 'test-file-usage: somepath to one export',
+            description: 'A file-to-export query shows a named import edge directly to the exported symbol.',
+            command: 'codescythe query somepath -C tests/fixtures/test-file-usage --output mermaid src/main.ts src/module.ts:used',
+            mermaid: `flowchart LR
+  n0["src/module.ts:used"]
+  n1["src/main.ts"]
+  n1 -->|"named import ./module:used"| n0`,
+          }),
+          h(QueryFixtureSample, {
+            title: 'oxc-resolution: somepaths to a folder',
+            description: 'A file-to-directory query returns one shortest path for each reachable matched target file.',
+            command: 'codescythe query somepaths -C tests/fixtures/oxc-resolution --output mermaid app/index.ts app/',
+            mermaid: `flowchart LR
+  n0["app/aliased.ts:aliased"]
+  n1["app/extension.ts:extension"]
+  n2["app/internal.ts:internal"]
+  n3["app/aliased.ts"]
+  n4["app/extension.ts"]
+  n5["app/index.ts"]
+  n6["app/internal.ts"]
+  n0 -->|"defined in file aliased"| n3
+  n1 -->|"defined in file extension"| n4
+  n2 -->|"defined in file internal"| n6
+  n5 -->|"named import @/aliased:aliased"| n0
+  n5 -->|"named import ./extension.js:extension"| n1
+  n5 -->|"named import #internal:internal"| n2`,
+          }),
+          h(QueryFixtureSample, {
+            title: 'knip-export-basics: allpaths through namespace use',
+            description: 'An allpaths query keeps every node and edge that can carry the source file to the target export.',
+            command: 'codescythe query allpaths -C tests/fixtures/knip-export-basics --output mermaid index.ts my-namespace.ts:y',
+            mermaid: `flowchart LR
+  n0["index.ts"]
+  n1["my-module.ts"]
+  n2["my-module.ts:myExport"]
+  n3["my-namespace.ts:y"]
+  n2 -->|"defined in file myExport"| n1
+  n0 -->|"named import ./my-module.js:myExport"| n2
+  n1 -->|"namespace member ./my-namespace.js:y"| n3`,
+          }),
+          h(QueryFixtureSample, {
+            title: 'runfiles-fixture: somepath through an alias',
+            description: 'Alias resolution is represented in the edge label, while the target still resolves to the project file export.',
+            command: 'codescythe query somepath -C tests/fixtures/runfiles-fixture --output mermaid workspace/frontend/apps/client/platform/platformRuntime.ts protobuf/generated/client.ts:client',
+            mermaid: `flowchart LR
+  n0["protobuf/generated/client.ts:client"]
+  n1["workspace/frontend/apps/client/platform/platformRuntime.ts"]
+  n1 -->|"named import #bazel_generated/client:client"| n0`,
+          }),
+        ),
+      ),
+      h(
+        PageSection,
+        { id: 'cycles', title: 'Cycles' },
+        h(
+          'p',
+          null,
+          'Dependency cycles are finite in query output. ',
+          h('code', null, 'somepath'),
+          ' and ',
+          h('code', null, 'somepaths'),
+          ' run breadth-first search with visited nodes and parent edges, so they return shortest acyclic paths. ',
+          h('code', null, 'allpaths'),
+          ' does not enumerate paths; it intersects forward reachability from the source with reverse reachability from the target, then returns the induced path subgraph.',
+        ),
+      ),
+    ),
+  },
+  {
     slug: 'reports',
     title: 'Reports',
     eyebrow: 'Reading output',
@@ -696,6 +910,7 @@ const pages: Page[] = [
       { id: 'doctor-warning-codes', title: 'Doctor Warning Codes' },
       { id: 'unresolved-diagnostics', title: 'Unresolved Diagnostics' },
       { id: 'explain-report', title: 'Explain Export Report' },
+      { id: 'query-output', title: 'Query Output' },
       { id: 'review-workflow', title: 'Review Workflow' },
     ],
     body: h(
@@ -848,6 +1063,43 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
             { field: 'ignoredUnresolvedImportsThatMightHavePointedAtThisFile', purpose: 'Uncertainty from ignored imports', type: 'IgnoredUnresolvedImportSample[]', values: 'Samples with specifier and importer.', notes: 'If this is non-empty, review unresolvedImports.ignore before trusting an export edit.' },
           ],
         }),
+      ),
+      h(
+        PageSection,
+        { id: 'query-output', title: 'Query Output' },
+        h(
+          'p',
+          null,
+          'Query JSON includes the parsed selectors, matched source and target nodes, unresolved imports observed while building the graph, and either paths or a graph depending on the query kind.',
+        ),
+        h(CodeBlock, { language: 'json' }, `{
+  "kind": "somepath",
+  "from": { "kind": "file", "path": "src/main.ts" },
+  "to": { "kind": "export", "path": "src/module.ts", "symbol": "used" },
+  "paths": [
+    {
+      "nodes": [
+        { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+        { "id": "export:src/module.ts:used", "kind": "export", "path": "src/module.ts", "symbol": "used" }
+      ],
+      "edges": [
+        { "kind": "namedImport", "specifier": "./module", "imported": "used" }
+      ]
+    }
+  ]
+}`),
+        h(
+          'p',
+          null,
+          h('code', null, 'allpaths'),
+          ' returns ',
+          h('code', null, 'graph.nodes'),
+          ' and ',
+          h('code', null, 'graph.edges'),
+          ' instead of ',
+          h('code', null, 'paths'),
+          '. Diagram formats render that same data as Mermaid or SVG.',
+        ),
       ),
       h(
         PageSection,

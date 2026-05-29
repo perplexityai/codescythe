@@ -146,13 +146,85 @@ codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > 
 ```
 
 Selectors can point at files, directories, or exported symbols written as
-`<file>:<symbol>`. `somepath` returns one shortest path, `somepaths` returns one
-shortest path per reachable matched target, and `allpaths` returns the subgraph
-of every node and edge that lies on a path from the source selector to the target
-selector. JSON output includes stable file/export nodes and typed import or
-re-export edges. Mermaid output renders the same query graph as a `flowchart LR`
-diagram, and SVG output renders that Mermaid source with the pure-Rust
-`mermaid-rs-renderer` crate.
+`<file>:<symbol>`. Relative selectors are resolved from the analysis root chosen
+by `-C` or `--config`.
+
+- `somepath` returns one shortest path from the source selector to any matched
+  target.
+- `somepaths` returns one shortest path per reachable matched target, which is
+  useful for file-to-folder queries.
+- `allpaths` returns the subgraph of every node and edge that lies on a path
+  from the source selector to the target selector.
+
+Text output is optimized for terminal inspection. JSON output includes stable
+file/export nodes and typed import or re-export edges. Mermaid output renders
+the same query graph as a `flowchart LR` diagram, and SVG output renders that
+Mermaid source with the pure-Rust `mermaid-rs-renderer` crate.
+
+`somepath` and `somepaths` use breadth-first search with visited nodes, while
+`allpaths` intersects forward reachability from the source with reverse
+reachability from the target. That makes dependency cycles finite without
+enumerating every possible walk through the graph.
+
+Fixture-backed Mermaid examples:
+
+```sh
+codescythe query somepath -C tests/fixtures/test-file-usage --output mermaid src/main.ts src/module.ts:used
+```
+
+```mermaid
+flowchart LR
+  n0["src/module.ts:used"]
+  n1["src/main.ts"]
+  n1 -->|"named import ./module:used"| n0
+```
+
+```sh
+codescythe query somepaths -C tests/fixtures/oxc-resolution --output mermaid app/index.ts app/
+```
+
+```mermaid
+flowchart LR
+  n0["app/aliased.ts:aliased"]
+  n1["app/extension.ts:extension"]
+  n2["app/internal.ts:internal"]
+  n3["app/aliased.ts"]
+  n4["app/extension.ts"]
+  n5["app/index.ts"]
+  n6["app/internal.ts"]
+  n0 -->|"defined in file aliased"| n3
+  n1 -->|"defined in file extension"| n4
+  n2 -->|"defined in file internal"| n6
+  n5 -->|"named import @/aliased:aliased"| n0
+  n5 -->|"named import ./extension.js:extension"| n1
+  n5 -->|"named import #internal:internal"| n2
+```
+
+```sh
+codescythe query allpaths -C tests/fixtures/knip-export-basics --output mermaid index.ts my-namespace.ts:y
+```
+
+```mermaid
+flowchart LR
+  n0["index.ts"]
+  n1["my-module.ts"]
+  n2["my-module.ts:myExport"]
+  n3["my-namespace.ts:y"]
+  n2 -->|"defined in file myExport"| n1
+  n0 -->|"named import ./my-module.js:myExport"| n2
+  n1 -->|"namespace member ./my-namespace.js:y"| n3
+```
+
+```sh
+codescythe query somepath -C tests/fixtures/runfiles-fixture --output mermaid workspace/frontend/apps/client/platform/platformRuntime.ts protobuf/generated/client.ts:client
+```
+
+```mermaid
+flowchart LR
+  n0["protobuf/generated/client.ts:client"]
+  n1["workspace/frontend/apps/client/platform/platformRuntime.ts"]
+  n1 -->|"named import #bazel_generated/client:client"| n0
+```
 
 ## Contributing
 
