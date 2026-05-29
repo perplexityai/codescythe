@@ -10,8 +10,8 @@ pub use analyze::{
     QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath, QueryRequest, QueryResult,
     QuerySelector, QuerySelectorKind, QueryUnresolvedImport, SourceAliasIgnoreWarning, SymbolIssue,
     UnresolvedImportCandidateFile, UnresolvedImportExplanation, UnresolvedImportMatchedAlias,
-    analyze_path, doctor_config, query_path, source_alias_fix_blocking_ignore_warnings_for_config,
-    source_alias_ignore_warnings_for_config,
+    analyze_path, doctor_config, query_path, render_query_mermaid,
+    source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
 };
 pub use config::{
     CodescytheConfig, LoadedConfig, UnresolvedImportsConfig, UnresolvedImportsMode, load_config,

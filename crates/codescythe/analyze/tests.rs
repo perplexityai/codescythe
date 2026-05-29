@@ -1506,6 +1506,12 @@ fn query_somepath_tracks_named_export_edges() {
         vec!["src/main.ts", "src/module.ts:used"]
     );
     assert_eq!(result.paths[0].edges[0].kind, QueryEdgeKind::NamedImport);
+
+    let mermaid = render_query_mermaid(&result);
+    assert!(mermaid.contains("flowchart LR"));
+    assert!(mermaid.contains("src/main.ts"));
+    assert!(mermaid.contains("src/module.ts:used"));
+    assert!(mermaid.contains("named import ./module:used"));
 }
 
 #[test]

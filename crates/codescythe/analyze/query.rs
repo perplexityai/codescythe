@@ -277,6 +277,94 @@ pub fn query_path(
     })
 }
 
+pub fn render_query_mermaid(result: &QueryResult) -> String {
+    let graph = query_result_graph(result);
+    let mut node_ids = BTreeMap::<String, String>::new();
+    let mut lines = vec!["flowchart LR".to_string()];
+
+    for (index, node) in graph.nodes.iter().enumerate() {
+        let id = format!("n{index}");
+        node_ids.insert(node.id.clone(), id.clone());
+        lines.push(format!(
+            "  {id}[\"{}\"]",
+            escape_mermaid_label(&query_node_label(node))
+        ));
+    }
+
+    for edge in &graph.edges {
+        let Some(from) = node_ids.get(&edge.from) else {
+            continue;
+        };
+        let Some(to) = node_ids.get(&edge.to) else {
+            continue;
+        };
+        lines.push(format!(
+            "  {from} -->|\"{}\"| {to}",
+            escape_mermaid_label(&query_edge_label(edge))
+        ));
+    }
+
+    lines.push(String::new());
+    lines.join("\n")
+}
+
+fn query_result_graph(result: &QueryResult) -> QueryGraph {
+    if let Some(graph) = &result.graph {
+        return graph.clone();
+    }
+
+    let mut nodes = BTreeMap::<String, QueryNode>::new();
+    let mut edges = BTreeSet::<QueryEdge>::new();
+    for path in &result.paths {
+        for node in &path.nodes {
+            nodes.insert(node.id.clone(), node.clone());
+        }
+        for edge in &path.edges {
+            edges.insert(edge.clone());
+        }
+    }
+
+    QueryGraph {
+        nodes: nodes.into_values().collect(),
+        edges: edges.into_iter().collect(),
+    }
+}
+
+fn query_node_label(node: &QueryNode) -> String {
+    if let Some(symbol) = &node.symbol {
+        format!("{}:{symbol}", node.path)
+    } else {
+        node.path.clone()
+    }
+}
+
+fn query_edge_label(edge: &QueryEdge) -> String {
+    let kind = match edge.kind {
+        QueryEdgeKind::NamedImport => "named import",
+        QueryEdgeKind::SideEffectImport => "side-effect import",
+        QueryEdgeKind::DynamicImport => "dynamic import",
+        QueryEdgeKind::GlobImport => "glob import",
+        QueryEdgeKind::ReExport => "re-export",
+        QueryEdgeKind::ReExportSource => "re-export source",
+        QueryEdgeKind::NamespaceExport => "namespace export",
+        QueryEdgeKind::NamespaceMember => "namespace member",
+        QueryEdgeKind::ExportDefinition => "defined in file",
+    };
+    match (&edge.specifier, &edge.imported) {
+        (Some(specifier), Some(imported)) => format!("{kind} {specifier}:{imported}"),
+        (Some(specifier), None) => format!("{kind} {specifier}"),
+        (None, Some(imported)) => format!("{kind} {imported}"),
+        (None, None) => kind.to_string(),
+    }
+}
+
+fn escape_mermaid_label(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
 fn build_query_graph(
     files: &mut FileCache,
     resolver: &ModuleResolver,

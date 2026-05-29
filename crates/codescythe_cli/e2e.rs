@@ -267,6 +267,30 @@ fn cli_queries_dependency_paths() {
     assert_eq!(query["paths"][0]["nodes"][1]["path"], "src/module.ts");
     assert_eq!(query["paths"][0]["nodes"][1]["symbol"], "used");
     assert_eq!(query["paths"][0]["edges"][0]["kind"], "namedImport");
+
+    let mermaid_output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&runfile("tests/fixtures/test-file-usage")),
+            "--output",
+            "mermaid",
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query with mermaid output");
+
+    assert!(
+        mermaid_output.status.success(),
+        "{}",
+        output_text(&mermaid_output)
+    );
+    let mermaid = String::from_utf8_lossy(&mermaid_output.stdout);
+    assert!(mermaid.contains("flowchart LR"), "{mermaid}");
+    assert!(mermaid.contains("src/module.ts:used"), "{mermaid}");
+    assert!(mermaid.contains("named import ./module:used"), "{mermaid}");
 }
 
 #[test]
