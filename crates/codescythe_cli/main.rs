@@ -95,6 +95,7 @@ enum QueryOutputFormat {
     Text,
     Json,
     Mermaid,
+    Svg,
 }
 
 fn main() -> ExitCode {
@@ -240,6 +241,9 @@ fn run_query_command(args: QueryArgs) -> Result<bool> {
         }
         QueryOutputFormat::Mermaid => {
             print!("{}", codescythe::render_query_mermaid(&result));
+        }
+        QueryOutputFormat::Svg => {
+            print!("{}", codescythe::render_query_svg(&result)?);
         }
         QueryOutputFormat::Text => {
             print_query_report(&result);

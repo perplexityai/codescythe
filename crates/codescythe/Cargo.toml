@@ -20,6 +20,7 @@ globset.workspace = true
 ignore.workspace = true
 jsonschema.workspace = true
 jsonc-parser.workspace = true
+mermaid-rs-renderer.workspace = true
 oxc.workspace = true
 oxc_allocator.workspace = true
 oxc_ast.workspace = true
