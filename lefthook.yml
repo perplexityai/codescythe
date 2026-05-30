@@ -1,0 +1,13 @@
+# Lefthook configuration
+# Docs: https://github.com/evilmartians/lefthook
+
+output:
+  - meta
+  - summary
+
+no_auto_install: true
+
+pre-commit:
+  commands:
+    pr-title-conventional:
+      run: node --experimental-transform-types tools/verify-pr-title.ts

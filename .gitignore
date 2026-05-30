@@ -1,5 +1,6 @@
 /bazel-*
 /node_modules
+/packages/*/node_modules
 /docs/public
 /target
 /.worktrees
