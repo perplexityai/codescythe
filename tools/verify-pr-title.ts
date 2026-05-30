@@ -77,18 +77,33 @@ function getTitleFromGitHubEvent(): string | undefined {
   }
 }
 
+function getTitleFromEnv(name: string): string | undefined {
+  const title = process.env[name];
+  if (title === undefined) {
+    return undefined;
+  }
+
+  if (title.length > 0) {
+    return title;
+  }
+
+  return process.env.GITHUB_EVENT_NAME === 'pull_request' ? '' : undefined;
+}
+
 function getPrTitle(): string | undefined {
   const argTitle = getTitleFromArgs(process.argv.slice(2));
   if (argTitle !== undefined) {
     return argTitle;
   }
 
-  if (process.env.PR_TITLE !== undefined) {
-    return process.env.PR_TITLE;
+  const prTitle = getTitleFromEnv('PR_TITLE');
+  if (prTitle !== undefined) {
+    return prTitle;
   }
 
-  if (process.env.GITHUB_PR_TITLE !== undefined) {
-    return process.env.GITHUB_PR_TITLE;
+  const githubPrTitle = getTitleFromEnv('GITHUB_PR_TITLE');
+  if (githubPrTitle !== undefined) {
+    return githubPrTitle;
   }
 
   return getTitleFromGitHubEvent();
