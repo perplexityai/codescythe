@@ -7,7 +7,7 @@ load(
     "release_binary_linux_arm64",
 )
 
-VERSION = "0.6.0"  # x-release-please-version
+VERSION = "0.6.1"  # x-release-please-version
 
 rust_binary(
     name = "codescythe",

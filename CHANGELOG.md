@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.6.0...codescythe_cli_v0.6.1) (2026-05-30)
+
+
+### Bug Fixes
+
+* skip PR title check on push ([#88](https://github.com/perplexityai/codescythe/issues/88)) ([6830ca0](https://github.com/perplexityai/codescythe/commit/6830ca061a4394203245184f416245ad0bc9c89f))
+
 ## [0.6.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.5.0...codescythe_cli_v0.6.0) (2026-05-29)
 
 

@@ -22,7 +22,7 @@ COMMON_DEPS = [
     "@crates//:walkdir",
 ]
 
-VERSION = "0.6.0"  # x-release-please-version
+VERSION = "0.6.1"  # x-release-please-version
 
 LIB_SRCS = [
     "analyze/discovery.rs",
