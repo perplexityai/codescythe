@@ -1,0 +1,74 @@
+name: verify hooks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-hooks:
+    name: Verify hooks
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 100
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Get changed files
+        id: changed-files
+        shell: bash
+        run: |
+          changed_files="$RUNNER_TEMP/changed-files.txt"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}"
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$changed_files"
+          else
+            git diff --name-only HEAD~1 HEAD > "$changed_files"
+          fi
+
+          count="$(wc -l < "$changed_files" | tr -d ' ')"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Run lefthook on changed files
+        if: steps.changed-files.outputs.count != '0' || github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          changed_files="$RUNNER_TEMP/changed-files.txt"
+
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              git add "$file"
+            fi
+          done < "$changed_files"
+
+          pnpm lefthook run pre-commit --force
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Error: Pre-commit hooks would have made changes. Please run the hooks locally and commit the changes."
+            git diff
+            exit 1
+          fi

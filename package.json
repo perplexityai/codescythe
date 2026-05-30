@@ -10,6 +10,8 @@
   "scripts": {
     "test": "bazel test //...",
     "test:npm": "node --experimental-transform-types ./node_modules/mocha/bin/mocha.js --extension ts packages/codescythe/npm_smoke.ts",
+    "format": "lefthook run pre-commit --all-files",
+    "prepare": "lefthook install",
     "build:binary": "bazel build //crates/codescythe_cli:release_binaries",
     "build:napi": "bazel build //crates/codescythe_napi:release_nodes",
     "build:packages": "bazel build :dist",
@@ -28,6 +30,7 @@
     "@types/node": "^24.12.4",
     "benchmark": "^2.1.4",
     "knip": "^6.12.2",
+    "lefthook": "^2.1.8",
     "mocha": "^11.0.0",
     "open-props": "^1.7.23",
     "react": "^19.2.6",
