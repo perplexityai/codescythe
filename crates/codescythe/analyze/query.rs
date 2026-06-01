@@ -21,6 +21,7 @@ pub struct QueryResult {
     pub kind: QueryKind,
     pub from: QuerySelector,
     pub to: QuerySelector,
+    pub diagnostics: QueryDiagnostics,
     pub source_nodes: Vec<QueryNode>,
     pub target_nodes: Vec<QueryNode>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -29,6 +30,20 @@ pub struct QueryResult {
     pub graph: Option<QueryGraph>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unresolved: Vec<QueryUnresolvedImport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryDiagnostics {
+    pub source_match_count: usize,
+    pub target_match_count: usize,
+    pub reachable_from_source_count: usize,
+    pub reachable_to_target_count: usize,
+    pub path_node_count: usize,
+    pub path_edge_count: usize,
+    pub graph_node_count: usize,
+    pub graph_edge_count: usize,
+    pub unresolved_import_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -262,11 +277,28 @@ pub fn query_path(
         QueryKind::Allpaths => Some(allpaths_graph(&graph, &source_indexes, &target_set)),
         QueryKind::Somepath => None,
     };
+    let reachable_from_sources = reachable(&graph, &source_indexes, Direction::Forward);
+    let reachable_to_targets = reachable(&graph, &target_indexes, Direction::Reverse);
+    let result_graph = path_graph
+        .clone()
+        .unwrap_or_else(|| query_paths_graph(&paths));
+    let diagnostics = QueryDiagnostics {
+        source_match_count: source_nodes.len(),
+        target_match_count: target_nodes.len(),
+        reachable_from_source_count: reachable_from_sources.len(),
+        reachable_to_target_count: reachable_to_targets.len(),
+        path_node_count: result_graph.nodes.len(),
+        path_edge_count: result_graph.edges.len(),
+        graph_node_count: graph.nodes.len(),
+        graph_edge_count: graph.edges.len(),
+        unresolved_import_count: unresolved.len(),
+    };
 
     Ok(QueryResult {
         kind: request.kind,
         from,
         to,
+        diagnostics,
         source_nodes,
         target_nodes,
         paths,
@@ -316,9 +348,13 @@ fn query_result_graph(result: &QueryResult) -> QueryGraph {
         return graph.clone();
     }
 
+    query_paths_graph(&result.paths)
+}
+
+fn query_paths_graph(paths: &[QueryPath]) -> QueryGraph {
     let mut nodes = BTreeMap::<String, QueryNode>::new();
     let mut edges = BTreeSet::<QueryEdge>::new();
-    for path in &result.paths {
+    for path in paths {
         for node in &path.nodes {
             nodes.insert(node.id.clone(), node.clone());
         }

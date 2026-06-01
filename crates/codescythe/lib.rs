@@ -6,11 +6,12 @@ pub use analyze::{
     Analysis, AnalysisOptions, AnalysisSummary, ConfigDoctorResult, ConfigDoctorWarning, Counters,
     ExplainExportRequest, ExplainExportResult, ExplainExportStatus, ExplanationReason,
     ExplanationReasonCode, ExportExplanation, FileIssue, IgnoredUnresolvedImportSample,
-    IgnoredUnresolvedImportsByPattern, InternalExportTestUsage, Issues, QueryEdge, QueryEdgeKind,
-    QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath, QueryRequest, QueryResult,
-    QuerySelector, QuerySelectorKind, QueryUnresolvedImport, SourceAliasIgnoreWarning, SymbolIssue,
-    UnresolvedImportCandidateFile, UnresolvedImportExplanation, UnresolvedImportMatchedAlias,
-    analyze_path, doctor_config, query_path, render_query_mermaid, render_query_svg,
+    IgnoredUnresolvedImportsByPattern, InternalExportTestUsage, Issues, QueryDiagnostics,
+    QueryEdge, QueryEdgeKind, QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath,
+    QueryRequest, QueryResult, QuerySelector, QuerySelectorKind, QueryUnresolvedImport,
+    SourceAliasIgnoreWarning, SymbolIssue, UnresolvedImportCandidateFile,
+    UnresolvedImportExplanation, UnresolvedImportMatchedAlias, analyze_path, doctor_config,
+    query_path, render_query_mermaid, render_query_svg,
     source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
 };
 pub use config::{

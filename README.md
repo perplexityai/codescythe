@@ -155,12 +155,14 @@ by `-C` or `--config`.
 - `allpaths` returns the subgraph of every node and edge that lies on a path
   from the source selector to the target selector.
 
-Text output is optimized for terminal inspection. JSON output includes stable
-file/export nodes and typed import or re-export edges. Pass
-`--include-unresolved` when you also need unresolved imports discovered while
-building the source graph. Mermaid output renders the same query graph as a
-`flowchart LR` diagram, and SVG output renders that Mermaid source with the
-pure-Rust `mermaid-rs-renderer` crate.
+Text output is optimized for terminal inspection, including the resolved
+selector kinds, match counts, and a reachability summary that helps explain
+no-path results. JSON output includes the same diagnostics, stable file/export
+nodes, and typed import or re-export edges. Pass `--include-unresolved` when
+you also need unresolved imports discovered while building the source graph.
+Mermaid output renders the same query graph as a `flowchart LR` diagram, and
+SVG output renders that Mermaid source with the pure-Rust
+`mermaid-rs-renderer` crate.
 
 `somepath` uses breadth-first search with visited nodes, while `allpaths`
 intersects forward reachability from the source with reverse reachability from

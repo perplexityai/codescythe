@@ -267,6 +267,37 @@ fn cli_queries_dependency_paths() {
     assert_eq!(query["paths"][0]["nodes"][1]["path"], "src/module.ts");
     assert_eq!(query["paths"][0]["nodes"][1]["symbol"], "used");
     assert_eq!(query["paths"][0]["edges"][0]["kind"], "namedImport");
+    assert_eq!(query["diagnostics"]["sourceMatchCount"], 1);
+    assert_eq!(query["diagnostics"]["targetMatchCount"], 1);
+    assert_eq!(query["diagnostics"]["pathNodeCount"], 2);
+    assert_eq!(query["diagnostics"]["pathEdgeCount"], 1);
+
+    let text_output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&runfile("tests/fixtures/test-file-usage")),
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query with text output");
+
+    assert!(text_output.status.success(), "{}", output_text(&text_output));
+    let text = String::from_utf8_lossy(&text_output.stdout);
+    assert!(
+        text.contains("From selector: src/main.ts (file selector, 1 matched node)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("To selector: src/module.ts:used (export selector, 1 matched node)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Summary: pathNodes=2, pathEdges=1"),
+        "{text}"
+    );
 
     let mermaid_output = Command::new(runfile("crates/codescythe_cli/codescythe"))
         .args([
@@ -310,6 +341,41 @@ fn cli_queries_dependency_paths() {
     let svg = String::from_utf8_lossy(&svg_output.stdout);
     assert!(svg.contains("<svg"), "{svg}");
     assert!(svg.contains("src/module.ts:used"), "{svg}");
+
+    let no_path_output = Command::new(runfile("crates/codescythe_cli/codescythe"))
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&runfile("tests/fixtures/test-file-usage")),
+            "src/main.ts",
+            "src/dead.ts",
+        ])
+        .output()
+        .expect("failed to run codescythe query with no matching path");
+
+    assert!(
+        no_path_output.status.success(),
+        "{}",
+        output_text(&no_path_output)
+    );
+    let no_path = String::from_utf8_lossy(&no_path_output.stdout);
+    assert!(
+        no_path.contains("No path found from src/main.ts to src/dead.ts"),
+        "{no_path}"
+    );
+    assert!(
+        no_path.contains("From selector: src/main.ts (file selector, 1 matched node)"),
+        "{no_path}"
+    );
+    assert!(
+        no_path.contains("To selector: src/dead.ts (file selector, 1 matched node)"),
+        "{no_path}"
+    );
+    assert!(
+        no_path.contains("Summary: pathNodes=0, pathEdges=0"),
+        "{no_path}"
+    );
 }
 
 #[test]

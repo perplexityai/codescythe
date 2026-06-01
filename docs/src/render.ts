@@ -809,7 +809,11 @@ npx codescythe query allpaths \\
       h(
         PageSection,
         { id: 'formats', title: 'Output Formats' },
-        h('p', null, 'Text output is optimized for terminal inspection. JSON is the stable machine-readable surface. Mermaid and SVG render the same query graph as a diagram.'),
+        h(
+          'p',
+          null,
+          'Text output is optimized for terminal inspection. It prints the resolved selector kinds, match counts, the returned path or path graph, and a summary line with path and reachability counts. JSON is the stable machine-readable surface and includes the same diagnostics. Mermaid and SVG render the same query graph as a diagram.',
+        ),
         h(CodeBlock, null, `npx codescythe query allpaths \\
   --output text \\
   src/main.ts \\
@@ -838,6 +842,20 @@ npx codescythe query allpaths \\
           '. SVG output is rendered from the Mermaid graph with ',
           h('code', null, 'mermaid-rs-renderer'),
           '.',
+        ),
+        h(CodeBlock, null, `From selector: src/main.ts (file selector, 1 matched node)
+To selector: src/module.ts:used (export selector, 1 matched node)
+  src/main.ts
+  -- named import ./module:used -> src/module.ts:used
+Summary: pathNodes=2, pathEdges=1, reachableFromSource=3/12, reachableToTarget=2/12, unresolvedImports=0`),
+        h(
+          Callout,
+          { title: 'No-path results still explain resolution' },
+          h(
+            'p',
+            null,
+            'If no path is found, the text summary still reports whether each endpoint matched project nodes and how much of the graph is reachable from either side. Use those counts to distinguish selector mistakes from real dependency separation.',
+          ),
         ),
       ),
       h(
@@ -1111,12 +1129,23 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, matched source and target nodes, unresolved imports observed while building the graph, and either paths or a graph depending on the query kind.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",
   "from": { "kind": "file", "path": "src/main.ts" },
   "to": { "kind": "export", "path": "src/module.ts", "symbol": "used" },
+  "diagnostics": {
+    "sourceMatchCount": 1,
+    "targetMatchCount": 1,
+    "reachableFromSourceCount": 3,
+    "reachableToTargetCount": 2,
+    "pathNodeCount": 2,
+    "pathEdgeCount": 1,
+    "graphNodeCount": 12,
+    "graphEdgeCount": 24,
+    "unresolvedImportCount": 0
+  },
   "paths": [
     {
       "nodes": [
@@ -1140,6 +1169,13 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
           ' instead of ',
           h('code', null, 'paths'),
           '. Diagram formats render that same data as Mermaid or SVG.',
+        ),
+        h(
+          'p',
+          null,
+          'Pass ',
+          h('code', null, '--include-unresolved'),
+          ' to include the full unresolved import diagnostics array in JSON output.',
         ),
       ),
       h(

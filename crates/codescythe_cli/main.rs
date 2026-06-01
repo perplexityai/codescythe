@@ -452,6 +452,9 @@ fn print_explain_export(analysis: &codescythe::Analysis) {
 }
 
 fn print_query_report(result: &codescythe::QueryResult) {
+    print_query_selector_summary("From", &result.from, &result.source_nodes);
+    print_query_selector_summary("To", &result.to, &result.target_nodes);
+
     match result.kind {
         codescythe::QueryKind::Somepath => {
             if result.paths.is_empty() {
@@ -459,6 +462,7 @@ fn print_query_report(result: &codescythe::QueryResult) {
                     "No path found from {} to {}",
                     result.from.raw, result.to.raw
                 );
+                print_query_summary(result);
                 return;
             }
 
@@ -472,6 +476,7 @@ fn print_query_report(result: &codescythe::QueryResult) {
         codescythe::QueryKind::Allpaths => {
             let Some(graph) = &result.graph else {
                 println!("Path graph: 0 nodes, 0 edges");
+                print_query_summary(result);
                 return;
             };
             println!(
@@ -497,6 +502,65 @@ fn print_query_report(result: &codescythe::QueryResult) {
             }
         }
     }
+    print_query_summary(result);
+}
+
+fn print_query_selector_summary(
+    label: &str,
+    selector: &codescythe::QuerySelector,
+    nodes: &[codescythe::QueryNode],
+) {
+    println!(
+        "{} selector: {} ({} selector, {} matched {})",
+        label,
+        selector.raw,
+        query_selector_kind_label(selector.kind),
+        nodes.len(),
+        pluralize(nodes.len(), "node", "nodes")
+    );
+    if nodes.len() <= 1 && selector.kind != codescythe::QuerySelectorKind::Directory {
+        return;
+    }
+
+    for node in nodes.iter().take(5) {
+        println!("  - {}", query_node_label(node));
+    }
+    if nodes.len() > 5 {
+        println!("  - ... {} more", nodes.len() - 5);
+    }
+}
+
+fn query_selector_kind_label(kind: codescythe::QuerySelectorKind) -> &'static str {
+    match kind {
+        codescythe::QuerySelectorKind::File => "file",
+        codescythe::QuerySelectorKind::Directory => "directory",
+        codescythe::QuerySelectorKind::Export => "export",
+    }
+}
+
+fn print_query_summary(result: &codescythe::QueryResult) {
+    let diagnostics = &result.diagnostics;
+    println!(
+        "Summary: pathNodes={}, pathEdges={}, reachableFromSource={}/{}, reachableToTarget={}/{}, unresolvedImports={}",
+        diagnostics.path_node_count,
+        diagnostics.path_edge_count,
+        diagnostics.reachable_from_source_count,
+        diagnostics.graph_node_count,
+        diagnostics.reachable_to_target_count,
+        diagnostics.graph_node_count,
+        unresolved_summary(diagnostics.unresolved_import_count)
+    );
+}
+
+fn unresolved_summary(count: usize) -> String {
+    if count == 0 {
+        return "0".to_string();
+    }
+    format!("{count} omitted; use --json --include-unresolved for details")
+}
+
+fn pluralize(count: usize, singular: &'static str, plural: &'static str) -> &'static str {
+    if count == 1 { singular } else { plural }
 }
 
 fn print_query_path(path: &codescythe::QueryPath) {

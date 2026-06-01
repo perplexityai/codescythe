@@ -1506,6 +1506,15 @@ fn query_somepath_tracks_named_export_edges() {
         vec!["src/main.ts", "src/module.ts:used"]
     );
     assert_eq!(result.paths[0].edges[0].kind, QueryEdgeKind::NamedImport);
+    assert_eq!(result.diagnostics.source_match_count, 1);
+    assert_eq!(result.diagnostics.target_match_count, 1);
+    assert_eq!(result.diagnostics.reachable_from_source_count, 3);
+    assert_eq!(result.diagnostics.reachable_to_target_count, 2);
+    assert_eq!(result.diagnostics.path_node_count, 2);
+    assert_eq!(result.diagnostics.path_edge_count, 1);
+    assert_eq!(result.diagnostics.graph_node_count, 3);
+    assert_eq!(result.diagnostics.graph_edge_count, 2);
+    assert_eq!(result.diagnostics.unresolved_import_count, 0);
 
     let mermaid = render_query_mermaid(&result);
     assert!(mermaid.contains("flowchart LR"));
@@ -1547,6 +1556,9 @@ fn query_somepath_returns_one_path_per_reachable_directory_file() {
         targets,
         BTreeSet::from(["src/deps/a.ts".to_string(), "src/deps/b.ts".to_string()])
     );
+    assert_eq!(result.diagnostics.target_match_count, 3);
+    assert_eq!(result.diagnostics.path_node_count, 4);
+    assert_eq!(result.diagnostics.path_edge_count, 3);
 }
 
 #[test]
@@ -1596,6 +1608,35 @@ fn query_allpaths_returns_path_subgraph_without_dead_edges() {
         graph.nodes.iter().all(|node| node.path != "src/live.ts"),
         "unrelated live import should not be part of the path subgraph"
     );
+    assert_eq!(result.diagnostics.path_node_count, graph.nodes.len());
+    assert_eq!(result.diagnostics.path_edge_count, graph.edges.len());
+}
+
+#[test]
+fn query_no_path_reports_matched_endpoints_and_reachability() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import { live } from './live';\nconsole.log(live);\n",
+            ),
+            ("src/live.ts", "export const live = 1;\n"),
+            ("src/dead.ts", "export const dead = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Somepath,
+            from: "src/main.ts".to_string(),
+            to: "src/dead.ts".to_string(),
+        },
+    );
+
+    assert!(result.paths.is_empty());
+    assert_eq!(result.diagnostics.source_match_count, 1);
+    assert_eq!(result.diagnostics.target_match_count, 1);
+    assert_eq!(result.diagnostics.reachable_from_source_count, 3);
+    assert_eq!(result.diagnostics.reachable_to_target_count, 2);
+    assert_eq!(result.diagnostics.path_node_count, 0);
+    assert_eq!(result.diagnostics.path_edge_count, 0);
 }
 
 #[test]
