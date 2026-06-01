@@ -312,6 +312,77 @@ fn cli_queries_dependency_paths() {
     assert!(svg.contains("src/module.ts:used"), "{svg}");
 }
 
+#[test]
+fn cli_query_includes_unresolved_imports_when_requested() {
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let fixture = env::temp_dir().join(format!(
+        "codescythe-e2e-query-omit-unresolved-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after UNIX_EPOCH")
+            .as_nanos()
+    ));
+    fs::create_dir_all(fixture.join("src")).unwrap();
+    fs::write(
+        fixture.join("src/main.ts"),
+        "import { used } from './module';\nimport { missing } from '#generated/missing';\nconsole.log(used, missing);\n",
+    )
+    .unwrap();
+    fs::write(fixture.join("src/module.ts"), "export const used = 1;\n").unwrap();
+
+    let default_output = Command::new(&cli)
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query");
+
+    assert!(
+        default_output.status.success(),
+        "{}",
+        output_text(&default_output)
+    );
+    let default_query: Value =
+        serde_json::from_slice(&default_output.stdout).expect("query stdout should be JSON");
+    assert!(default_query.get("unresolved").is_none(), "{default_query}");
+    assert_eq!(default_query["paths"][0]["nodes"][0]["path"], "src/main.ts");
+    assert_eq!(default_query["paths"][0]["nodes"][1]["path"], "src/module.ts");
+
+    let included_output = Command::new(&cli)
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+            "--include-unresolved",
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query");
+
+    assert!(
+        included_output.status.success(),
+        "{}",
+        output_text(&included_output)
+    );
+    let included_query: Value =
+        serde_json::from_slice(&included_output.stdout).expect("query stdout should be JSON");
+    assert_eq!(
+        included_query["unresolved"][0]["specifier"],
+        "#generated/missing"
+    );
+
+    fs::remove_dir_all(&fixture).unwrap();
+}
+
 #[cfg(unix)]
 #[test]
 fn cli_query_honors_global_directory_and_config_flags() {

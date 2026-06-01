@@ -156,9 +156,11 @@ by `-C` or `--config`.
   from the source selector to the target selector.
 
 Text output is optimized for terminal inspection. JSON output includes stable
-file/export nodes and typed import or re-export edges. Mermaid output renders
-the same query graph as a `flowchart LR` diagram, and SVG output renders that
-Mermaid source with the pure-Rust `mermaid-rs-renderer` crate.
+file/export nodes and typed import or re-export edges. Pass
+`--include-unresolved` when you also need unresolved imports discovered while
+building the source graph. Mermaid output renders the same query graph as a
+`flowchart LR` diagram, and SVG output renders that Mermaid source with the
+pure-Rust `mermaid-rs-renderer` crate.
 
 `somepath` uses breadth-first search with visited nodes, while `allpaths`
 intersects forward reachability from the source with reverse reachability from
