@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.6.1...codescythe_cli_v0.7.0) (2026-06-01)
+
+
+### Features
+
+* **cli:** add query diagnostics ([#92](https://github.com/perplexityai/codescythe/issues/92)) ([718688f](https://github.com/perplexityai/codescythe/commit/718688ffebb2027bd437db050cf305a2ed410015))
+* **cli:** add query unresolved filter ([#90](https://github.com/perplexityai/codescythe/issues/90)) ([9a7aa33](https://github.com/perplexityai/codescythe/commit/9a7aa3320fdcfb924943779ede8408e2017461e9))
+* **cli:** scope query unresolved diagnostics ([#93](https://github.com/perplexityai/codescythe/issues/93)) ([4b79c85](https://github.com/perplexityai/codescythe/commit/4b79c85478a6a1c71da6aeeaf06e99599a6eb3ea))
+
 ## [0.6.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.6.0...codescythe_cli_v0.6.1) (2026-05-30)
 
 
