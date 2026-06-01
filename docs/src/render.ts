@@ -843,6 +843,14 @@ npx codescythe query allpaths \\
           h('code', null, 'mermaid-rs-renderer'),
           '.',
         ),
+        h(
+          'p',
+          null,
+          h('code', null, '--include-unresolved'),
+          ' adds every unresolved import discovered while building the graph. Use ',
+          h('code', null, '--include-unresolved=related'),
+          ' when you only want unresolved imports from the query endpoints and returned path graph files.',
+        ),
         h(CodeBlock, null, `From selector: src/main.ts (file selector, 1 matched node)
 To selector: src/module.ts:used (export selector, 1 matched node)
   src/main.ts
@@ -1175,7 +1183,9 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
           null,
           'Pass ',
           h('code', null, '--include-unresolved'),
-          ' to include the full unresolved import diagnostics array in JSON output.',
+          ' to include the full unresolved import diagnostics array in JSON output. Use ',
+          h('code', null, '--include-unresolved=related'),
+          ' to limit that array to imports from files that are part of the query endpoints or returned path graph.',
         ),
       ),
       h(
