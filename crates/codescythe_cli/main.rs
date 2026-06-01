@@ -87,8 +87,15 @@ struct QueryPathArgs {
     #[arg(long)]
     json: bool,
 
-    #[arg(long, help = "Include unresolved import diagnostics in JSON output")]
-    include_unresolved: bool,
+    #[arg(
+        long,
+        value_enum,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "all",
+        help = "Include unresolved import diagnostics in JSON output: all or related"
+    )]
+    include_unresolved: Option<QueryUnresolvedScope>,
 
     #[arg(long, value_enum, default_value_t = QueryOutputFormat::Text)]
     output: QueryOutputFormat,
@@ -100,6 +107,12 @@ enum QueryOutputFormat {
     Json,
     Mermaid,
     Svg,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum QueryUnresolvedScope {
+    All,
+    Related,
 }
 
 fn main() -> ExitCode {
@@ -250,9 +263,7 @@ fn run_query_command(
     } else {
         args.output
     };
-    if !args.include_unresolved {
-        result.unresolved.clear();
-    }
+    filter_query_unresolved(&mut result, args.include_unresolved);
     match output {
         QueryOutputFormat::Json => {
             let started = start_profile_timer();
@@ -270,6 +281,41 @@ fn run_query_command(
         }
     }
     Ok(false)
+}
+
+fn filter_query_unresolved(
+    result: &mut codescythe::QueryResult,
+    include_unresolved: Option<QueryUnresolvedScope>,
+) {
+    match include_unresolved {
+        Some(QueryUnresolvedScope::All) => {}
+        Some(QueryUnresolvedScope::Related) => {
+            let related_paths = query_related_paths(result);
+            result
+                .unresolved
+                .retain(|unresolved| related_paths.contains(&unresolved.importer));
+        }
+        None => result.unresolved.clear(),
+    }
+}
+
+fn query_related_paths(result: &codescythe::QueryResult) -> std::collections::BTreeSet<String> {
+    let mut paths = result
+        .source_nodes
+        .iter()
+        .chain(&result.target_nodes)
+        .map(|node| node.path.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    if let Some(graph) = &result.graph {
+        paths.extend(graph.nodes.iter().map(|node| node.path.clone()));
+        return paths;
+    }
+
+    for path in &result.paths {
+        paths.extend(path.nodes.iter().map(|node| node.path.clone()));
+    }
+    paths
 }
 
 #[cfg(feature = "profiling")]

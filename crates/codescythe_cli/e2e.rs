@@ -395,6 +395,11 @@ fn cli_query_includes_unresolved_imports_when_requested() {
     )
     .unwrap();
     fs::write(fixture.join("src/module.ts"), "export const used = 1;\n").unwrap();
+    fs::write(
+        fixture.join("src/unrelated.ts"),
+        "import { unrelated } from '#generated/unrelated';\nconsole.log(unrelated);\n",
+    )
+    .unwrap();
 
     let default_output = Command::new(&cli)
         .args([
@@ -444,6 +449,43 @@ fn cli_query_includes_unresolved_imports_when_requested() {
     assert_eq!(
         included_query["unresolved"][0]["specifier"],
         "#generated/missing"
+    );
+    assert_eq!(
+        included_query["unresolved"][1]["specifier"],
+        "#generated/unrelated"
+    );
+
+    let related_output = Command::new(&cli)
+        .args([
+            "query",
+            "somepath",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+            "--include-unresolved=related",
+            "src/main.ts",
+            "src/module.ts:used",
+        ])
+        .output()
+        .expect("failed to run codescythe query with related unresolved imports");
+
+    assert!(
+        related_output.status.success(),
+        "{}",
+        output_text(&related_output)
+    );
+    let related_query: Value =
+        serde_json::from_slice(&related_output.stdout).expect("query stdout should be JSON");
+    assert_eq!(
+        related_query["unresolved"][0]["specifier"],
+        "#generated/missing"
+    );
+    assert_eq!(
+        related_query["unresolved"]
+            .as_array()
+            .expect("unresolved should be an array")
+            .len(),
+        1
     );
 
     fs::remove_dir_all(&fixture).unwrap();
