@@ -73,7 +73,9 @@ enum QueryCommand {
 
 #[derive(Debug, Parser)]
 struct QueryPathArgs {
+    #[arg(help = "Source file, directory, or <file>:<symbol> selector")]
     from: String,
+    #[arg(help = "Target file, directory, or <file>:<symbol> selector")]
     to: String,
 
     #[arg(short, long)]
@@ -84,6 +86,9 @@ struct QueryPathArgs {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, help = "Include unresolved import diagnostics in JSON output")]
+    include_unresolved: bool,
 
     #[arg(long, value_enum, default_value_t = QueryOutputFormat::Text)]
     output: QueryOutputFormat,
@@ -231,7 +236,7 @@ fn run_query_command(
     };
     let config = args.config.as_deref().or(global_config);
     let cwd = analysis_root(args.directory.as_deref().or(global_directory), config)?;
-    let result = codescythe::query(
+    let mut result = codescythe::query(
         &cwd,
         config,
         codescythe::QueryRequest {
@@ -245,6 +250,9 @@ fn run_query_command(
     } else {
         args.output
     };
+    if !args.include_unresolved {
+        result.unresolved.clear();
+    }
     match output {
         QueryOutputFormat::Json => {
             let started = start_profile_timer();
