@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.7.0...codescythe_cli_v0.7.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* enforce case-sensitive module resolution ([#95](https://github.com/perplexityai/codescythe/issues/95)) ([e1dd1c4](https://github.com/perplexityai/codescythe/commit/e1dd1c4ab2c5eaec5a2ce31aa89d293fd21dd55e))
+
 ## [0.7.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.6.1...codescythe_cli_v0.7.0) (2026-06-01)
 
 
