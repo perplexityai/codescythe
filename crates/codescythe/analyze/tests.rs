@@ -200,6 +200,33 @@ fn follows_oxc_resolution_rules_for_project_imports() {
 }
 
 #[test]
+fn resolves_case_distinct_module_basenames() {
+    let analysis = analyze_inline_project_with_config(
+        r#"{
+              "entry": "src/ExploreApisSection.tsx",
+              "project": ["src/**/*.ts", "src/**/*.tsx"]
+            }"#,
+        &[
+            (
+                "src/ExploreApisSection.tsx",
+                "import { ExploreApiCard } from './ExploreApiCard.js';\nconsole.log(ExploreApiCard);\n",
+            ),
+            (
+                "src/ExploreApiCard.tsx",
+                "import type { ExploreApiCardConfig } from './exploreApiCard.js';\nexport const ExploreApiCard = (card: ExploreApiCardConfig) => card.id;\n",
+            ),
+            (
+                "src/exploreApiCard.ts",
+                "export interface ExploreApiCardConfig { id: string }\n",
+            ),
+        ],
+    );
+
+    assert!(!analysis.issues.files.contains_key("src/ExploreApiCard.tsx"));
+    assert_no_unused_export(&analysis, "src/ExploreApiCard.tsx", "ExploreApiCard");
+}
+
+#[test]
 fn reads_package_json_imports_by_default() {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();

@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 pub(super) struct ModuleResolver {
-    resolver: ResolverGeneric<IgnoredResolverMetadataFileSystem>,
+    resolver: ResolverGeneric<ResolverFileSystem>,
     index_by_path: HashMap<PathBuf, usize>,
     resolution_cache: RefCell<HashMap<(String, String), ImportResolution>>,
     #[cfg(feature = "profiling")]
@@ -37,19 +37,40 @@ impl ResolverProfileStats {
     }
 }
 
-struct IgnoredResolverMetadataFileSystem {
+struct ResolverFileSystem {
     cwd: PathBuf,
     ignore: GlobSet,
     inner: FileSystemOs,
+    project_paths: HashSet<PathBuf>,
+    folded_project_paths: HashSet<String>,
 }
 
-impl IgnoredResolverMetadataFileSystem {
-    fn for_config(cwd: &Path, config: &CodescytheConfig) -> Result<Self> {
+impl ResolverFileSystem {
+    fn for_config(
+        cwd: &Path,
+        project_files: &[PathBuf],
+        config: &CodescytheConfig,
+    ) -> Result<Self> {
         Ok(Self {
             cwd: cwd.to_path_buf(),
             ignore: build_glob_set(&config.ignore)?,
             inner: FileSystemOs::new(),
+            project_paths: project_files
+                .iter()
+                .map(|path| normalize_path(path))
+                .collect(),
+            folded_project_paths: project_files
+                .iter()
+                .filter_map(|path| folded_relative_path(cwd, path))
+                .collect(),
         })
+    }
+
+    fn has_project_path_case_mismatch(&self, path: &Path) -> bool {
+        let normalized = normalize_path(path);
+        !self.project_paths.contains(&normalized)
+            && folded_relative_path(&self.cwd, &normalized)
+                .is_some_and(|path| self.folded_project_paths.contains(&path))
     }
 
     fn ignores_resolver_metadata(&self, path: &Path) -> bool {
@@ -78,14 +99,23 @@ impl IgnoredResolverMetadataFileSystem {
             format!("ignored by codescythe config: {}", path.display()),
         )
     }
+
+    fn case_mismatch_error(path: &Path) -> io::Error {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("project path casing mismatch: {}", path.display()),
+        )
+    }
 }
 
-impl FileSystem for IgnoredResolverMetadataFileSystem {
+impl FileSystem for ResolverFileSystem {
     fn new() -> Self {
         Self {
             cwd: PathBuf::new(),
             ignore: build_glob_set(&[]).expect("empty glob set is valid"),
             inner: FileSystemOs::new(),
+            project_paths: HashSet::new(),
+            folded_project_paths: HashSet::new(),
         }
     }
 
@@ -107,14 +137,24 @@ impl FileSystem for IgnoredResolverMetadataFileSystem {
         if self.ignores_resolver_metadata(path) {
             return Err(Self::ignored_error(path));
         }
-        self.inner.metadata(path)
+        let metadata = self.inner.metadata(path)?;
+        if metadata.is_file() && self.has_project_path_case_mismatch(path) {
+            return Err(Self::case_mismatch_error(path));
+        }
+        Ok(metadata)
     }
 
     fn symlink_metadata(&self, path: &Path) -> io::Result<FileMetadata> {
         if self.ignores_resolver_metadata(path) {
             return Err(Self::ignored_error(path));
         }
-        self.inner.symlink_metadata(path)
+        let metadata = self.inner.symlink_metadata(path)?;
+        if (metadata.is_file() || metadata.is_symlink())
+            && self.has_project_path_case_mismatch(path)
+        {
+            return Err(Self::case_mismatch_error(path));
+        }
+        Ok(metadata)
     }
 
     fn read_link(&self, path: &Path) -> Result<PathBuf, ResolveError> {
@@ -140,7 +180,7 @@ impl ModuleResolver {
         config: &CodescytheConfig,
     ) -> Result<Self> {
         let resolver = ResolverGeneric::new_with_file_system(
-            IgnoredResolverMetadataFileSystem::for_config(cwd, config)?,
+            ResolverFileSystem::for_config(cwd, project_files, config)?,
             ResolveOptions {
                 cwd: Some(cwd.to_path_buf()),
                 tsconfig: Some(TsconfigDiscovery::Auto),
@@ -327,6 +367,34 @@ impl ModuleResolver {
             exists: normalized.exists(),
             in_project: self.index_by_path.contains_key(&normalized),
         }
+    }
+}
+
+fn folded_relative_path(cwd: &Path, path: &Path) -> Option<String> {
+    normalize_path(path)
+        .strip_prefix(cwd)
+        .ok()
+        .map(|path| path.to_string_lossy().replace('\\', "/").to_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_project_path_case_mismatches() {
+        let cwd = Path::new("/workspace");
+        let project_files = [
+            cwd.join("src/ExploreApiCard.tsx"),
+            cwd.join("src/exploreApiCard.ts"),
+        ];
+        let file_system =
+            ResolverFileSystem::for_config(cwd, &project_files, &CodescytheConfig::default())
+                .unwrap();
+
+        assert!(file_system.has_project_path_case_mismatch(&cwd.join("src/ExploreApiCard.ts")));
+        assert!(!file_system.has_project_path_case_mismatch(&cwd.join("src/ExploreApiCard.tsx")));
+        assert!(!file_system.has_project_path_case_mismatch(&cwd.join("src/exploreApiCard.ts")));
     }
 }
 
