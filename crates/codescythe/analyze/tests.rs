@@ -1698,6 +1698,106 @@ fn query_allpaths_distinguishes_direct_and_deeper_dynamic_routes() {
 }
 
 #[test]
+fn query_allpaths_distinguishes_type_only_and_dynamic_imports() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import type { Props } from './panel';\ntype PanelProps = Props;\nvoid import('./panel');\n",
+            ),
+            (
+                "src/panel.ts",
+                "export type Props = { open: boolean };\nexport const Panel = 1;\n",
+            ),
+        ],
+        QueryRequest {
+            kind: QueryKind::Allpaths,
+            from: "src/main.ts".to_string(),
+            to: "src/panel.ts:Props".to_string(),
+        },
+    );
+
+    let graph = result.graph.expect("allpaths should return a graph");
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == QueryEdgeKind::TypeImport && edge.to == "export:src/panel.ts:Props"
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == QueryEdgeKind::DynamicImport && edge.to == "export:src/panel.ts:Props"
+    }));
+    assert!(
+        graph
+            .edges
+            .iter()
+            .all(|edge| edge.kind != QueryEdgeKind::NamedImport)
+    );
+
+    let json = serde_json::to_value(&graph).unwrap();
+    assert!(
+        json["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["kind"] == "typeImport")
+    );
+}
+
+#[test]
+fn query_distinguishes_inline_type_and_value_import_specifiers() {
+    let files = &[
+        (
+            "src/main.ts",
+            "import { type Props, value } from './module';\nconsole.log(value);\ntype LocalProps = Props;\n",
+        ),
+        (
+            "src/module.ts",
+            "export type Props = { value: number };\nexport const value = 1;\n",
+        ),
+    ];
+    let request = |symbol: &str| QueryRequest {
+        kind: QueryKind::Somepath,
+        from: "src/main.ts".to_string(),
+        to: format!("src/module.ts:{symbol}"),
+    };
+
+    let type_result = query_inline_project(files, request("Props"));
+    assert_eq!(
+        type_result.paths[0].edges[0].kind,
+        QueryEdgeKind::TypeImport
+    );
+
+    let value_result = query_inline_project(files, request("value"));
+    assert_eq!(
+        value_result.paths[0].edges[0].kind,
+        QueryEdgeKind::NamedImport
+    );
+}
+
+#[test]
+fn query_marks_type_only_namespace_imports() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import type * as Types from './types';\ntype Props = Types.Props;\n",
+            ),
+            ("src/types.ts", "export type Props = { open: boolean };\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Somepath,
+            from: "src/main.ts".to_string(),
+            to: "src/types.ts".to_string(),
+        },
+    );
+
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.paths[0].edges[0].kind, QueryEdgeKind::TypeImport);
+
+    let mermaid = render_query_mermaid(&result);
+    assert!(mermaid.contains("type-only import ./types"));
+    assert!(!mermaid.contains("side-effect import ./types"));
+}
+
+#[test]
 fn query_somepath_returns_one_path_per_reachable_directory_file() {
     let result = query_inline_project(
         &[

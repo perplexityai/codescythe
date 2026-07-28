@@ -633,6 +633,7 @@ fn query_node_label(node: &codescythe::QueryNode) -> String {
 fn query_edge_label(edge: &codescythe::QueryEdge) -> String {
     let kind = match edge.kind {
         codescythe::QueryEdgeKind::NamedImport => "named import",
+        codescythe::QueryEdgeKind::TypeImport => "type-only import",
         codescythe::QueryEdgeKind::SideEffectImport => "side-effect import",
         codescythe::QueryEdgeKind::DynamicImport => "dynamic import",
         codescythe::QueryEdgeKind::GlobImport => "glob import",

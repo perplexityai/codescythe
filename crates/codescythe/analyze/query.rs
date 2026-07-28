@@ -113,6 +113,7 @@ pub struct QueryEdge {
 #[serde(rename_all = "camelCase")]
 pub enum QueryEdgeKind {
     NamedImport,
+    TypeImport,
     SideEffectImport,
     DynamicImport,
     GlobImport,
@@ -380,6 +381,7 @@ fn query_node_label(node: &QueryNode) -> String {
 fn query_edge_label(edge: &QueryEdge) -> String {
     let kind = match edge.kind {
         QueryEdgeKind::NamedImport => "named import",
+        QueryEdgeKind::TypeImport => "type-only import",
         QueryEdgeKind::SideEffectImport => "side-effect import",
         QueryEdgeKind::DynamicImport => "dynamic import",
         QueryEdgeKind::GlobImport => "glob import",
@@ -450,7 +452,11 @@ fn build_query_graph(
                                 &graph,
                                 from,
                                 to,
-                                QueryEdgeKind::NamedImport,
+                                if import.type_only {
+                                    QueryEdgeKind::TypeImport
+                                } else {
+                                    QueryEdgeKind::NamedImport
+                                },
                                 &file.relative,
                                 &import.source,
                                 Some(imported),
@@ -478,6 +484,19 @@ fn build_query_graph(
                 from,
                 source,
                 QueryEdgeKind::SideEffectImport,
+            )?;
+        }
+
+        for source in &file.type_only_file_imports {
+            add_file_edge(
+                &mut graph,
+                &mut unresolved,
+                resolver,
+                &file_nodes,
+                &file,
+                from,
+                source,
+                QueryEdgeKind::TypeImport,
             )?;
         }
 
