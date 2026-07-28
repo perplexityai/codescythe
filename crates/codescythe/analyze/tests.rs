@@ -1555,6 +1555,149 @@ fn query_somepath_tracks_named_export_edges() {
 }
 
 #[test]
+fn query_somepath_distinguishes_dynamic_import_from_direct_import() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "const { used } = await import('./module');\nconsole.log(used);\n",
+            ),
+            ("src/module.ts", "export const used = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Somepath,
+            from: "src/main.ts".to_string(),
+            to: "src/module.ts:used".to_string(),
+        },
+    );
+
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.paths[0].edges[0].kind, QueryEdgeKind::DynamicImport);
+    assert!(
+        result.paths[0]
+            .edges
+            .iter()
+            .all(|edge| edge.kind != QueryEdgeKind::NamedImport)
+    );
+
+    let mermaid = render_query_mermaid(&result);
+    assert!(mermaid.contains("dynamic import ./module:used"));
+    assert!(!mermaid.contains("named import ./module:used"));
+}
+
+#[test]
+fn query_allpaths_keeps_dynamic_namespace_import_dynamic() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "const module = await import('./module');\nconsole.log(module.used);\n",
+            ),
+            ("src/module.ts", "export const used = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Allpaths,
+            from: "src/main.ts".to_string(),
+            to: "src/module.ts:used".to_string(),
+        },
+    );
+
+    let graph = result.graph.expect("allpaths should return a graph");
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == QueryEdgeKind::DynamicImport && edge.to == "export:src/module.ts:used"
+    }));
+    assert!(graph.edges.iter().all(|edge| {
+        !matches!(
+            edge.kind,
+            QueryEdgeKind::SideEffectImport | QueryEdgeKind::NamespaceMember
+        )
+    }));
+}
+
+#[test]
+fn query_somepath_preserves_dynamic_import_in_deeper_path() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import { load } from './loader';\nvoid load();\n",
+            ),
+            (
+                "src/loader.ts",
+                "export async function load() {\n  const { used } = await import('./module');\n  return used;\n}\n",
+            ),
+            ("src/module.ts", "export const used = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Somepath,
+            from: "src/main.ts".to_string(),
+            to: "src/module.ts:used".to_string(),
+        },
+    );
+
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(
+        result.paths[0]
+            .edges
+            .iter()
+            .map(|edge| edge.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            QueryEdgeKind::NamedImport,
+            QueryEdgeKind::ExportDefinition,
+            QueryEdgeKind::DynamicImport,
+        ]
+    );
+    assert_eq!(
+        result.paths[0]
+            .nodes
+            .iter()
+            .map(query_node_label)
+            .collect::<Vec<_>>(),
+        vec![
+            "src/main.ts",
+            "src/loader.ts:load",
+            "src/loader.ts",
+            "src/module.ts:used",
+        ]
+    );
+}
+
+#[test]
+fn query_allpaths_distinguishes_direct_and_deeper_dynamic_routes() {
+    let result = query_inline_project(
+        &[
+            (
+                "src/main.ts",
+                "import { used } from './module';\nimport { load } from './loader';\nconsole.log(used);\nvoid load();\n",
+            ),
+            (
+                "src/loader.ts",
+                "export async function load() {\n  const { used } = await import('./module');\n  return used;\n}\n",
+            ),
+            ("src/module.ts", "export const used = 1;\n"),
+        ],
+        QueryRequest {
+            kind: QueryKind::Allpaths,
+            from: "src/main.ts".to_string(),
+            to: "src/module.ts:used".to_string(),
+        },
+    );
+
+    let graph = result.graph.expect("allpaths should return a graph");
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == QueryEdgeKind::NamedImport
+            && edge.importer.as_deref() == Some("src/main.ts")
+            && edge.to == "export:src/module.ts:used"
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == QueryEdgeKind::DynamicImport
+            && edge.importer.as_deref() == Some("src/loader.ts")
+            && edge.to == "export:src/module.ts:used"
+    }));
+}
+
+#[test]
 fn query_somepath_returns_one_path_per_reachable_directory_file() {
     let result = query_inline_project(
         &[
