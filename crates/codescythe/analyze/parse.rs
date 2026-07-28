@@ -353,10 +353,21 @@ impl FileVisitor {
         );
     }
 
-    fn add_dynamic_import_binding(&mut self, pattern: &BindingPattern<'_>, source: &str) {
+    fn add_import_binding(
+        &mut self,
+        pattern: &BindingPattern<'_>,
+        source: &str,
+        kind: ExpressionImportKind,
+    ) {
         if let Some(local) = binding_identifier_name(pattern) {
-            self.side_effect_imports.push(source.to_string());
-            self.namespace_imports.insert(local, source.to_string());
+            if kind == ExpressionImportKind::Direct {
+                self.side_effect_imports.push(source.to_string());
+                self.namespace_imports.insert(local, source.to_string());
+            }
+            return;
+        }
+
+        if kind == ExpressionImportKind::Dynamic {
             return;
         }
 
@@ -519,8 +530,8 @@ impl<'a> Visit<'a> for FileVisitor {
 
     fn visit_variable_declarator(&mut self, declaration: &VariableDeclarator<'a>) {
         if let Some(init) = &declaration.init {
-            if let Some(source) = import_source_from_expression(init) {
-                self.add_dynamic_import_binding(&declaration.id, &source);
+            if let Some((source, kind)) = import_source_from_expression(init) {
+                self.add_import_binding(&declaration.id, &source, kind);
             }
         }
         walk::walk_variable_declarator(self, declaration);
@@ -757,15 +768,28 @@ fn property_key_name(key: &PropertyKey<'_>) -> Option<String> {
     }
 }
 
-fn import_source_from_expression(expression: &Expression<'_>) -> Option<String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpressionImportKind {
+    Direct,
+    Dynamic,
+}
+
+fn import_source_from_expression(
+    expression: &Expression<'_>,
+) -> Option<(String, ExpressionImportKind)> {
     match expression {
         Expression::ImportExpression(import) => match &import.source {
-            Expression::StringLiteral(source) => Some(source.value.as_str().to_string()),
+            Expression::StringLiteral(source) => Some((
+                source.value.as_str().to_string(),
+                ExpressionImportKind::Dynamic,
+            )),
             _ => None,
         },
-        Expression::CallExpression(call) if is_require_call(call) => {
-            call.arguments.first().and_then(argument_string_literal)
-        }
+        Expression::CallExpression(call) if is_require_call(call) => call
+            .arguments
+            .first()
+            .and_then(argument_string_literal)
+            .map(|source| (source, ExpressionImportKind::Direct)),
         Expression::AwaitExpression(await_expression) => {
             import_source_from_expression(&await_expression.argument)
         }
