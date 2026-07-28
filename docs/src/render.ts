@@ -786,8 +786,135 @@ npx codescythe query allpaths \\
               values: 'source selector, target selector',
               notes: 'Returns every node and edge that lies on at least one route from the source selector to the target selector.',
             },
+            {
+              field: 'import-conflicts',
+              purpose: 'Find mixed eager and lazy imports',
+              type: 'query verb',
+              values: 'no selectors',
+              notes: 'Lists resolved modules reached through runtime-static and dynamic paths from the same configured entrypoint. Exits with status 1 when findings exist.',
+            },
           ],
         }),
+      ),
+      h(
+        PageSection,
+        { id: 'import-conflicts', title: 'Static/Dynamic Import Conflicts' },
+        h(
+          'p',
+          null,
+          'Use ',
+          h('code', null, 'import-conflicts'),
+          ' when a module intended as a lazy boundary may also be pulled into the runtime graph eagerly. Each finding prints the resolved target plus every conflicting importer, edge kind, and original specifier.',
+        ),
+        h(CodeBlock, null, `npx codescythe query import-conflicts \\
+  -C . \\
+  --config codescythe.json
+
+Found 1 module with runtime static/dynamic import conflicts:
+
+src/module.ts
+  runtime static imports:
+    src/main.ts -- named import ./module
+  dynamic imports:
+    src/main.ts -- dynamic import ./module
+  shortest conflicting entrypoint route (src/main.ts):
+    runtime static path:
+      src/main.ts
+      -- named import ./module:value -> src/module.ts:value
+      -- defined in file value -> src/module.ts
+    dynamic path:
+      src/main.ts
+      -- dynamic import ./module -> src/module.ts`),
+        h(
+          'p',
+          null,
+          'Runtime-static edges include named imports, side-effect imports, re-exports, and namespace imports or member access. Dynamic edges come from supported string-literal ',
+          h('code', null, 'import()'),
+          ' calls. Type-only imports remain visible as ',
+          h('code', null, 'typeImport'),
+          ' edges in path queries but are excluded here because they do not affect runtime bundling. Configured test files are also excluded.',
+        ),
+        h(
+          'p',
+          null,
+          'A finding is reported only when one configured entrypoint can reach the target through runtime-static edges and can also reach a dynamic importer of that target. The printed route is the shortest deterministic proof: one fully static path from the entrypoint to the target, plus one runtime path ending at the conflicting dynamic import. This avoids treating imports isolated in separate entrypoint graphs as conflicts.',
+        ),
+        h(
+          'p',
+          null,
+          'The command exits with status 1 when findings exist and 0 when the scan is clean. Use ',
+          h('code', null, '--json'),
+          ' for CI or scripted cleanup. Fix the listed runtime-static edges, rerun the command, and confirm the target disappears.',
+        ),
+        h(CodeBlock, { language: 'json' }, `{
+  "scannedFileCount": 2,
+  "entrypointCount": 1,
+  "conflicts": [
+    {
+      "target": "src/module.ts",
+      "runtimeStaticImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "namedImport"
+        }
+      ],
+      "dynamicImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "dynamicImport"
+        }
+      ],
+      "entrypointRoute": {
+        "entrypoint": "src/main.ts",
+        "runtimeStaticPath": {
+          "nodes": [
+            { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+            { "id": "export:src/module.ts:value", "kind": "export", "path": "src/module.ts", "symbol": "value" },
+            { "id": "file:src/module.ts", "kind": "file", "path": "src/module.ts" }
+          ],
+          "edges": [
+            {
+              "from": "file:src/main.ts",
+              "to": "export:src/module.ts:value",
+              "kind": "namedImport",
+              "importer": "src/main.ts",
+              "specifier": "./module",
+              "imported": "value"
+            },
+            {
+              "from": "export:src/module.ts:value",
+              "to": "file:src/module.ts",
+              "kind": "exportDefinition",
+              "imported": "value"
+            }
+          ]
+        },
+        "dynamicPath": {
+          "nodes": [
+            { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+            { "id": "file:src/module.ts", "kind": "file", "path": "src/module.ts" }
+          ],
+          "edges": [
+            {
+              "from": "file:src/main.ts",
+              "to": "file:src/module.ts",
+              "kind": "dynamicImport",
+              "importer": "src/main.ts",
+              "specifier": "./module"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}`),
+        h(
+          Callout,
+          { title: 'Source graph, not bundle output' },
+          h('p', null, 'Entrypoint reachability follows Codescythe’s source graph, not bundler-specific chunk naming, shared-chunk extraction, or preload behavior. Use a production bundle inspection when you need proof of emitted boundaries and transferred bytes.'),
+        ),
       ),
       h(
         PageSection,
@@ -1137,7 +1264,7 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",

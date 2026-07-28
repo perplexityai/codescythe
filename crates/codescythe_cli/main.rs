@@ -69,6 +69,7 @@ struct QueryArgs {
 enum QueryCommand {
     Somepath(QueryPathArgs),
     Allpaths(QueryPathArgs),
+    ImportConflicts(ImportConflictsArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -99,6 +100,18 @@ struct QueryPathArgs {
 
     #[arg(long, value_enum, default_value_t = QueryOutputFormat::Text)]
     output: QueryOutputFormat,
+}
+
+#[derive(Debug, Parser)]
+struct ImportConflictsArgs {
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
+    #[arg(short = 'C', long)]
+    directory: Option<PathBuf>,
+
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -243,10 +256,31 @@ fn run_query_command(
     global_config: Option<&Path>,
     global_directory: Option<&Path>,
 ) -> Result<bool> {
-    let (kind, args) = match args.command {
-        QueryCommand::Somepath(args) => (codescythe::QueryKind::Somepath, args),
-        QueryCommand::Allpaths(args) => (codescythe::QueryKind::Allpaths, args),
-    };
+    match args.command {
+        QueryCommand::Somepath(args) => run_query_path_command(
+            codescythe::QueryKind::Somepath,
+            args,
+            global_config,
+            global_directory,
+        ),
+        QueryCommand::Allpaths(args) => run_query_path_command(
+            codescythe::QueryKind::Allpaths,
+            args,
+            global_config,
+            global_directory,
+        ),
+        QueryCommand::ImportConflicts(args) => {
+            run_import_conflicts_command(args, global_config, global_directory)
+        }
+    }
+}
+
+fn run_query_path_command(
+    kind: codescythe::QueryKind,
+    args: QueryPathArgs,
+    global_config: Option<&Path>,
+    global_directory: Option<&Path>,
+) -> Result<bool> {
     let config = args.config.as_deref().or(global_config);
     let cwd = analysis_root(args.directory.as_deref().or(global_directory), config)?;
     let mut result = codescythe::query(
@@ -281,6 +315,24 @@ fn run_query_command(
         }
     }
     Ok(false)
+}
+
+fn run_import_conflicts_command(
+    args: ImportConflictsArgs,
+    global_config: Option<&Path>,
+    global_directory: Option<&Path>,
+) -> Result<bool> {
+    let config = args.config.as_deref().or(global_config);
+    let cwd = analysis_root(args.directory.as_deref().or(global_directory), config)?;
+    let result = codescythe::import_conflicts(&cwd, config)?;
+    if args.json {
+        let started = start_profile_timer();
+        println!("{}", serde_json::to_string(&result)?);
+        print_profile_stage("json serialization", started);
+    } else {
+        print_import_conflicts_report(&result);
+    }
+    Ok(!result.conflicts.is_empty())
 }
 
 fn filter_query_unresolved(
@@ -610,15 +662,68 @@ fn pluralize(count: usize, singular: &'static str, plural: &'static str) -> &'st
 }
 
 fn print_query_path(path: &codescythe::QueryPath) {
+    print_query_path_with_indent(path, "  ");
+}
+
+fn print_query_path_with_indent(path: &codescythe::QueryPath, indent: &str) {
     if let Some(first) = path.nodes.first() {
-        println!("  {}", query_node_label(first));
+        println!("{indent}{}", query_node_label(first));
     }
     for (edge, node) in path.edges.iter().zip(path.nodes.iter().skip(1)) {
         println!(
-            "  -- {} -> {}",
+            "{indent}-- {} -> {}",
             query_edge_label(edge),
             query_node_label(node)
         );
+    }
+}
+
+fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
+    if result.conflicts.is_empty() {
+        println!(
+            "No entrypoint-confirmed runtime static/dynamic import conflicts found across {} files and {} entrypoints",
+            result.scanned_file_count, result.entrypoint_count
+        );
+        return;
+    }
+
+    let module_label = if result.conflicts.len() == 1 {
+        "module"
+    } else {
+        "modules"
+    };
+    println!(
+        "Found {} {module_label} with runtime static/dynamic import conflicts:",
+        result.conflicts.len()
+    );
+    for conflict in &result.conflicts {
+        println!("\n{}", conflict.target);
+        println!("  runtime static imports:");
+        for import in &conflict.runtime_static_imports {
+            println!(
+                "    {} -- {} {}",
+                import.importer,
+                query_edge_kind_label(import.kind),
+                import.specifier
+            );
+        }
+        println!("  dynamic imports:");
+        for import in &conflict.dynamic_imports {
+            println!(
+                "    {} -- {} {}",
+                import.importer,
+                query_edge_kind_label(import.kind),
+                import.specifier
+            );
+        }
+        println!(
+            "  shortest conflicting entrypoint route ({}):",
+            conflict.entrypoint_route.entrypoint
+        );
+        println!("    runtime static path:");
+        print_query_path_with_indent(&conflict.entrypoint_route.runtime_static_path, "      ");
+        println!("    dynamic path:");
+        print_query_path_with_indent(&conflict.entrypoint_route.dynamic_path, "      ");
     }
 }
 
@@ -631,7 +736,17 @@ fn query_node_label(node: &codescythe::QueryNode) -> String {
 }
 
 fn query_edge_label(edge: &codescythe::QueryEdge) -> String {
-    let kind = match edge.kind {
+    let kind = query_edge_kind_label(edge.kind);
+    match (&edge.specifier, &edge.imported) {
+        (Some(specifier), Some(imported)) => format!("{kind} {specifier}:{imported}"),
+        (Some(specifier), None) => format!("{kind} {specifier}"),
+        (None, Some(imported)) => format!("{kind} {imported}"),
+        (None, None) => kind.to_string(),
+    }
+}
+
+fn query_edge_kind_label(kind: codescythe::QueryEdgeKind) -> &'static str {
+    match kind {
         codescythe::QueryEdgeKind::NamedImport => "named import",
         codescythe::QueryEdgeKind::TypeImport => "type-only import",
         codescythe::QueryEdgeKind::SideEffectImport => "side-effect import",
@@ -642,12 +757,6 @@ fn query_edge_label(edge: &codescythe::QueryEdge) -> String {
         codescythe::QueryEdgeKind::NamespaceExport => "namespace export",
         codescythe::QueryEdgeKind::NamespaceMember => "namespace member",
         codescythe::QueryEdgeKind::ExportDefinition => "defined in file",
-    };
-    match (&edge.specifier, &edge.imported) {
-        (Some(specifier), Some(imported)) => format!("{kind} {specifier}:{imported}"),
-        (Some(specifier), None) => format!("{kind} {specifier}"),
-        (None, Some(imported)) => format!("{kind} {imported}"),
-        (None, None) => kind.to_string(),
     }
 }
 

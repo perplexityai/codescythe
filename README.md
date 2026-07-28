@@ -143,6 +143,7 @@ codescythe query somepath src/main.ts src/features/
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output mermaid
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg
+codescythe query import-conflicts
 ```
 
 Selectors can point at files, directories, or exported symbols written as
@@ -154,6 +155,130 @@ by `-C` or `--config`.
   many.
 - `allpaths` returns the subgraph of every node and edge that lies on a path
   from the source selector to the target selector.
+- `import-conflicts` lists modules reached through both runtime-static and
+  dynamic paths from the same configured entrypoint, including every conflicting
+  importer and specifier plus one shortest proof route. Type-only and configured
+  test-file imports do not count. It exits with status `1` when conflicts are
+  found and supports `--json` for CI or bulk cleanup.
+
+### Finding Static/Dynamic Import Conflicts
+
+Use `import-conflicts` when a module intended as a lazy boundary may also be
+pulled into the runtime graph eagerly:
+
+```sh
+codescythe query import-conflicts -C . --config codescythe.json
+```
+
+Each finding names the resolved target, then prints every runtime-static and
+dynamic edge that reaches it:
+
+```text
+Found 1 module with runtime static/dynamic import conflicts:
+
+src/module.ts
+  runtime static imports:
+    src/main.ts -- named import ./module
+  dynamic imports:
+    src/main.ts -- dynamic import ./module
+  shortest conflicting entrypoint route (src/main.ts):
+    runtime static path:
+      src/main.ts
+      -- named import ./module:value -> src/module.ts:value
+      -- defined in file value -> src/module.ts
+    dynamic path:
+      src/main.ts
+      -- dynamic import ./module -> src/module.ts
+```
+
+Runtime-static edges include named imports, side-effect imports, re-exports,
+and namespace imports or member access. Dynamic edges come from supported
+string-literal `import()` calls. `import type` edges are reported as
+`typeImport` by path queries but do not affect bundling, so they are excluded
+from conflict findings. Configured test files are also excluded.
+
+A finding is reported only when one configured entrypoint can reach the target
+through runtime-static edges and can also reach a dynamic importer of that
+target. The printed route is the shortest deterministic proof: one fully static
+path from the entrypoint to the target, plus one runtime path ending at the
+conflicting dynamic import. This avoids treating imports isolated in separate
+entrypoint graphs as conflicts.
+
+The command exits with status `1` when findings exist and `0` when the scan is
+clean. Use `--json` for CI or scripted cleanup:
+
+```json
+{
+  "scannedFileCount": 2,
+  "entrypointCount": 1,
+  "conflicts": [
+    {
+      "target": "src/module.ts",
+      "runtimeStaticImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "namedImport"
+        }
+      ],
+      "dynamicImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "dynamicImport"
+        }
+      ],
+      "entrypointRoute": {
+        "entrypoint": "src/main.ts",
+        "runtimeStaticPath": {
+          "nodes": [
+            { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+            { "id": "export:src/module.ts:value", "kind": "export", "path": "src/module.ts", "symbol": "value" },
+            { "id": "file:src/module.ts", "kind": "file", "path": "src/module.ts" }
+          ],
+          "edges": [
+            {
+              "from": "file:src/main.ts",
+              "to": "export:src/module.ts:value",
+              "kind": "namedImport",
+              "importer": "src/main.ts",
+              "specifier": "./module",
+              "imported": "value"
+            },
+            {
+              "from": "export:src/module.ts:value",
+              "to": "file:src/module.ts",
+              "kind": "exportDefinition",
+              "imported": "value"
+            }
+          ]
+        },
+        "dynamicPath": {
+          "nodes": [
+            { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+            { "id": "file:src/module.ts", "kind": "file", "path": "src/module.ts" }
+          ],
+          "edges": [
+            {
+              "from": "file:src/main.ts",
+              "to": "file:src/module.ts",
+              "kind": "dynamicImport",
+              "importer": "src/main.ts",
+              "specifier": "./module"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+Fix the listed runtime-static edges, rerun the command, and confirm the target
+disappears. Entrypoint reachability follows Codescythe's source graph, not
+bundler-specific chunk naming, shared-chunk extraction, or preload behavior.
+Use a production bundle inspection when you need proof of emitted boundaries
+and transferred bytes.
 
 Text output is optimized for terminal inspection, including the resolved
 selector kinds, match counts, and a reachability summary that helps explain
