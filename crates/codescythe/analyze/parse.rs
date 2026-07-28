@@ -194,6 +194,7 @@ pub(super) struct FileData {
     pub(super) exports: BTreeMap<String, ExportInfo>,
     pub(super) imports: Vec<ImportRecord>,
     pub(super) side_effect_imports: Vec<String>,
+    pub(super) type_only_file_imports: Vec<String>,
     pub(super) dynamic_imports: Vec<String>,
     pub(super) glob_imports: Vec<String>,
     pub(super) namespace_imports: BTreeMap<String, String>,
@@ -221,6 +222,7 @@ pub(super) struct ExportInfo {
 pub(super) struct ImportRecord {
     pub(super) source: String,
     pub(super) imported: Option<String>,
+    pub(super) type_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -235,6 +237,7 @@ struct FileVisitor {
     exports: BTreeMap<String, ExportInfo>,
     imports: Vec<ImportRecord>,
     side_effect_imports: Vec<String>,
+    type_only_file_imports: Vec<String>,
     dynamic_imports: Vec<String>,
     glob_imports: Vec<String>,
     namespace_imports: BTreeMap<String, String>,
@@ -254,6 +257,7 @@ impl FileVisitor {
             exports: BTreeMap::new(),
             imports: Vec::new(),
             side_effect_imports: Vec::new(),
+            type_only_file_imports: Vec::new(),
             dynamic_imports: Vec::new(),
             glob_imports: Vec::new(),
             namespace_imports: BTreeMap::new(),
@@ -279,6 +283,7 @@ impl FileVisitor {
 
         dedupe_preserving_order(&mut self.imports);
         dedupe_preserving_order(&mut self.side_effect_imports);
+        dedupe_preserving_order(&mut self.type_only_file_imports);
         dedupe_preserving_order(&mut self.dynamic_imports);
         dedupe_preserving_order(&mut self.glob_imports);
         dedupe_preserving_order(&mut self.member_uses);
@@ -290,6 +295,7 @@ impl FileVisitor {
             exports: self.exports,
             imports: self.imports,
             side_effect_imports: self.side_effect_imports,
+            type_only_file_imports: self.type_only_file_imports,
             dynamic_imports: self.dynamic_imports,
             glob_imports: self.glob_imports,
             namespace_imports: self.namespace_imports,
@@ -377,6 +383,7 @@ impl FileVisitor {
             self.imports.push(ImportRecord {
                 source: source.to_string(),
                 imported: Some(name),
+                type_only: false,
             });
         }
     }
@@ -389,41 +396,56 @@ impl FileVisitor {
 impl<'a> Visit<'a> for FileVisitor {
     fn visit_import_declaration(&mut self, declaration: &ImportDeclaration<'a>) {
         let source = declaration.source.value.as_str().to_string();
+        let declaration_type_only = declaration.import_kind == ImportOrExportKind::Type;
         match &declaration.specifiers {
             Some(specifiers) => {
                 for specifier in specifiers {
                     match specifier {
                         ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
                             let imported = module_export_name(&specifier.imported);
+                            let type_only = declaration_type_only
+                                || specifier.import_kind == ImportOrExportKind::Type;
                             self.imports.push(ImportRecord {
                                 source: source.clone(),
                                 imported: Some(imported.clone()),
+                                type_only,
                             });
-                            self.named_imports.insert(
-                                specifier.local.name.as_str().to_string(),
-                                NamedImport {
-                                    source: source.clone(),
-                                    imported,
-                                },
-                            );
+                            if !type_only {
+                                self.named_imports.insert(
+                                    specifier.local.name.as_str().to_string(),
+                                    NamedImport {
+                                        source: source.clone(),
+                                        imported,
+                                    },
+                                );
+                            }
                         }
                         ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
                             self.imports.push(ImportRecord {
                                 source: source.clone(),
                                 imported: Some("default".to_string()),
+                                type_only: declaration_type_only,
                             });
-                            self.named_imports.insert(
-                                specifier.local.name.as_str().to_string(),
-                                NamedImport {
-                                    source: source.clone(),
-                                    imported: "default".to_string(),
-                                },
-                            );
+                            if !declaration_type_only {
+                                self.named_imports.insert(
+                                    specifier.local.name.as_str().to_string(),
+                                    NamedImport {
+                                        source: source.clone(),
+                                        imported: "default".to_string(),
+                                    },
+                                );
+                            }
                         }
                         ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
-                            self.side_effect_imports.push(source.clone());
-                            self.namespace_imports
-                                .insert(specifier.local.name.as_str().to_string(), source.clone());
+                            if declaration_type_only {
+                                self.type_only_file_imports.push(source.clone());
+                            } else {
+                                self.side_effect_imports.push(source.clone());
+                                self.namespace_imports.insert(
+                                    specifier.local.name.as_str().to_string(),
+                                    source.clone(),
+                                );
+                            }
                         }
                     }
                 }

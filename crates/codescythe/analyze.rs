@@ -475,6 +475,12 @@ fn process_reachable_queue(
                     .or_default()
                     .insert(None);
             }
+            for source in &file.type_only_file_imports {
+                static_imports_by_source
+                    .entry(source.as_str())
+                    .or_default()
+                    .insert(None);
+            }
 
             for (source, imported_names) in static_imports_by_source {
                 match module_resolver.resolve(&file, source)? {

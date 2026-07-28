@@ -1137,7 +1137,7 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",

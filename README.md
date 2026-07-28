@@ -158,9 +158,11 @@ by `-C` or `--config`.
 Text output is optimized for terminal inspection, including the resolved
 selector kinds, match counts, and a reachability summary that helps explain
 no-path results. JSON output includes the same diagnostics, stable file/export
-nodes, and typed import or re-export edges. Pass `--include-unresolved` when
-you also need every unresolved import discovered while building the source
-graph, or `--include-unresolved=related` to limit diagnostics to unresolved
+nodes, and typed import or re-export edges. Type-only imports use the
+`typeImport` edge kind so they are not mistaken for runtime bundle edges. Pass
+`--include-unresolved` when you also need every unresolved import discovered
+while building the source graph, or `--include-unresolved=related` to limit
+diagnostics to unresolved
 imports from the query endpoints and returned path graph. Mermaid output renders
 the same query graph as a `flowchart LR` diagram, and SVG output renders that
 Mermaid source with the pure-Rust `mermaid-rs-renderer` crate.

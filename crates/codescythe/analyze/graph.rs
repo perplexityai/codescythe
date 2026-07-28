@@ -666,6 +666,12 @@ fn project_import_targets(file: &FileData, resolver: &ModuleResolver) -> Result<
         }
     }
 
+    for source in &file.type_only_file_imports {
+        if let ImportResolution::Project(target) = resolver.resolve(file, source)? {
+            targets.push(target);
+        }
+    }
+
     for source in &file.dynamic_imports {
         if let ImportResolution::Project(target) = resolver.resolve(file, source)? {
             targets.push(target);
@@ -737,6 +743,20 @@ fn file_references_removed_code(
     }
 
     for source in &file.side_effect_imports {
+        if import_references_removed_code(
+            file,
+            source,
+            None,
+            files,
+            resolver,
+            removed_file_indexes,
+            unused_exports,
+        )? {
+            return Ok(true);
+        }
+    }
+
+    for source in &file.type_only_file_imports {
         if import_references_removed_code(
             file,
             source,
