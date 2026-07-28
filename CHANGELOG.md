@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.7.1...codescythe_cli_v0.8.0) (2026-07-28)
+
+
+### Features
+
+* **query:** detect import conflicts ([#100](https://github.com/perplexityai/codescythe/issues/100)) ([687cb17](https://github.com/perplexityai/codescythe/commit/687cb17a1c9686201e7fa4eefe7ea3d1cba35c44))
+* **query:** distinguish type-only imports ([#99](https://github.com/perplexityai/codescythe/issues/99)) ([52d879d](https://github.com/perplexityai/codescythe/commit/52d879d2b2de4e20311776089c4a97f16e0aa4c4))
+
+
+### Bug Fixes
+
+* **query:** distinguish dynamic imports ([#97](https://github.com/perplexityai/codescythe/issues/97)) ([b44ac51](https://github.com/perplexityai/codescythe/commit/b44ac51c6a8d106bd2baf5a2d22537ee5e25730d))
+
 ## [0.7.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.7.0...codescythe_cli_v0.7.1) (2026-07-27)
 
 
