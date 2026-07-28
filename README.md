@@ -160,6 +160,68 @@ by `-C` or `--config`.
   and configured test-file imports do not count. It exits with status `1` when
   conflicts are found and supports `--json` for CI or bulk cleanup.
 
+### Finding Static/Dynamic Import Conflicts
+
+Use `import-conflicts` when a module intended as a lazy boundary may also be
+pulled into the runtime graph eagerly:
+
+```sh
+codescythe query import-conflicts -C . --config codescythe.json
+```
+
+Each finding names the resolved target, then prints every runtime-static and
+dynamic edge that reaches it:
+
+```text
+Found 1 module with runtime static/dynamic import conflicts:
+
+src/module.ts
+  runtime static imports:
+    src/main.ts -- named import ./module
+  dynamic imports:
+    src/main.ts -- dynamic import ./module
+```
+
+Runtime-static edges include named imports, side-effect imports, re-exports,
+and namespace imports or member access. Dynamic edges come from supported
+string-literal `import()` calls. `import type` edges are reported as
+`typeImport` by path queries but do not affect bundling, so they are excluded
+from conflict findings. Configured test files are also excluded.
+
+The command exits with status `1` when findings exist and `0` when the scan is
+clean. Use `--json` for CI or scripted cleanup:
+
+```json
+{
+  "scannedFileCount": 2,
+  "conflicts": [
+    {
+      "target": "src/module.ts",
+      "runtimeStaticImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "namedImport"
+        }
+      ],
+      "dynamicImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "dynamicImport"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Fix the listed runtime-static edges, rerun the command, and confirm the target
+disappears. Findings compare direct edges to the same resolved module across the
+configured project. They do not model bundler entrypoints or detect an indirect
+static route through another module, so use a production bundle inspection when
+you need proof of emitted chunk boundaries.
+
 Text output is optimized for terminal inspection, including the resolved
 selector kinds, match counts, and a reachability summary that helps explain
 no-path results. JSON output includes the same diagnostics, stable file/export

@@ -786,8 +786,80 @@ npx codescythe query allpaths \\
               values: 'source selector, target selector',
               notes: 'Returns every node and edge that lies on at least one route from the source selector to the target selector.',
             },
+            {
+              field: 'import-conflicts',
+              purpose: 'Find mixed eager and lazy imports',
+              type: 'query verb',
+              values: 'no selectors',
+              notes: 'Lists resolved modules with both runtime-static and dynamic importers. Exits with status 1 when findings exist.',
+            },
           ],
         }),
+      ),
+      h(
+        PageSection,
+        { id: 'import-conflicts', title: 'Static/Dynamic Import Conflicts' },
+        h(
+          'p',
+          null,
+          'Use ',
+          h('code', null, 'import-conflicts'),
+          ' when a module intended as a lazy boundary may also be pulled into the runtime graph eagerly. Each finding prints the resolved target plus every conflicting importer, edge kind, and original specifier.',
+        ),
+        h(CodeBlock, null, `npx codescythe query import-conflicts \\
+  -C . \\
+  --config codescythe.json
+
+Found 1 module with runtime static/dynamic import conflicts:
+
+src/module.ts
+  runtime static imports:
+    src/main.ts -- named import ./module
+  dynamic imports:
+    src/main.ts -- dynamic import ./module`),
+        h(
+          'p',
+          null,
+          'Runtime-static edges include named imports, side-effect imports, re-exports, and namespace imports or member access. Dynamic edges come from supported string-literal ',
+          h('code', null, 'import()'),
+          ' calls. Type-only imports remain visible as ',
+          h('code', null, 'typeImport'),
+          ' edges in path queries but are excluded here because they do not affect runtime bundling. Configured test files are also excluded.',
+        ),
+        h(
+          'p',
+          null,
+          'The command exits with status 1 when findings exist and 0 when the scan is clean. Use ',
+          h('code', null, '--json'),
+          ' for CI or scripted cleanup. Fix the listed runtime-static edges, rerun the command, and confirm the target disappears.',
+        ),
+        h(CodeBlock, { language: 'json' }, `{
+  "scannedFileCount": 2,
+  "conflicts": [
+    {
+      "target": "src/module.ts",
+      "runtimeStaticImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "namedImport"
+        }
+      ],
+      "dynamicImports": [
+        {
+          "importer": "src/main.ts",
+          "specifier": "./module",
+          "kind": "dynamicImport"
+        }
+      ]
+    }
+  ]
+}`),
+        h(
+          Callout,
+          { title: 'Direct-edge check' },
+          h('p', null, 'Findings compare direct edges to the same resolved module across the configured project. They do not model bundler entrypoints or detect an indirect static route through another module. Use a production bundle inspection when you need proof of emitted chunk boundaries.'),
+        ),
       ),
       h(
         PageSection,
