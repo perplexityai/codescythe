@@ -1811,21 +1811,46 @@ fn import_conflicts_reports_runtime_static_and_dynamic_importers() {
     ]);
 
     assert_eq!(result.scanned_file_count, 2);
+    assert_eq!(result.entrypoint_count, 1);
+    assert_eq!(result.conflicts.len(), 1);
+    let conflict = &result.conflicts[0];
+    assert_eq!(conflict.target, "src/module.ts");
     assert_eq!(
-        result.conflicts,
-        vec![ImportConflict {
-            target: "src/module.ts".to_string(),
-            runtime_static_imports: vec![ImportConflictEdge {
-                importer: "src/main.ts".to_string(),
-                specifier: "./module".to_string(),
-                kind: QueryEdgeKind::NamedImport,
-            }],
-            dynamic_imports: vec![ImportConflictEdge {
-                importer: "src/main.ts".to_string(),
-                specifier: "./module".to_string(),
-                kind: QueryEdgeKind::DynamicImport,
-            }],
+        conflict.runtime_static_imports,
+        vec![ImportConflictEdge {
+            importer: "src/main.ts".to_string(),
+            specifier: "./module".to_string(),
+            kind: QueryEdgeKind::NamedImport,
         }]
+    );
+    assert_eq!(
+        conflict.dynamic_imports,
+        vec![ImportConflictEdge {
+            importer: "src/main.ts".to_string(),
+            specifier: "./module".to_string(),
+            kind: QueryEdgeKind::DynamicImport,
+        }]
+    );
+    assert_eq!(conflict.entrypoint_route.entrypoint, "src/main.ts");
+    assert_eq!(
+        conflict
+            .entrypoint_route
+            .runtime_static_path
+            .nodes
+            .last()
+            .unwrap()
+            .path,
+        "src/module.ts"
+    );
+    assert_eq!(
+        conflict
+            .entrypoint_route
+            .dynamic_path
+            .edges
+            .last()
+            .unwrap()
+            .kind,
+        QueryEdgeKind::DynamicImport
     );
 }
 
@@ -1887,6 +1912,114 @@ fn import_conflicts_reports_deeper_static_importers() {
         result.conflicts[0].dynamic_imports[0].importer,
         "src/loader.ts"
     );
+    let route = &result.conflicts[0].entrypoint_route;
+    assert_eq!(route.entrypoint, "src/main.ts");
+    assert_eq!(
+        route.runtime_static_path.nodes.first().unwrap().path,
+        "src/main.ts"
+    );
+    assert_eq!(
+        route.runtime_static_path.nodes.last().unwrap().path,
+        "src/module.ts"
+    );
+    assert_eq!(
+        route.dynamic_path.nodes.last().unwrap().path,
+        "src/module.ts"
+    );
+    assert_eq!(
+        route.dynamic_path.edges.last().unwrap().kind,
+        QueryEdgeKind::DynamicImport
+    );
+}
+
+#[test]
+fn import_conflicts_follow_static_reexport_path_from_entrypoint() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import { value } from './barrel';\nvoid import('./module');\nconsole.log(value);\n",
+        ),
+        ("src/barrel.ts", "export { value } from './module';\n"),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    let route = &result.conflicts[0].entrypoint_route;
+    assert_eq!(route.entrypoint, "src/main.ts");
+    assert!(
+        route
+            .runtime_static_path
+            .edges
+            .iter()
+            .any(|edge| edge.kind == QueryEdgeKind::ReExport)
+    );
+    assert_eq!(
+        route.runtime_static_path.nodes.last().unwrap().path,
+        "src/module.ts"
+    );
+}
+
+#[test]
+fn import_conflicts_require_same_entrypoint_reachability() {
+    let result = import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": ["src/eager-entry.ts", "src/lazy-entry.ts"],
+          "project": "src/**/*.ts"
+        }"#,
+        &[
+            (
+                "src/eager-entry.ts",
+                "import { value } from './module';\nconsole.log(value);\n",
+            ),
+            ("src/lazy-entry.ts", "void import('./module');\n"),
+            ("src/module.ts", "export const value = 1;\n"),
+        ],
+    );
+
+    assert_eq!(result.entrypoint_count, 2);
+    assert!(result.conflicts.is_empty());
+}
+
+#[test]
+fn import_conflicts_follow_nested_dynamic_path_from_entrypoint() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import { value } from './module';\nvoid import('./loader');\nconsole.log(value);\n",
+        ),
+        (
+            "src/loader.ts",
+            "export async function load() {\n  return import('./module');\n}\nvoid load();\n",
+        ),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    let dynamic_kinds = result.conflicts[0]
+        .entrypoint_route
+        .dynamic_path
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == QueryEdgeKind::DynamicImport)
+        .count();
+    assert_eq!(dynamic_kinds, 2);
+}
+
+#[test]
+fn import_conflicts_ignore_unreachable_dynamic_importers() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import { value } from './module';\nconsole.log(value);\n",
+        ),
+        (
+            "src/unreachable-loader.ts",
+            "export function load() {\n  return import('./module');\n}\n",
+        ),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert!(result.conflicts.is_empty());
 }
 
 #[test]
@@ -2148,16 +2281,22 @@ fn query_inline_project(files: &[(&str, &str)], request: QueryRequest) -> QueryR
 }
 
 fn import_conflicts_inline_project(files: &[(&str, &str)]) -> ImportConflictResult {
+    import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": "src/main.ts",
+          "project": "src/**/*.ts"
+        }"#,
+        files,
+    )
+}
+
+fn import_conflicts_inline_project_with_config(
+    config: &str,
+    files: &[(&str, &str)],
+) -> ImportConflictResult {
     let tempdir = tempfile::tempdir().unwrap();
     let cwd = tempdir.path();
-    write_file(
-        cwd,
-        "codescythe.json",
-        r#"{
-              "entry": "src/main.ts",
-              "project": "src/**/*.ts"
-            }"#,
-    );
+    write_file(cwd, "codescythe.json", config);
     for (relative, contents) in files {
         write_file(cwd, relative, contents);
     }

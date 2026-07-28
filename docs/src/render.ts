@@ -791,7 +791,7 @@ npx codescythe query allpaths \\
               purpose: 'Find mixed eager and lazy imports',
               type: 'query verb',
               values: 'no selectors',
-              notes: 'Lists resolved modules with both runtime-static and dynamic importers. Exits with status 1 when findings exist.',
+              notes: 'Lists resolved modules reached through runtime-static and dynamic paths from the same configured entrypoint. Exits with status 1 when findings exist.',
             },
           ],
         }),
@@ -816,7 +816,15 @@ src/module.ts
   runtime static imports:
     src/main.ts -- named import ./module
   dynamic imports:
-    src/main.ts -- dynamic import ./module`),
+    src/main.ts -- dynamic import ./module
+  shortest conflicting entrypoint route (src/main.ts):
+    runtime static path:
+      src/main.ts
+      -- named import ./module:value -> src/module.ts:value
+      -- defined in file value -> src/module.ts
+    dynamic path:
+      src/main.ts
+      -- dynamic import ./module -> src/module.ts`),
         h(
           'p',
           null,
@@ -829,12 +837,18 @@ src/module.ts
         h(
           'p',
           null,
+          'A finding is reported only when one configured entrypoint can reach the target through runtime-static edges and can also reach a dynamic importer of that target. The printed route is the shortest deterministic proof: one fully static path from the entrypoint to the target, plus one runtime path ending at the conflicting dynamic import. This avoids treating imports isolated in separate entrypoint graphs as conflicts.',
+        ),
+        h(
+          'p',
+          null,
           'The command exits with status 1 when findings exist and 0 when the scan is clean. Use ',
           h('code', null, '--json'),
           ' for CI or scripted cleanup. Fix the listed runtime-static edges, rerun the command, and confirm the target disappears.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "scannedFileCount": 2,
+  "entrypointCount": 1,
   "conflicts": [
     {
       "target": "src/module.ts",
@@ -851,14 +865,55 @@ src/module.ts
           "specifier": "./module",
           "kind": "dynamicImport"
         }
-      ]
+      ],
+      "entrypointRoute": {
+        "entrypoint": "src/main.ts",
+        "runtimeStaticPath": {
+          "nodes": [
+            { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+            { "id": "export:src/module.ts:value", "kind": "export", "path": "src/module.ts", "symbol": "value" },
+            { "id": "file:src/module.ts", "kind": "file", "path": "src/module.ts" }
+          ],
+          "edges": [
+            {
+              "from": "file:src/main.ts",
+              "to": "export:src/module.ts:value",
+              "kind": "namedImport",
+              "importer": "src/main.ts",
+              "specifier": "./module",
+              "imported": "value"
+            },
+            {
+              "from": "export:src/module.ts:value",
+              "to": "file:src/module.ts",
+              "kind": "exportDefinition",
+              "imported": "value"
+            }
+          ]
+        },
+        "dynamicPath": {
+          "nodes": [
+            { "id": "file:src/main.ts", "kind": "file", "path": "src/main.ts" },
+            { "id": "file:src/module.ts", "kind": "file", "path": "src/module.ts" }
+          ],
+          "edges": [
+            {
+              "from": "file:src/main.ts",
+              "to": "file:src/module.ts",
+              "kind": "dynamicImport",
+              "importer": "src/main.ts",
+              "specifier": "./module"
+            }
+          ]
+        }
+      }
     }
   ]
 }`),
         h(
           Callout,
-          { title: 'Direct-edge check' },
-          h('p', null, 'Findings compare direct edges to the same resolved module across the configured project. They do not model bundler entrypoints or detect an indirect static route through another module. Use a production bundle inspection when you need proof of emitted chunk boundaries.'),
+          { title: 'Source graph, not bundle output' },
+          h('p', null, 'Entrypoint reachability follows Codescythe’s source graph, not bundler-specific chunk naming, shared-chunk extraction, or preload behavior. Use a production bundle inspection when you need proof of emitted boundaries and transferred bytes.'),
         ),
       ),
       h(
@@ -1209,7 +1264,7 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules with both runtime-static and dynamic importers; it ignores configured test files, prints each remaining importer and specifier, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",

@@ -433,6 +433,12 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
         text.contains("src/main.ts -- dynamic import ./module"),
         "{text}"
     );
+    assert!(
+        text.contains("shortest conflicting entrypoint route (src/main.ts):"),
+        "{text}"
+    );
+    assert!(text.contains("runtime static path:"), "{text}");
+    assert!(text.contains("dynamic path:"), "{text}");
 
     let json_output = Command::new(&cli)
         .args([
@@ -454,6 +460,7 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
     let json: Value =
         serde_json::from_slice(&json_output.stdout).expect("conflicts stdout should be JSON");
     assert_eq!(json["scannedFileCount"], 2);
+    assert_eq!(json["entrypointCount"], 1);
     assert_eq!(json["conflicts"][0]["target"], "src/module.ts");
     assert_eq!(
         json["conflicts"][0]["runtimeStaticImports"][0]["kind"],
@@ -461,6 +468,18 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
     );
     assert_eq!(
         json["conflicts"][0]["dynamicImports"][0]["kind"],
+        "dynamicImport"
+    );
+    assert_eq!(
+        json["conflicts"][0]["entrypointRoute"]["entrypoint"],
+        "src/main.ts"
+    );
+    assert_eq!(
+        json["conflicts"][0]["entrypointRoute"]["runtimeStaticPath"]["nodes"][0]["path"],
+        "src/main.ts"
+    );
+    assert_eq!(
+        json["conflicts"][0]["entrypointRoute"]["dynamicPath"]["edges"][0]["kind"],
         "dynamicImport"
     );
 

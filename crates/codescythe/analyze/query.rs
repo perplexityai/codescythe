@@ -135,6 +135,7 @@ pub struct QueryUnresolvedImport {
 #[serde(rename_all = "camelCase")]
 pub struct ImportConflictResult {
     pub scanned_file_count: usize,
+    pub entrypoint_count: usize,
     pub conflicts: Vec<ImportConflict>,
 }
 
@@ -144,6 +145,7 @@ pub struct ImportConflict {
     pub target: String,
     pub runtime_static_imports: Vec<ImportConflictEdge>,
     pub dynamic_imports: Vec<ImportConflictEdge>,
+    pub entrypoint_route: ImportConflictRoute,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -152,6 +154,14 @@ pub struct ImportConflictEdge {
     pub importer: String,
     pub specifier: String,
     pub kind: QueryEdgeKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConflictRoute {
+    pub entrypoint: String,
+    pub runtime_static_path: QueryPath,
+    pub dynamic_path: QueryPath,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -341,6 +351,7 @@ pub fn query_import_conflicts(
     }
 
     let project_files = discover_project_files(&cwd, config)?;
+    let entry_files = discover_entry_files(&cwd, config, &project_files)?;
     let test_file_indexes = discover_test_file_indexes(&cwd, config, &project_files)?;
     let test_files = test_file_indexes
         .into_iter()
@@ -352,6 +363,15 @@ pub fn query_import_conflicts(
     files.parse_many(&all_indexes)?;
 
     let (graph, _) = build_query_graph(&mut files, &module_resolver)?;
+    let entry_nodes = entry_files
+        .into_iter()
+        .filter_map(|path| {
+            let relative = relative_path(&cwd, &path);
+            (!test_files.contains(&relative))
+                .then(|| graph.file_node(&relative).map(|index| (relative, index)))
+                .flatten()
+        })
+        .collect::<Vec<_>>();
     let mut imports_by_target = BTreeMap::<
         String,
         (
@@ -391,26 +411,127 @@ pub fn query_import_conflicts(
         }
     }
 
+    let mut entrypoint_routes = BTreeMap::<String, (usize, ImportConflictRoute)>::new();
+    let mut relevant_imports =
+        BTreeMap::<String, (BTreeSet<(String, String)>, BTreeSet<(String, String)>)>::new();
+    let dynamic_file_edges = graph
+        .edges
+        .iter()
+        .enumerate()
+        .filter_map(|(edge_index, edge)| {
+            let target_index = graph.node_by_id.get(&edge.to).copied()?;
+            (edge.kind == QueryEdgeKind::DynamicImport
+                && graph.nodes[target_index].kind == QueryNodeKind::File
+                && edge
+                    .importer
+                    .as_ref()
+                    .is_some_and(|importer| !test_files.contains(importer)))
+            .then_some((edge_index, target_index))
+        })
+        .collect::<Vec<_>>();
+
+    for (entrypoint, entrypoint_index) in &entry_nodes {
+        let runtime_tree = shortest_path_tree(&graph, *entrypoint_index, |edge| {
+            runtime_traversal_edge(edge.kind)
+                && edge
+                    .importer
+                    .as_ref()
+                    .is_none_or(|importer| !test_files.contains(importer))
+        });
+        let runtime_static_tree = shortest_path_tree(&graph, *entrypoint_index, |edge| {
+            runtime_static_traversal_edge(edge.kind)
+                && edge
+                    .importer
+                    .as_ref()
+                    .is_none_or(|importer| !test_files.contains(importer))
+        });
+
+        for (dynamic_edge_index, target_index) in &dynamic_file_edges {
+            let dynamic_edge = &graph.edges[*dynamic_edge_index];
+            let Some(importer) = dynamic_edge.importer.as_deref() else {
+                continue;
+            };
+            let Some(importer_index) = graph.file_node(importer) else {
+                continue;
+            };
+            if !runtime_tree.seen[importer_index] || !runtime_static_tree.seen[*target_index] {
+                continue;
+            }
+
+            let target = graph.nodes[*target_index].path.clone();
+            let relevant = relevant_imports.entry(target.clone()).or_default();
+            relevant.1.insert((
+                importer.to_string(),
+                dynamic_edge
+                    .specifier
+                    .clone()
+                    .expect("dynamic import edge should have a specifier"),
+            ));
+            if let Some((runtime_static_imports, _)) = imports_by_target.get(&target) {
+                for key in runtime_static_imports.keys() {
+                    if graph
+                        .file_node(&key.0)
+                        .is_some_and(|index| runtime_static_tree.seen[index])
+                    {
+                        relevant.0.insert(key.clone());
+                    }
+                }
+            }
+
+            let runtime_static_path =
+                reconstruct_path(&graph, *target_index, &runtime_static_tree.parent_edge);
+            let mut dynamic_path =
+                reconstruct_path(&graph, importer_index, &runtime_tree.parent_edge);
+            dynamic_path.edges.push(graph.edge(*dynamic_edge_index));
+            dynamic_path.nodes.push(graph.node(*target_index));
+
+            let route = ImportConflictRoute {
+                entrypoint: entrypoint.clone(),
+                runtime_static_path,
+                dynamic_path,
+            };
+            let route_length =
+                route.runtime_static_path.edges.len() + route.dynamic_path.edges.len();
+            if entrypoint_routes
+                .get(&target)
+                .is_none_or(|(current_length, _)| route_length < *current_length)
+            {
+                entrypoint_routes.insert(target, (route_length, route));
+            }
+        }
+    }
+
     let conflicts = imports_by_target
         .into_iter()
         .filter_map(|(target, (runtime_static_imports, dynamic_imports))| {
-            (!runtime_static_imports.is_empty() && !dynamic_imports.is_empty()).then(|| {
-                ImportConflict {
-                    target,
-                    runtime_static_imports: runtime_static_imports.into_values().collect(),
-                    dynamic_imports: dynamic_imports.into_values().collect(),
-                }
+            let entrypoint_route = entrypoint_routes.remove(&target).map(|(_, route)| route);
+            let (relevant_runtime_static, relevant_dynamic) =
+                relevant_imports.remove(&target).unwrap_or_default();
+            entrypoint_route.map(|entrypoint_route| ImportConflict {
+                target,
+                runtime_static_imports: runtime_static_imports
+                    .into_iter()
+                    .filter_map(|(key, import)| {
+                        relevant_runtime_static.contains(&key).then_some(import)
+                    })
+                    .collect(),
+                dynamic_imports: dynamic_imports
+                    .into_iter()
+                    .filter_map(|(key, import)| relevant_dynamic.contains(&key).then_some(import))
+                    .collect(),
+                entrypoint_route,
             })
         })
         .collect();
 
     Ok(ImportConflictResult {
         scanned_file_count: files.paths.len(),
+        entrypoint_count: entry_nodes.len(),
         conflicts,
     })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ImportConflictCategory {
     RuntimeStatic,
     Dynamic,
@@ -429,6 +550,15 @@ fn import_conflict_category(kind: QueryEdgeKind) -> Option<ImportConflictCategor
             None
         }
     }
+}
+
+fn runtime_static_traversal_edge(kind: QueryEdgeKind) -> bool {
+    import_conflict_category(kind) == Some(ImportConflictCategory::RuntimeStatic)
+        || kind == QueryEdgeKind::ExportDefinition
+}
+
+fn runtime_traversal_edge(kind: QueryEdgeKind) -> bool {
+    runtime_static_traversal_edge(kind) || kind == QueryEdgeKind::DynamicImport
 }
 
 pub fn render_query_mermaid(result: &QueryResult) -> String {
@@ -1082,6 +1212,41 @@ fn shortest_paths(
         .into_iter()
         .map(|target| reconstruct_path(graph, target, &parent_edge))
         .collect()
+}
+
+struct ShortestPathTree {
+    seen: Vec<bool>,
+    parent_edge: Vec<Option<usize>>,
+}
+
+fn shortest_path_tree(
+    graph: &QueryGraphIndex,
+    source: usize,
+    edge_allowed: impl Fn(&QueryEdge) -> bool,
+) -> ShortestPathTree {
+    let mut queue = VecDeque::from([source]);
+    let mut seen = vec![false; graph.nodes.len()];
+    let mut parent_edge = vec![None; graph.nodes.len()];
+    seen[source] = true;
+
+    while let Some(node) = queue.pop_front() {
+        for edge_index in &graph.outgoing[node] {
+            let edge = &graph.edges[*edge_index];
+            if !edge_allowed(edge) {
+                continue;
+            }
+            let Some(next) = graph.node_by_id.get(&edge.to).copied() else {
+                continue;
+            };
+            if !seen[next] {
+                seen[next] = true;
+                parent_edge[next] = Some(*edge_index);
+                queue.push_back(next);
+            }
+        }
+    }
+
+    ShortestPathTree { seen, parent_edge }
 }
 
 fn reconstruct_path(

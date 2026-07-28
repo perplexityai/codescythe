@@ -662,12 +662,16 @@ fn pluralize(count: usize, singular: &'static str, plural: &'static str) -> &'st
 }
 
 fn print_query_path(path: &codescythe::QueryPath) {
+    print_query_path_with_indent(path, "  ");
+}
+
+fn print_query_path_with_indent(path: &codescythe::QueryPath, indent: &str) {
     if let Some(first) = path.nodes.first() {
-        println!("  {}", query_node_label(first));
+        println!("{indent}{}", query_node_label(first));
     }
     for (edge, node) in path.edges.iter().zip(path.nodes.iter().skip(1)) {
         println!(
-            "  -- {} -> {}",
+            "{indent}-- {} -> {}",
             query_edge_label(edge),
             query_node_label(node)
         );
@@ -677,8 +681,8 @@ fn print_query_path(path: &codescythe::QueryPath) {
 fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
     if result.conflicts.is_empty() {
         println!(
-            "No runtime static/dynamic import conflicts found across {} files",
-            result.scanned_file_count
+            "No entrypoint-confirmed runtime static/dynamic import conflicts found across {} files and {} entrypoints",
+            result.scanned_file_count, result.entrypoint_count
         );
         return;
     }
@@ -712,6 +716,14 @@ fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
                 import.specifier
             );
         }
+        println!(
+            "  shortest conflicting entrypoint route ({}):",
+            conflict.entrypoint_route.entrypoint
+        );
+        println!("    runtime static path:");
+        print_query_path_with_indent(&conflict.entrypoint_route.runtime_static_path, "      ");
+        println!("    dynamic path:");
+        print_query_path_with_indent(&conflict.entrypoint_route.dynamic_path, "      ");
     }
 }
 
