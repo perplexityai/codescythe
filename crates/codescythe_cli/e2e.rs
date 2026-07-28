@@ -379,6 +379,95 @@ fn cli_queries_dependency_paths() {
 }
 
 #[test]
+fn cli_prints_runtime_static_dynamic_import_conflicts() {
+    let fixture = env::temp_dir().join(format!(
+        "codescythe-e2e-import-conflicts-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after UNIX_EPOCH")
+            .as_nanos()
+    ));
+    fs::create_dir_all(fixture.join("src")).unwrap();
+    fs::write(
+        fixture.join("codescythe.json"),
+        r#"{
+          "entry": "src/main.ts",
+          "project": "src/**/*.ts"
+        }"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("src/main.ts"),
+        "import { value } from './module';\nvoid import('./module');\nconsole.log(value);\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("src/module.ts"),
+        "export const value = 1;\n",
+    )
+    .unwrap();
+
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+        ])
+        .output()
+        .expect("failed to run import conflict query");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        text.contains("Found 1 module with runtime static/dynamic import conflicts:"),
+        "{text}"
+    );
+    assert!(text.contains("src/module.ts"), "{text}");
+    assert!(
+        text.contains("src/main.ts -- named import ./module"),
+        "{text}"
+    );
+    assert!(
+        text.contains("src/main.ts -- dynamic import ./module"),
+        "{text}"
+    );
+
+    let json_output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run JSON import conflict query");
+
+    assert_eq!(
+        json_output.status.code(),
+        Some(1),
+        "{}",
+        output_text(&json_output)
+    );
+    let json: Value =
+        serde_json::from_slice(&json_output.stdout).expect("conflicts stdout should be JSON");
+    assert_eq!(json["scannedFileCount"], 2);
+    assert_eq!(json["conflicts"][0]["target"], "src/module.ts");
+    assert_eq!(
+        json["conflicts"][0]["runtimeStaticImports"][0]["kind"],
+        "namedImport"
+    );
+    assert_eq!(
+        json["conflicts"][0]["dynamicImports"][0]["kind"],
+        "dynamicImport"
+    );
+
+    fs::remove_dir_all(fixture).unwrap();
+}
+
+#[test]
 fn cli_query_includes_unresolved_imports_when_requested() {
     let cli = runfile("crates/codescythe_cli/codescythe");
     let fixture = env::temp_dir().join(format!(

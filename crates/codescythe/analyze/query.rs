@@ -131,6 +131,29 @@ pub struct QueryUnresolvedImport {
     pub specifier: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConflictResult {
+    pub scanned_file_count: usize,
+    pub conflicts: Vec<ImportConflict>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConflict {
+    pub target: String,
+    pub runtime_static_imports: Vec<ImportConflictEdge>,
+    pub dynamic_imports: Vec<ImportConflictEdge>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConflictEdge {
+    pub importer: String,
+    pub specifier: String,
+    pub kind: QueryEdgeKind,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 enum QueryNodeKey {
     File(String),
@@ -306,6 +329,106 @@ pub fn query_path(
         graph: path_graph,
         unresolved,
     })
+}
+
+pub fn query_import_conflicts(
+    cwd: &Path,
+    config: &CodescytheConfig,
+) -> Result<ImportConflictResult> {
+    let cwd = absolute_normalize_path(cwd)?;
+    if !cwd.exists() {
+        anyhow::bail!("analysis root does not exist: {}", cwd.display());
+    }
+
+    let project_files = discover_project_files(&cwd, config)?;
+    let test_file_indexes = discover_test_file_indexes(&cwd, config, &project_files)?;
+    let test_files = test_file_indexes
+        .into_iter()
+        .map(|index| relative_path(&cwd, &project_files[index]))
+        .collect::<HashSet<_>>();
+    let module_resolver = ModuleResolver::new(&cwd, &project_files, config)?;
+    let mut files = FileCache::new(&cwd, project_files)?;
+    let all_indexes = (0..files.paths.len()).collect::<Vec<_>>();
+    files.parse_many(&all_indexes)?;
+
+    let (graph, _) = build_query_graph(&mut files, &module_resolver)?;
+    let mut imports_by_target = BTreeMap::<
+        String,
+        (
+            BTreeMap<(String, String), ImportConflictEdge>,
+            BTreeMap<(String, String), ImportConflictEdge>,
+        ),
+    >::new();
+
+    for edge in &graph.edges {
+        let Some(category) = import_conflict_category(edge.kind) else {
+            continue;
+        };
+        let Some(target_index) = graph.node_by_id.get(&edge.to) else {
+            continue;
+        };
+        let (Some(importer), Some(specifier)) = (&edge.importer, &edge.specifier) else {
+            continue;
+        };
+        if test_files.contains(importer) {
+            continue;
+        }
+        let target = graph.nodes[*target_index].path.clone();
+        let key = (importer.clone(), specifier.clone());
+        let import = ImportConflictEdge {
+            importer: importer.clone(),
+            specifier: specifier.clone(),
+            kind: edge.kind,
+        };
+        let imports = imports_by_target.entry(target).or_default();
+        match category {
+            ImportConflictCategory::RuntimeStatic => {
+                imports.0.entry(key).or_insert(import);
+            }
+            ImportConflictCategory::Dynamic => {
+                imports.1.entry(key).or_insert(import);
+            }
+        }
+    }
+
+    let conflicts = imports_by_target
+        .into_iter()
+        .filter_map(|(target, (runtime_static_imports, dynamic_imports))| {
+            (!runtime_static_imports.is_empty() && !dynamic_imports.is_empty()).then(|| {
+                ImportConflict {
+                    target,
+                    runtime_static_imports: runtime_static_imports.into_values().collect(),
+                    dynamic_imports: dynamic_imports.into_values().collect(),
+                }
+            })
+        })
+        .collect();
+
+    Ok(ImportConflictResult {
+        scanned_file_count: files.paths.len(),
+        conflicts,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ImportConflictCategory {
+    RuntimeStatic,
+    Dynamic,
+}
+
+fn import_conflict_category(kind: QueryEdgeKind) -> Option<ImportConflictCategory> {
+    match kind {
+        QueryEdgeKind::NamedImport
+        | QueryEdgeKind::SideEffectImport
+        | QueryEdgeKind::ReExport
+        | QueryEdgeKind::ReExportSource
+        | QueryEdgeKind::NamespaceExport
+        | QueryEdgeKind::NamespaceMember => Some(ImportConflictCategory::RuntimeStatic),
+        QueryEdgeKind::DynamicImport => Some(ImportConflictCategory::Dynamic),
+        QueryEdgeKind::TypeImport | QueryEdgeKind::GlobImport | QueryEdgeKind::ExportDefinition => {
+            None
+        }
+    }
 }
 
 pub fn render_query_mermaid(result: &QueryResult) -> String {

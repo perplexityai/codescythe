@@ -14,8 +14,9 @@ mod tests;
 pub use doctor::doctor_config;
 pub use explain::ignored_unresolved_patterns_for_file;
 pub use query::{
-    QueryDiagnostics, QueryEdge, QueryEdgeKind, QueryGraph, QueryKind, QueryNode, QueryNodeKind,
-    QueryPath, QueryRequest, QueryResult, QuerySelector, QuerySelectorKind, QueryUnresolvedImport,
+    ImportConflict, ImportConflictEdge, ImportConflictResult, QueryDiagnostics, QueryEdge,
+    QueryEdgeKind, QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath, QueryRequest,
+    QueryResult, QuerySelector, QuerySelectorKind, QueryUnresolvedImport, query_import_conflicts,
     query_path, render_query_mermaid, render_query_svg,
 };
 pub use resolver::{

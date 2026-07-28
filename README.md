@@ -143,6 +143,7 @@ codescythe query somepath src/main.ts src/features/
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --json
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output mermaid
 codescythe query allpaths src/main.ts src/runtime.ts:initRuntime --output svg > graph.svg
+codescythe query import-conflicts
 ```
 
 Selectors can point at files, directories, or exported symbols written as
@@ -154,6 +155,10 @@ by `-C` or `--config`.
   many.
 - `allpaths` returns the subgraph of every node and edge that lies on a path
   from the source selector to the target selector.
+- `import-conflicts` lists modules reached through both runtime-static and
+  dynamic imports, including every conflicting importer and specifier. Type-only
+  and configured test-file imports do not count. It exits with status `1` when
+  conflicts are found and supports `--json` for CI or bulk cleanup.
 
 Text output is optimized for terminal inspection, including the resolved
 selector kinds, match counts, and a reachability summary that helps explain

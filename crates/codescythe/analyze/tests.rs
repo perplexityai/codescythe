@@ -1798,6 +1798,98 @@ fn query_marks_type_only_namespace_imports() {
 }
 
 #[test]
+fn import_conflicts_reports_runtime_static_and_dynamic_importers() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import { value } from './module';\nvoid import('./module');\nconsole.log(value);\n",
+        ),
+        (
+            "src/module.ts",
+            "export const value = 1;\nexport const other = 2;\n",
+        ),
+    ]);
+
+    assert_eq!(result.scanned_file_count, 2);
+    assert_eq!(
+        result.conflicts,
+        vec![ImportConflict {
+            target: "src/module.ts".to_string(),
+            runtime_static_imports: vec![ImportConflictEdge {
+                importer: "src/main.ts".to_string(),
+                specifier: "./module".to_string(),
+                kind: QueryEdgeKind::NamedImport,
+            }],
+            dynamic_imports: vec![ImportConflictEdge {
+                importer: "src/main.ts".to_string(),
+                specifier: "./module".to_string(),
+                kind: QueryEdgeKind::DynamicImport,
+            }],
+        }]
+    );
+}
+
+#[test]
+fn import_conflicts_ignores_type_only_and_dynamic_imports() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import type { Props } from './module';\ntype LocalProps = Props;\nvoid import('./module');\n",
+        ),
+        (
+            "src/module.ts",
+            "export type Props = { value: number };\nexport const value = 1;\n",
+        ),
+    ]);
+
+    assert!(result.conflicts.is_empty());
+}
+
+#[test]
+fn import_conflicts_ignores_test_only_imports() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import { value } from './module';\nconsole.log(value);\n",
+        ),
+        ("src/module.test.ts", "void import('./module');\n"),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert!(result.conflicts.is_empty());
+}
+
+#[test]
+fn import_conflicts_reports_deeper_static_importers() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import './eager';\nimport { load } from './loader';\nvoid load();\n",
+        ),
+        (
+            "src/eager.ts",
+            "import { value } from './module';\nconsole.log(value);\n",
+        ),
+        (
+            "src/loader.ts",
+            "export async function load() {\n  return import('./module');\n}\n",
+        ),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(result.conflicts[0].target, "src/module.ts");
+    assert_eq!(
+        result.conflicts[0].runtime_static_imports[0].importer,
+        "src/eager.ts"
+    );
+    assert_eq!(
+        result.conflicts[0].dynamic_imports[0].importer,
+        "src/loader.ts"
+    );
+}
+
+#[test]
 fn query_somepath_returns_one_path_per_reachable_directory_file() {
     let result = query_inline_project(
         &[
@@ -2053,6 +2145,25 @@ fn query_inline_project(files: &[(&str, &str)], request: QueryRequest) -> QueryR
 
     let config = crate::load_config(cwd, None).unwrap();
     query_path(cwd, &config, request).unwrap()
+}
+
+fn import_conflicts_inline_project(files: &[(&str, &str)]) -> ImportConflictResult {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": "src/main.ts",
+              "project": "src/**/*.ts"
+            }"#,
+    );
+    for (relative, contents) in files {
+        write_file(cwd, relative, contents);
+    }
+
+    let config = crate::load_config(cwd, None).unwrap();
+    query_import_conflicts(cwd, &config).unwrap()
 }
 
 fn cycle_query_files() -> &'static [(&'static str, &'static str)] {

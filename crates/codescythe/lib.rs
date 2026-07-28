@@ -6,13 +6,14 @@ pub use analyze::{
     Analysis, AnalysisOptions, AnalysisSummary, ConfigDoctorResult, ConfigDoctorWarning, Counters,
     ExplainExportRequest, ExplainExportResult, ExplainExportStatus, ExplanationReason,
     ExplanationReasonCode, ExportExplanation, FileIssue, IgnoredUnresolvedImportSample,
-    IgnoredUnresolvedImportsByPattern, InternalExportTestUsage, Issues, QueryDiagnostics,
-    QueryEdge, QueryEdgeKind, QueryGraph, QueryKind, QueryNode, QueryNodeKind, QueryPath,
-    QueryRequest, QueryResult, QuerySelector, QuerySelectorKind, QueryUnresolvedImport,
-    SourceAliasIgnoreWarning, SymbolIssue, UnresolvedImportCandidateFile,
-    UnresolvedImportExplanation, UnresolvedImportMatchedAlias, analyze_path, doctor_config,
-    query_path, render_query_mermaid, render_query_svg,
-    source_alias_fix_blocking_ignore_warnings_for_config, source_alias_ignore_warnings_for_config,
+    IgnoredUnresolvedImportsByPattern, ImportConflict, ImportConflictEdge, ImportConflictResult,
+    InternalExportTestUsage, Issues, QueryDiagnostics, QueryEdge, QueryEdgeKind, QueryGraph,
+    QueryKind, QueryNode, QueryNodeKind, QueryPath, QueryRequest, QueryResult, QuerySelector,
+    QuerySelectorKind, QueryUnresolvedImport, SourceAliasIgnoreWarning, SymbolIssue,
+    UnresolvedImportCandidateFile, UnresolvedImportExplanation, UnresolvedImportMatchedAlias,
+    analyze_path, doctor_config, query_import_conflicts, query_path, render_query_mermaid,
+    render_query_svg, source_alias_fix_blocking_ignore_warnings_for_config,
+    source_alias_ignore_warnings_for_config,
 };
 pub use config::{
     CodescytheConfig, LoadedConfig, UnresolvedImportsConfig, UnresolvedImportsMode, load_config,
@@ -52,6 +53,15 @@ pub fn query(
     let cwd = cwd.as_ref();
     let loaded = load_config_with_metadata(cwd, config_path)?;
     query_path(cwd, &loaded.config, request)
+}
+
+pub fn import_conflicts(
+    cwd: impl AsRef<Path>,
+    config_path: Option<&Path>,
+) -> anyhow::Result<ImportConflictResult> {
+    let cwd = cwd.as_ref();
+    let loaded = load_config_with_metadata(cwd, config_path)?;
+    query_import_conflicts(cwd, &loaded.config)
 }
 
 pub fn run_and_fix(cwd: impl AsRef<Path>, config_path: Option<&Path>) -> anyhow::Result<FixResult> {
