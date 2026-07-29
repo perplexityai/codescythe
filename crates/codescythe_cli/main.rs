@@ -684,6 +684,7 @@ fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
             "No entrypoint-confirmed runtime static/dynamic import conflicts found across {} files and {} entrypoints",
             result.scanned_file_count, result.entrypoint_count
         );
+        print_suppressed_import_conflict_count(result.suppressed_conflict_count);
         return;
     }
 
@@ -725,6 +726,15 @@ fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
         println!("    dynamic path:");
         print_query_path_with_indent(&conflict.entrypoint_route.dynamic_path, "      ");
     }
+    print_suppressed_import_conflict_count(result.suppressed_conflict_count);
+}
+
+fn print_suppressed_import_conflict_count(count: usize) {
+    if count == 0 {
+        return;
+    }
+    let module_label = if count == 1 { "module" } else { "modules" };
+    println!("\nSuppressed intentional import conflicts for {count} {module_label}");
 }
 
 fn query_node_label(node: &codescythe::QueryNode) -> String {

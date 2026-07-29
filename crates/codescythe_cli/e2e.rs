@@ -461,6 +461,7 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
         serde_json::from_slice(&json_output.stdout).expect("conflicts stdout should be JSON");
     assert_eq!(json["scannedFileCount"], 2);
     assert_eq!(json["entrypointCount"], 1);
+    assert_eq!(json["suppressedConflictCount"], 0);
     assert_eq!(json["conflicts"][0]["target"], "src/module.ts");
     assert_eq!(
         json["conflicts"][0]["runtimeStaticImports"][0]["kind"],
@@ -482,6 +483,56 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
         json["conflicts"][0]["entrypointRoute"]["dynamicPath"]["edges"][0]["kind"],
         "dynamicImport"
     );
+
+    fs::write(
+        fixture.join("src/main.ts"),
+        "// codescythe-ignore-next-line import-conflict -- dedicated entrypoint preload\n\
+         import { value } from './module';\n\
+         void import('./module');\n\
+         console.log(value);\n",
+    )
+    .unwrap();
+    let suppressed_output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+        ])
+        .output()
+        .expect("failed to run suppressed import conflict query");
+    assert_eq!(
+        suppressed_output.status.code(),
+        Some(0),
+        "{}",
+        output_text(&suppressed_output)
+    );
+    let suppressed_text = String::from_utf8_lossy(&suppressed_output.stdout);
+    assert!(
+        suppressed_text.contains("Suppressed intentional import conflicts for 1 module"),
+        "{suppressed_text}"
+    );
+
+    let suppressed_json_output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run suppressed JSON import conflict query");
+    assert_eq!(
+        suppressed_json_output.status.code(),
+        Some(0),
+        "{}",
+        output_text(&suppressed_json_output)
+    );
+    let suppressed_json: Value = serde_json::from_slice(&suppressed_json_output.stdout)
+        .expect("suppressed conflicts stdout should be JSON");
+    assert_eq!(suppressed_json["suppressedConflictCount"], 1);
+    assert_eq!(suppressed_json["conflicts"], serde_json::json!([]));
 
     fs::remove_dir_all(fixture).unwrap();
 }

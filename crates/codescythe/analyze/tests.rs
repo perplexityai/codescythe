@@ -1906,6 +1906,92 @@ fn import_conflicts_ignores_type_only_reexports() {
 }
 
 #[test]
+fn import_conflicts_suppresses_annotated_static_preloads() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict -- dedicated entrypoint preload\n\
+             import { value } from './module';\n\
+             void import('./module');\n\
+             console.log(value);\n",
+        ),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert!(result.conflicts.is_empty());
+    assert_eq!(result.suppressed_conflict_count, 1);
+}
+
+#[test]
+fn import_conflicts_require_suppression_reason() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict\n\
+             import { value } from './module';\n\
+             void import('./module');\n\
+             console.log(value);\n",
+        ),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(result.suppressed_conflict_count, 0);
+}
+
+#[test]
+fn import_conflicts_keep_unsuppressed_static_paths() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict -- dedicated entrypoint preload\n\
+             import { value } from './module';\n\
+             import './other';\n\
+             void import('./module');\n\
+             console.log(value);\n",
+        ),
+        (
+            "src/other.ts",
+            "import { value } from './module';\nconsole.log(value);\n",
+        ),
+        ("src/module.ts", "export const value = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(result.suppressed_conflict_count, 0);
+    assert_eq!(
+        result.conflicts[0].runtime_static_imports,
+        vec![ImportConflictEdge {
+            importer: "src/other.ts".to_string(),
+            specifier: "./module".to_string(),
+            kind: QueryEdgeKind::NamedImport,
+        }]
+    );
+}
+
+#[test]
+fn import_conflict_suppressions_keep_downstream_static_reachability() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict -- dedicated entrypoint preload\n\
+             import { preload } from './module';\n\
+             void import('./child');\n\
+             preload();\n",
+        ),
+        (
+            "src/module.ts",
+            "import { child } from './child';\nexport const preload = () => child;\n",
+        ),
+        ("src/child.ts", "export const child = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(result.conflicts[0].target, "src/child.ts");
+    assert_eq!(result.suppressed_conflict_count, 0);
+}
+
+#[test]
 fn import_conflicts_ignores_test_only_imports() {
     let result = import_conflicts_inline_project(&[
         (

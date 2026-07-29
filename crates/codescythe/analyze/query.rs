@@ -136,6 +136,7 @@ pub struct QueryUnresolvedImport {
 pub struct ImportConflictResult {
     pub scanned_file_count: usize,
     pub entrypoint_count: usize,
+    pub suppressed_conflict_count: usize,
     pub conflicts: Vec<ImportConflict>,
 }
 
@@ -361,6 +362,13 @@ pub fn query_import_conflicts(
     let mut files = FileCache::new(&cwd, project_files)?;
     let all_indexes = (0..files.paths.len()).collect::<Vec<_>>();
     files.parse_many(&all_indexes)?;
+    let mut suppressed_import_conflict_edges = HashSet::<(String, String)>::new();
+    for index in &all_indexes {
+        let file = files.get(*index)?;
+        for source in &file.suppressed_import_conflict_sources {
+            suppressed_import_conflict_edges.insert((file.relative.clone(), source.clone()));
+        }
+    }
 
     let (graph, _) = build_query_graph(&mut files, &module_resolver)?;
     let entry_nodes = entry_files
@@ -414,6 +422,7 @@ pub fn query_import_conflicts(
     let mut entrypoint_routes = BTreeMap::<String, (usize, ImportConflictRoute)>::new();
     let mut relevant_imports =
         BTreeMap::<String, (BTreeSet<(String, String)>, BTreeSet<(String, String)>)>::new();
+    let mut suppressed_targets = BTreeSet::<String>::new();
     let dynamic_file_edges = graph
         .edges
         .iter()
@@ -459,6 +468,32 @@ pub fn query_import_conflicts(
             }
 
             let target = graph.nodes[*target_index].path.clone();
+            let relevant_runtime_static = imports_by_target
+                .get(&target)
+                .map(|(runtime_static_imports, _)| {
+                    runtime_static_imports
+                        .keys()
+                        .filter(|key| {
+                            graph
+                                .file_node(&key.0)
+                                .is_some_and(|index| runtime_static_tree.seen[index])
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let unsuppressed_runtime_static = relevant_runtime_static
+                .iter()
+                .filter(|key| !suppressed_import_conflict_edges.contains(*key))
+                .cloned()
+                .collect::<Vec<_>>();
+            if unsuppressed_runtime_static.is_empty() {
+                if !relevant_runtime_static.is_empty() {
+                    suppressed_targets.insert(target);
+                }
+                continue;
+            }
+
             let relevant = relevant_imports.entry(target.clone()).or_default();
             relevant.1.insert((
                 importer.to_string(),
@@ -467,16 +502,7 @@ pub fn query_import_conflicts(
                     .clone()
                     .expect("dynamic import edge should have a specifier"),
             ));
-            if let Some((runtime_static_imports, _)) = imports_by_target.get(&target) {
-                for key in runtime_static_imports.keys() {
-                    if graph
-                        .file_node(&key.0)
-                        .is_some_and(|index| runtime_static_tree.seen[index])
-                    {
-                        relevant.0.insert(key.clone());
-                    }
-                }
-            }
+            relevant.0.extend(unsuppressed_runtime_static);
 
             let runtime_static_path =
                 reconstruct_path(&graph, *target_index, &runtime_static_tree.parent_edge);
@@ -522,11 +548,16 @@ pub fn query_import_conflicts(
                 entrypoint_route,
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let suppressed_conflict_count = suppressed_targets
+        .iter()
+        .filter(|target| !conflicts.iter().any(|conflict| &conflict.target == *target))
+        .count();
 
     Ok(ImportConflictResult {
         scanned_file_count: files.paths.len(),
         entrypoint_count: entry_nodes.len(),
+        suppressed_conflict_count,
         conflicts,
     })
 }
