@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.8.0...codescythe_cli_v0.9.0) (2026-07-29)
+
+
+### Features
+
+* **query:** report alternate conflict entrypoints ([#106](https://github.com/perplexityai/codescythe/issues/106)) ([bf27ae9](https://github.com/perplexityai/codescythe/commit/bf27ae913ddeb9e0aadba6dc0a2ec7393f42791d))
+* **query:** suppress intentional import conflicts ([#103](https://github.com/perplexityai/codescythe/issues/103)) ([c351f4c](https://github.com/perplexityai/codescythe/commit/c351f4c27433529c0d679cccfbfe73b05a2e9dcf))
+* **query:** suppress intentional preload subtrees ([#105](https://github.com/perplexityai/codescythe/issues/105)) ([456ee1a](https://github.com/perplexityai/codescythe/commit/456ee1ae1928a20deb5dc8a356ec76ad28e595c6))
+
+
+### Bug Fixes
+
+* **query:** ignore type-only re-exports in conflicts ([#101](https://github.com/perplexityai/codescythe/issues/101)) ([7613018](https://github.com/perplexityai/codescythe/commit/7613018c39eaba1a317494d25e36048e40b2ef72))
+
 ## [0.8.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.7.1...codescythe_cli_v0.8.0) (2026-07-28)
 
 
