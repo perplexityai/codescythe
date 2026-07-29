@@ -201,6 +201,7 @@ pub(super) struct FileData {
     pub(super) named_imports: BTreeMap<String, NamedImport>,
     pub(super) member_uses: Vec<(String, String)>,
     pub(super) reexport_all: Vec<String>,
+    pub(super) type_only_reexport_all: Vec<String>,
     pub(super) local_references: BTreeSet<String>,
 }
 
@@ -244,6 +245,7 @@ struct FileVisitor {
     named_imports: BTreeMap<String, NamedImport>,
     member_uses: Vec<(String, String)>,
     reexport_all: Vec<String>,
+    type_only_reexport_all: Vec<String>,
     local_references: BTreeSet<String>,
     local_internal_declarations: BTreeSet<String>,
     internal_annotation_starts: BTreeSet<u32>,
@@ -264,6 +266,7 @@ impl FileVisitor {
             named_imports: BTreeMap::new(),
             member_uses: Vec::new(),
             reexport_all: Vec::new(),
+            type_only_reexport_all: Vec::new(),
             local_references: BTreeSet::new(),
             local_internal_declarations: BTreeSet::new(),
             internal_annotation_starts,
@@ -288,6 +291,7 @@ impl FileVisitor {
         dedupe_preserving_order(&mut self.glob_imports);
         dedupe_preserving_order(&mut self.member_uses);
         dedupe_preserving_order(&mut self.reexport_all);
+        dedupe_preserving_order(&mut self.type_only_reexport_all);
 
         FileData {
             path: self.path,
@@ -302,6 +306,7 @@ impl FileVisitor {
             named_imports: self.named_imports,
             member_uses: self.member_uses,
             reexport_all: self.reexport_all,
+            type_only_reexport_all: self.type_only_reexport_all,
             local_references: self.local_references,
         }
     }
@@ -536,6 +541,9 @@ impl<'a> Visit<'a> for FileVisitor {
                 },
             );
         } else {
+            if export_kind(declaration.export_kind) == ExportKind::Type {
+                self.type_only_reexport_all.push(source.clone());
+            }
             self.reexport_all.push(source);
         }
     }

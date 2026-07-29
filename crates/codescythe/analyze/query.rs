@@ -856,7 +856,7 @@ fn build_query_graph(
                     &file,
                     from,
                     source,
-                    QueryEdgeKind::ReExportSource,
+                    reexport_query_edge_kind(export.kind, QueryEdgeKind::ReExportSource),
                 )?;
             }
 
@@ -874,7 +874,7 @@ fn build_query_graph(
                         &graph,
                         from_export,
                         to_export,
-                        QueryEdgeKind::ReExport,
+                        reexport_query_edge_kind(export.kind, QueryEdgeKind::ReExport),
                         &file.relative,
                         source,
                         Some(name),
@@ -889,7 +889,7 @@ fn build_query_graph(
                             &mut graph,
                             from,
                             file_nodes[target],
-                            QueryEdgeKind::ReExportSource,
+                            reexport_query_edge_kind(export.kind, QueryEdgeKind::ReExportSource),
                             &file.relative,
                             source,
                         );
@@ -901,7 +901,10 @@ fn build_query_graph(
                                     &graph,
                                     from_export,
                                     file_nodes[target],
-                                    QueryEdgeKind::NamespaceExport,
+                                    reexport_query_edge_kind(
+                                        export.kind,
+                                        QueryEdgeKind::NamespaceExport,
+                                    ),
                                     &file.relative,
                                     source,
                                     Some(export_name),
@@ -929,13 +932,25 @@ fn build_query_graph(
                 &file,
                 from,
                 source,
-                QueryEdgeKind::ReExportSource,
+                if file.type_only_reexport_all.contains(source) {
+                    QueryEdgeKind::TypeImport
+                } else {
+                    QueryEdgeKind::ReExportSource
+                },
             )?;
         }
     }
 
     sort_graph_edges(&mut graph);
     Ok((graph, unresolved.into_iter().collect()))
+}
+
+fn reexport_query_edge_kind(kind: ExportKind, runtime_kind: QueryEdgeKind) -> QueryEdgeKind {
+    if kind == ExportKind::Type {
+        QueryEdgeKind::TypeImport
+    } else {
+        runtime_kind
+    }
 }
 
 fn add_file_edge(
