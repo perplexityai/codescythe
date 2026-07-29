@@ -842,6 +842,20 @@ src/module.ts
         h(
           'p',
           null,
+          'When a dedicated entrypoint intentionally preloads a module that remains lazy for other entrypoints, suppress that static import edge with a required reason:',
+        ),
+        h(CodeBlock, { language: 'ts' }, `// codescythe-ignore-next-line import-conflict -- dedicated entrypoint preload
+import { Page } from "./Page";`),
+        h(
+          'p',
+          null,
+          'The edge remains in graph traversal, so conflicts below the preloaded module still report. Only the annotated importer and resolved target pair is suppressed. Another unsuppressed static path to the same target still reports. Text output reports the number of suppressed modules, and JSON exposes it as ',
+          h('code', null, 'suppressedConflictCount'),
+          '.',
+        ),
+        h(
+          'p',
+          null,
           'The command exits with status 1 when findings exist and 0 when the scan is clean. Use ',
           h('code', null, '--json'),
           ' for CI or scripted cleanup. Fix the listed runtime-static edges, rerun the command, and confirm the target disappears.',
@@ -849,6 +863,7 @@ src/module.ts
         h(CodeBlock, { language: 'json' }, `{
   "scannedFileCount": 2,
   "entrypointCount": 1,
+  "suppressedConflictCount": 0,
   "conflicts": [
     {
       "target": "src/module.ts",
@@ -1264,7 +1279,7 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, honors reasoned edge-local suppression comments for intentional preloads, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",

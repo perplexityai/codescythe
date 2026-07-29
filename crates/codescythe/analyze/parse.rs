@@ -19,7 +19,14 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     }
 
     let internal_annotation_starts = internal_annotation_starts(&source, &program.comments);
-    let mut visitor = FileVisitor::new(cwd, path, internal_annotation_starts);
+    let import_conflict_suppression_starts =
+        import_conflict_suppression_starts(&source, &program.comments);
+    let mut visitor = FileVisitor::new(
+        cwd,
+        path,
+        internal_annotation_starts,
+        import_conflict_suppression_starts,
+    );
     visitor.visit_program(&program);
     let mut file = visitor.finish();
     for export in file.exports.values_mut() {
@@ -187,6 +194,24 @@ fn jsdoc_starts_with_internal(text: &str) -> bool {
     text.starts_with("@internal")
 }
 
+fn import_conflict_suppression_starts(source: &str, comments: &[Comment]) -> BTreeSet<u32> {
+    comments
+        .iter()
+        .filter(|comment| {
+            source
+                .get(comment.content_span().start as usize..comment.content_span().end as usize)
+                .is_some_and(is_import_conflict_suppression)
+        })
+        .map(|comment| comment.attached_to)
+        .collect()
+}
+
+fn is_import_conflict_suppression(text: &str) -> bool {
+    text.trim()
+        .strip_prefix("codescythe-ignore-next-line import-conflict --")
+        .is_some_and(|reason| !reason.trim().is_empty())
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct FileData {
     pub(super) path: PathBuf,
@@ -202,6 +227,7 @@ pub(super) struct FileData {
     pub(super) member_uses: Vec<(String, String)>,
     pub(super) reexport_all: Vec<String>,
     pub(super) type_only_reexport_all: Vec<String>,
+    pub(super) suppressed_import_conflict_sources: BTreeSet<String>,
     pub(super) local_references: BTreeSet<String>,
 }
 
@@ -246,13 +272,20 @@ struct FileVisitor {
     member_uses: Vec<(String, String)>,
     reexport_all: Vec<String>,
     type_only_reexport_all: Vec<String>,
+    suppressed_import_conflict_sources: BTreeSet<String>,
     local_references: BTreeSet<String>,
     local_internal_declarations: BTreeSet<String>,
     internal_annotation_starts: BTreeSet<u32>,
+    import_conflict_suppression_starts: BTreeSet<u32>,
 }
 
 impl FileVisitor {
-    pub(super) fn new(cwd: &Path, path: &Path, internal_annotation_starts: BTreeSet<u32>) -> Self {
+    pub(super) fn new(
+        cwd: &Path,
+        path: &Path,
+        internal_annotation_starts: BTreeSet<u32>,
+        import_conflict_suppression_starts: BTreeSet<u32>,
+    ) -> Self {
         Self {
             path: path.to_path_buf(),
             relative: relative_path(cwd, path),
@@ -267,9 +300,11 @@ impl FileVisitor {
             member_uses: Vec::new(),
             reexport_all: Vec::new(),
             type_only_reexport_all: Vec::new(),
+            suppressed_import_conflict_sources: BTreeSet::new(),
             local_references: BTreeSet::new(),
             local_internal_declarations: BTreeSet::new(),
             internal_annotation_starts,
+            import_conflict_suppression_starts,
         }
     }
 
@@ -307,6 +342,7 @@ impl FileVisitor {
             member_uses: self.member_uses,
             reexport_all: self.reexport_all,
             type_only_reexport_all: self.type_only_reexport_all,
+            suppressed_import_conflict_sources: self.suppressed_import_conflict_sources,
             local_references: self.local_references,
         }
     }
@@ -401,6 +437,13 @@ impl FileVisitor {
 impl<'a> Visit<'a> for FileVisitor {
     fn visit_import_declaration(&mut self, declaration: &ImportDeclaration<'a>) {
         let source = declaration.source.value.as_str().to_string();
+        if self
+            .import_conflict_suppression_starts
+            .contains(&declaration.span.start)
+        {
+            self.suppressed_import_conflict_sources
+                .insert(source.clone());
+        }
         let declaration_type_only = declaration.import_kind == ImportOrExportKind::Type;
         match &declaration.specifiers {
             Some(specifiers) => {

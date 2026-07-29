@@ -204,6 +204,20 @@ path from the entrypoint to the target, plus one runtime path ending at the
 conflicting dynamic import. This avoids treating imports isolated in separate
 entrypoint graphs as conflicts.
 
+When a dedicated entrypoint intentionally preloads a module that remains lazy
+for other entrypoints, suppress that static import edge with a required reason:
+
+```ts
+// codescythe-ignore-next-line import-conflict -- dedicated entrypoint preload
+import { Page } from "./Page";
+```
+
+The edge remains in graph traversal, so conflicts below the preloaded module
+still report. Only the annotated importer and resolved target pair is
+suppressed. Another unsuppressed static path to the same target still reports.
+Text output reports the number of suppressed modules, and JSON exposes it as
+`suppressedConflictCount`.
+
 The command exits with status `1` when findings exist and `0` when the scan is
 clean. Use `--json` for CI or scripted cleanup:
 
@@ -211,6 +225,7 @@ clean. Use `--json` for CI or scripted cleanup:
 {
   "scannedFileCount": 2,
   "entrypointCount": 1,
+  "suppressedConflictCount": 0,
   "conflicts": [
     {
       "target": "src/module.ts",
