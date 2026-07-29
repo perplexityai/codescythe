@@ -2218,6 +2218,41 @@ fn import_conflicts_require_same_entrypoint_reachability() {
 }
 
 #[test]
+fn import_conflicts_report_each_conflicting_entrypoint_route() {
+    let result = import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": ["src/a.ts", "src/b.ts"],
+          "project": "src/**/*.ts"
+        }"#,
+        &[
+            (
+                "src/a.ts",
+                "import { value } from './module';\nvoid import('./module');\nconsole.log(value);\n",
+            ),
+            (
+                "src/b.ts",
+                "import { value } from './module';\nvoid import('./module');\nconsole.log(value);\n",
+            ),
+            ("src/module.ts", "export const value = 1;\n"),
+        ],
+    );
+
+    assert_eq!(result.conflicts.len(), 1);
+    let conflict = &result.conflicts[0];
+    assert_eq!(conflict.entrypoint_route.entrypoint, "src/a.ts");
+    assert_eq!(conflict.entrypoints, vec!["src/a.ts", "src/b.ts"]);
+    assert_eq!(conflict.alternate_entrypoint_route_count, 1);
+    assert_eq!(
+        conflict
+            .alternate_entrypoint_routes
+            .iter()
+            .map(|route| route.entrypoint.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/b.ts"]
+    );
+}
+
+#[test]
 fn import_conflicts_follow_nested_dynamic_path_from_entrypoint() {
     let result = import_conflicts_inline_project(&[
         (

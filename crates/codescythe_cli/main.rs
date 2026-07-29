@@ -112,6 +112,9 @@ struct ImportConflictsArgs {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, help = "Print one shortest conflicting path per entrypoint")]
+    all_paths: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -330,7 +333,7 @@ fn run_import_conflicts_command(
         println!("{}", serde_json::to_string(&result)?);
         print_profile_stage("json serialization", started);
     } else {
-        print_import_conflicts_report(&result);
+        print_import_conflicts_report(&result, args.all_paths);
     }
     Ok(!result.conflicts.is_empty())
 }
@@ -678,7 +681,7 @@ fn print_query_path_with_indent(path: &codescythe::QueryPath, indent: &str) {
     }
 }
 
-fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
+fn print_import_conflicts_report(result: &codescythe::ImportConflictResult, all_paths: bool) {
     if result.conflicts.is_empty() {
         println!(
             "No entrypoint-confirmed runtime static/dynamic import conflicts found across {} files and {} entrypoints",
@@ -717,14 +720,40 @@ fn print_import_conflicts_report(result: &codescythe::ImportConflictResult) {
                 import.specifier
             );
         }
+        let route_label = if conflict.alternate_entrypoint_route_count == 1 {
+            "alternate route"
+        } else {
+            "alternate routes"
+        };
         println!(
-            "  shortest conflicting entrypoint route ({}):",
-            conflict.entrypoint_route.entrypoint
+            "  conflicting entrypoints ({}; {} {route_label}):",
+            conflict.entrypoints.len(),
+            conflict.alternate_entrypoint_route_count
         );
-        println!("    runtime static path:");
-        print_query_path_with_indent(&conflict.entrypoint_route.runtime_static_path, "      ");
-        println!("    dynamic path:");
-        print_query_path_with_indent(&conflict.entrypoint_route.dynamic_path, "      ");
+        for entrypoint in &conflict.entrypoints {
+            println!("    {entrypoint}");
+        }
+        if all_paths {
+            println!("  conflicting entrypoint routes:");
+            for route in std::iter::once(&conflict.entrypoint_route)
+                .chain(&conflict.alternate_entrypoint_routes)
+            {
+                println!("    {}:", route.entrypoint);
+                println!("      runtime static path:");
+                print_query_path_with_indent(&route.runtime_static_path, "        ");
+                println!("      dynamic path:");
+                print_query_path_with_indent(&route.dynamic_path, "        ");
+            }
+        } else {
+            println!(
+                "  shortest conflicting entrypoint route ({}):",
+                conflict.entrypoint_route.entrypoint
+            );
+            println!("    runtime static path:");
+            print_query_path_with_indent(&conflict.entrypoint_route.runtime_static_path, "      ");
+            println!("    dynamic path:");
+            print_query_path_with_indent(&conflict.entrypoint_route.dynamic_path, "      ");
+        }
     }
     print_suppressed_import_conflict_count(result.suppressed_conflict_count);
 }

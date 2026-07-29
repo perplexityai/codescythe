@@ -157,9 +157,10 @@ by `-C` or `--config`.
   from the source selector to the target selector.
 - `import-conflicts` lists modules reached through both runtime-static and
   dynamic paths from the same configured entrypoint, including every conflicting
-  importer and specifier plus one shortest proof route. Type-only and configured
-  test-file imports do not count. It exits with status `1` when conflicts are
-  found and supports `--json` for CI or bulk cleanup.
+  importer and specifier, every conflicting entrypoint, and one shortest proof
+  route. Add `--all-paths` to print one shortest proof per conflicting entrypoint.
+  Type-only and configured test-file imports do not count. It exits with status
+  `1` when conflicts are found and supports `--json` for CI or bulk cleanup.
 
 ### Finding Static/Dynamic Import Conflicts
 
@@ -181,6 +182,8 @@ src/module.ts
     src/main.ts -- named import ./module
   dynamic imports:
     src/main.ts -- dynamic import ./module
+  conflicting entrypoints (1; 0 alternate routes):
+    src/main.ts
   shortest conflicting entrypoint route (src/main.ts):
     runtime static path:
       src/main.ts
@@ -199,10 +202,12 @@ from conflict findings. Configured test files are also excluded.
 
 A finding is reported only when one configured entrypoint can reach the target
 through runtime-static edges and can also reach a dynamic importer of that
-target. The printed route is the shortest deterministic proof: one fully static
-path from the entrypoint to the target, plus one runtime path ending at the
-conflicting dynamic import. This avoids treating imports isolated in separate
-entrypoint graphs as conflicts.
+target. Output lists every entrypoint with such a proof. By default, it prints
+the shortest deterministic proof overall: one fully static path from the
+entrypoint to the target, plus one runtime path ending at the conflicting
+dynamic import. Pass `--all-paths` to print the shortest proof for every listed
+entrypoint. This avoids treating imports isolated in separate entrypoint graphs
+as conflicts while making alternate roots visible.
 
 Suppress one intentional static/dynamic overlap with a required reason:
 
@@ -228,6 +233,9 @@ including downstream modules. Another static path that avoids the annotated
 edge still reports, whether it starts from the same entrypoint or another one.
 Both directives require a reason after `--`. Text output reports the number of
 suppressed modules, and JSON exposes it as `suppressedConflictCount`.
+JSON also exposes `entrypoints`, `alternateEntrypointRouteCount`, the existing
+shortest `entrypointRoute`, and `alternateEntrypointRoutes` when alternate
+proofs exist.
 
 The command exits with status `1` when findings exist and `0` when the scan is
 clean. Use `--json` for CI or scripted cleanup:
@@ -254,6 +262,8 @@ clean. Use `--json` for CI or scripted cleanup:
           "kind": "dynamicImport"
         }
       ],
+      "entrypoints": ["src/main.ts"],
+      "alternateEntrypointRouteCount": 0,
       "entrypointRoute": {
         "entrypoint": "src/main.ts",
         "runtimeStaticPath": {

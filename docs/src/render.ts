@@ -804,7 +804,7 @@ npx codescythe query allpaths \\
           null,
           'Use ',
           h('code', null, 'import-conflicts'),
-          ' when a module intended as a lazy boundary may also be pulled into the runtime graph eagerly. Each finding prints the resolved target plus every conflicting importer, edge kind, and original specifier.',
+          ' when a module intended as a lazy boundary may also be pulled into the runtime graph eagerly. Each finding prints the resolved target, every conflicting importer, and every entrypoint with a conflict proof.',
         ),
         h(CodeBlock, null, `npx codescythe query import-conflicts \\
   -C . \\
@@ -817,6 +817,8 @@ src/module.ts
     src/main.ts -- named import ./module
   dynamic imports:
     src/main.ts -- dynamic import ./module
+  conflicting entrypoints (1; 0 alternate routes):
+    src/main.ts
   shortest conflicting entrypoint route (src/main.ts):
     runtime static path:
       src/main.ts
@@ -837,7 +839,9 @@ src/module.ts
         h(
           'p',
           null,
-          'A finding is reported only when one configured entrypoint can reach the target through runtime-static edges and can also reach a dynamic importer of that target. The printed route is the shortest deterministic proof: one fully static path from the entrypoint to the target, plus one runtime path ending at the conflicting dynamic import. This avoids treating imports isolated in separate entrypoint graphs as conflicts.',
+          'A finding is reported only when one configured entrypoint can reach the target through runtime-static edges and can also reach a dynamic importer of that target. Output lists every entrypoint with such a proof. By default it prints the shortest proof overall; pass ',
+          h('code', null, '--all-paths'),
+          ' to print one shortest proof per conflicting entrypoint. This avoids treating imports isolated in separate entrypoint graphs as conflicts while making alternate roots visible.',
         ),
         h(
           'p',
@@ -865,7 +869,13 @@ import { FinanceRouter } from "./FinanceRouter";`),
           h('code', null, '--'),
           '. Text output reports the number of suppressed modules, and JSON exposes it as ',
           h('code', null, 'suppressedConflictCount'),
-          '.',
+          '. JSON also includes ',
+          h('code', null, 'entrypoints'),
+          ', ',
+          h('code', null, 'alternateEntrypointRouteCount'),
+          ', and ',
+          h('code', null, 'alternateEntrypointRoutes'),
+          ' when alternate proofs exist.',
         ),
         h(
           'p',
@@ -895,6 +905,8 @@ import { FinanceRouter } from "./FinanceRouter";`),
           "kind": "dynamicImport"
         }
       ],
+      "entrypoints": ["src/main.ts"],
+      "alternateEntrypointRouteCount": 0,
       "entrypointRoute": {
         "entrypoint": "src/main.ts",
         "runtimeStaticPath": {
@@ -1293,7 +1305,7 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, honors reasoned exact-edge and preload-subtree suppression comments, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, honors reasoned exact-edge and preload-subtree suppression comments, lists every conflicting entrypoint, prints one shortest proof by default or one per entrypoint with --all-paths, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",
