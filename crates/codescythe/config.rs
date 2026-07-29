@@ -23,6 +23,7 @@ pub struct CodescytheConfig {
     #[serde(deserialize_with = "deserialize_aliases")]
     pub aliases: BTreeMap<String, Vec<String>>,
     pub unresolved_imports: UnresolvedImportsConfig,
+    pub import_conflicts: ImportConflictsConfig,
     pub include_entry_exports: bool,
     pub ignore_exports_used_in_file: bool,
 }
@@ -36,10 +37,20 @@ impl Default for CodescytheConfig {
             ignore: Vec::new(),
             aliases: BTreeMap::new(),
             unresolved_imports: UnresolvedImportsConfig::default(),
+            import_conflicts: ImportConflictsConfig::default(),
             include_entry_exports: false,
             ignore_exports_used_in_file: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ImportConflictsConfig {
+    #[serde(deserialize_with = "deserialize_patterns")]
+    pub entry: Vec<String>,
+    #[serde(deserialize_with = "deserialize_patterns")]
+    pub exclude_entry: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -346,6 +357,32 @@ mod tests {
         let config = load_config(tempdir.path(), None).unwrap();
 
         assert!(config.test_file_patterns.is_empty());
+    }
+
+    #[test]
+    fn configures_import_conflict_entrypoints() {
+        let tempdir = tempfile::tempdir().unwrap();
+        write_file(
+            tempdir.path(),
+            "codescythe.json",
+            r#"{
+              "importConflicts": {
+                "entry": "src/apps/**/*.ts",
+                "excludeEntry": ["src/staged/**"]
+              }
+            }"#,
+        );
+
+        let config = load_config(tempdir.path(), None).unwrap();
+
+        assert_eq!(
+            config.import_conflicts.entry,
+            vec!["src/apps/**/*.ts".to_string()]
+        );
+        assert_eq!(
+            config.import_conflicts.exclude_entry,
+            vec!["src/staged/**".to_string()]
+        );
     }
 
     fn write_file(root: &Path, relative: &str, contents: &str) {

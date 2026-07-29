@@ -352,7 +352,15 @@ pub fn query_import_conflicts(
     }
 
     let project_files = discover_project_files(&cwd, config)?;
-    let entry_files = discover_entry_files(&cwd, config, &project_files)?;
+    let mut import_conflict_config = config.clone();
+    if !config.import_conflicts.entry.is_empty() {
+        import_conflict_config.entry = config.import_conflicts.entry.clone();
+    }
+    let excluded_entrypoints = build_glob_set(&config.import_conflicts.exclude_entry)?;
+    let entry_files = discover_entry_files(&cwd, &import_conflict_config, &project_files)?
+        .into_iter()
+        .filter(|path| !excluded_entrypoints.is_match(relative_path(&cwd, path)))
+        .collect::<Vec<_>>();
     let test_file_indexes = discover_test_file_indexes(&cwd, config, &project_files)?;
     let test_files = test_file_indexes
         .into_iter()

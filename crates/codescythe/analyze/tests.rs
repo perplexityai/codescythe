@@ -2102,6 +2102,93 @@ fn import_conflicts_require_same_entrypoint_reachability() {
 }
 
 #[test]
+fn import_conflicts_use_query_specific_entrypoints() {
+    let result = import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": ["src/app.ts", "src/staged.ts"],
+          "project": "src/**/*.ts",
+          "importConflicts": {
+            "entry": "src/app.ts"
+          }
+        }"#,
+        &[
+            ("src/app.ts", "console.log('app');\n"),
+            (
+                "src/staged.ts",
+                "import { value } from './deep/module';\n\
+                 void import('./deep/module');\n\
+                 console.log(value);\n",
+            ),
+            ("src/deep/module.ts", "export const value = 1;\n"),
+        ],
+    );
+
+    assert_eq!(result.entrypoint_count, 1);
+    assert!(result.conflicts.is_empty());
+}
+
+#[test]
+fn import_conflicts_exclude_liveness_only_entrypoints() {
+    let result = import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": ["src/app.ts", "src/staged/**/*.ts"],
+          "project": "src/**/*.ts",
+          "importConflicts": {
+            "excludeEntry": "src/staged/**"
+          }
+        }"#,
+        &[
+            ("src/app.ts", "console.log('app');\n"),
+            (
+                "src/staged/features/viewer.ts",
+                "import { value } from '../../deep/module';\n\
+                 void import('../../deep/module');\n\
+                 console.log(value);\n",
+            ),
+            ("src/deep/module.ts", "export const value = 1;\n"),
+        ],
+    );
+
+    assert_eq!(result.entrypoint_count, 1);
+    assert!(result.conflicts.is_empty());
+}
+
+#[test]
+fn import_conflicts_keep_routes_from_included_entrypoints() {
+    let result = import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": ["src/app.ts", "src/staged/**/*.ts"],
+          "project": "src/**/*.ts",
+          "importConflicts": {
+            "excludeEntry": "src/staged/**"
+          }
+        }"#,
+        &[
+            (
+                "src/app.ts",
+                "import { value } from './deep/module';\n\
+                 void import('./deep/module');\n\
+                 console.log(value);\n",
+            ),
+            (
+                "src/staged/features/viewer.ts",
+                "import { value } from '../../deep/module';\n\
+                 void import('../../deep/module');\n\
+                 console.log(value);\n",
+            ),
+            ("src/deep/module.ts", "export const value = 1;\n"),
+        ],
+    );
+
+    assert_eq!(result.entrypoint_count, 1);
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(
+        result.conflicts[0].entrypoint_route.entrypoint,
+        "src/app.ts"
+    );
+}
+
+#[test]
 fn import_conflicts_follow_nested_dynamic_path_from_entrypoint() {
     let result = import_conflicts_inline_project(&[
         (

@@ -52,6 +52,22 @@
         "mode": "report"
       }
     },
+    "importConflicts": {
+      "description": "Configures entrypoints used only by the import-conflicts query.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "description": "Entry files or glob patterns for import-conflicts. When omitted or empty, the top-level entry field is used.",
+          "$ref": "#/$defs/stringOrStringArray"
+        },
+        "excludeEntry": {
+          "description": "Entry files or glob patterns to exclude only from import-conflicts.",
+          "$ref": "#/$defs/stringOrStringArray"
+        }
+      },
+      "default": {}
+    },
     "includeEntryExports": {
       "type": "boolean",
       "default": false

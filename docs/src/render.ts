@@ -605,6 +605,18 @@ const pages: Page[] = [
 ]`,
             },
             {
+              field: 'importConflicts',
+              purpose: 'Import-conflict roots',
+              type: 'object',
+              values: 'Optional entry and excludeEntry string or string[] patterns.',
+              notes: 'Use entry to replace top-level roots for query import-conflicts, or excludeEntry to remove liveness-only and staged roots. Normal analysis remains unchanged.',
+              example: `"importConflicts": {
+  "excludeEntry": [
+    "src/staged/**"
+  ]
+}`,
+            },
+            {
               field: 'ignore',
               purpose: 'Exclude files',
               type: 'string or string[]',
@@ -839,6 +851,23 @@ src/module.ts
           null,
           'A finding is reported only when one configured entrypoint can reach the target through runtime-static edges and can also reach a dynamic importer of that target. The printed route is the shortest deterministic proof: one fully static path from the entrypoint to the target, plus one runtime path ending at the conflicting dynamic import. This avoids treating imports isolated in separate entrypoint graphs as conflicts.',
         ),
+        h(
+          'p',
+          null,
+          'Use ',
+          h('code', null, 'importConflicts.entry'),
+          ' when bundle roots differ from top-level dead-code analysis roots. When most roots are shared, use ',
+          h('code', null, 'importConflicts.excludeEntry'),
+          ' to omit only liveness-only or staged roots. An empty or omitted query-specific entry list falls back to top-level ',
+          h('code', null, 'entry'),
+          ', and normal analysis remains unchanged.',
+        ),
+        h(CodeBlock, { language: 'json' }, `{
+  "entry": ["src/apps/**/*.ts", "src/staged/**/*.ts"],
+  "importConflicts": {
+    "excludeEntry": ["src/staged/**"]
+  }
+}`),
         h(
           'p',
           null,
@@ -1279,7 +1308,7 @@ npx codescythe --json --explain-export src/constants.ts:oldFlag`),
         h(
           'p',
           null,
-          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it ignores configured test files, honors reasoned edge-local suppression comments for intentional preloads, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
+          'Query JSON includes the parsed selectors, diagnostics, matched source and target nodes, and either paths or a graph depending on the query kind. Type-only imports use the typeImport edge kind instead of a runtime import kind. Use query import-conflicts to list modules reached through runtime-static and dynamic paths from the same configured entrypoint; it supports query-specific entry and exclusion patterns, ignores configured test files, honors reasoned edge-local suppression comments for intentional preloads, prints each remaining importer and specifier plus one shortest proof route, supports JSON, and exits with status 1 when conflicts exist. Unresolved import details are omitted by default, but diagnostics still include the unresolved import count observed while building the graph.',
         ),
         h(CodeBlock, { language: 'json' }, `{
   "kind": "somepath",

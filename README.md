@@ -57,7 +57,7 @@ Config can be provided as:
 - An explicit `.json` or `.jsonc` path passed with `--config`.
 
 Supported config fields are `entry`, `project`, `testFilePatterns`, `ignore`,
-`aliases`, `unresolvedImports`, `includeEntryExports`, and
+`aliases`, `unresolvedImports`, `importConflicts`, `includeEntryExports`, and
 `ignoreExportsUsedInFile`. Codescythe automatically discovers `.gitignore` files
 in every traversed directory.
 
@@ -203,6 +203,23 @@ target. The printed route is the shortest deterministic proof: one fully static
 path from the entrypoint to the target, plus one runtime path ending at the
 conflicting dynamic import. This avoids treating imports isolated in separate
 entrypoint graphs as conflicts.
+
+Use `importConflicts.entry` when bundle roots differ from the top-level
+dead-code analysis roots. When most roots are shared, use
+`importConflicts.excludeEntry` to omit only liveness-only or staged roots:
+
+```json
+{
+  "entry": ["src/apps/**/*.ts", "src/staged/**/*.ts"],
+  "importConflicts": {
+    "excludeEntry": ["src/staged/**"]
+  }
+}
+```
+
+An empty or omitted `importConflicts.entry` falls back to top-level `entry`.
+These settings change only `query import-conflicts`; normal analysis keeps using
+every top-level entry.
 
 When a dedicated entrypoint intentionally preloads a module that remains lazy
 for other entrypoints, suppress that static import edge with a required reason:
