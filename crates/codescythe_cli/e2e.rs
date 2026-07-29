@@ -577,6 +577,92 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
 }
 
 #[test]
+fn cli_import_conflicts_prints_all_entrypoint_paths() {
+    let fixture = env::temp_dir().join(format!(
+        "codescythe-e2e-import-conflict-entrypoints-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after UNIX_EPOCH")
+            .as_nanos()
+    ));
+    fs::create_dir_all(fixture.join("src")).unwrap();
+    fs::write(
+        fixture.join("codescythe.json"),
+        r#"{
+          "entry": ["src/a.ts", "src/b.ts"],
+          "project": "src/**/*.ts"
+        }"#,
+    )
+    .unwrap();
+    for entrypoint in ["a", "b"] {
+        fs::write(
+            fixture.join(format!("src/{entrypoint}.ts")),
+            "import { value } from './module';\nvoid import('./module');\nconsole.log(value);\n",
+        )
+        .unwrap();
+    }
+    fs::write(
+        fixture.join("src/module.ts"),
+        "export const value = 1;\n",
+    )
+    .unwrap();
+
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+            "--all-paths",
+        ])
+        .output()
+        .expect("failed to run all-paths import conflict query");
+
+    assert_eq!(output.status.code(), Some(1), "{}", output_text(&output));
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        text.contains("conflicting entrypoints (2; 1 alternate route):"),
+        "{text}"
+    );
+    assert!(
+        text.contains("conflicting entrypoint routes:\n    src/a.ts:"),
+        "{text}"
+    );
+    assert!(text.contains("\n    src/b.ts:"), "{text}");
+
+    let json_output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run JSON import conflict query");
+    let json: Value =
+        serde_json::from_slice(&json_output.stdout).expect("conflicts stdout should be JSON");
+    assert_eq!(
+        json["conflicts"][0]["entrypoints"],
+        serde_json::json!(["src/a.ts", "src/b.ts"])
+    );
+    assert_eq!(
+        json["conflicts"][0]["alternateEntrypointRouteCount"],
+        1
+    );
+    assert_eq!(
+        json["conflicts"][0]["alternateEntrypointRoutes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    fs::remove_dir_all(fixture).unwrap();
+}
+
+#[test]
 fn cli_query_includes_unresolved_imports_when_requested() {
     let cli = runfile("crates/codescythe_cli/codescythe");
     let fixture = env::temp_dir().join(format!(

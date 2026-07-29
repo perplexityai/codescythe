@@ -146,7 +146,13 @@ pub struct ImportConflict {
     pub target: String,
     pub runtime_static_imports: Vec<ImportConflictEdge>,
     pub dynamic_imports: Vec<ImportConflictEdge>,
+    #[serde(default)]
+    pub entrypoints: Vec<String>,
+    #[serde(default)]
+    pub alternate_entrypoint_route_count: usize,
     pub entrypoint_route: ImportConflictRoute,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternate_entrypoint_routes: Vec<ImportConflictRoute>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -424,7 +430,8 @@ pub fn query_import_conflicts(
         }
     }
 
-    let mut entrypoint_routes = BTreeMap::<String, (usize, ImportConflictRoute)>::new();
+    let mut entrypoint_routes =
+        BTreeMap::<String, BTreeMap<String, (usize, ImportConflictRoute)>>::new();
     let mut relevant_imports =
         BTreeMap::<String, (BTreeSet<(String, String)>, BTreeSet<(String, String)>)>::new();
     let mut suppressed_targets = BTreeSet::<String>::new();
@@ -549,11 +556,12 @@ pub fn query_import_conflicts(
             };
             let route_length =
                 route.runtime_static_path.edges.len() + route.dynamic_path.edges.len();
-            if entrypoint_routes
-                .get(&target)
+            let target_routes = entrypoint_routes.entry(target).or_default();
+            if target_routes
+                .get(entrypoint)
                 .is_none_or(|(current_length, _)| route_length < *current_length)
             {
-                entrypoint_routes.insert(target, (route_length, route));
+                target_routes.insert(entrypoint.clone(), (route_length, route));
             }
         }
     }
@@ -561,10 +569,21 @@ pub fn query_import_conflicts(
     let conflicts = imports_by_target
         .into_iter()
         .filter_map(|(target, (runtime_static_imports, dynamic_imports))| {
-            let entrypoint_route = entrypoint_routes.remove(&target).map(|(_, route)| route);
+            let entrypoint_routes = entrypoint_routes.remove(&target)?;
+            let entrypoints = entrypoint_routes.keys().cloned().collect::<Vec<_>>();
+            let entrypoint_route = entrypoint_routes
+                .values()
+                .min_by_key(|(route_length, route)| (*route_length, &route.entrypoint))
+                .map(|(_, route)| route.clone())?;
+            let alternate_entrypoint_routes = entrypoint_routes
+                .into_values()
+                .map(|(_, route)| route)
+                .filter(|route| route.entrypoint != entrypoint_route.entrypoint)
+                .collect::<Vec<_>>();
+            let alternate_entrypoint_route_count = alternate_entrypoint_routes.len();
             let (relevant_runtime_static, relevant_dynamic) =
                 relevant_imports.remove(&target).unwrap_or_default();
-            entrypoint_route.map(|entrypoint_route| ImportConflict {
+            Some(ImportConflict {
                 target,
                 runtime_static_imports: runtime_static_imports
                     .into_iter()
@@ -576,7 +595,10 @@ pub fn query_import_conflicts(
                     .into_iter()
                     .filter_map(|(key, import)| relevant_dynamic.contains(&key).then_some(import))
                     .collect(),
+                entrypoints,
+                alternate_entrypoint_route_count,
                 entrypoint_route,
+                alternate_entrypoint_routes,
             })
         })
         .collect::<Vec<_>>();
