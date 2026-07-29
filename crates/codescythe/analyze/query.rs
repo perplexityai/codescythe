@@ -363,10 +363,15 @@ pub fn query_import_conflicts(
     let all_indexes = (0..files.paths.len()).collect::<Vec<_>>();
     files.parse_many(&all_indexes)?;
     let mut suppressed_import_conflict_edges = HashSet::<(String, String)>::new();
+    let mut suppressed_import_conflict_preload_edges = HashSet::<(String, String)>::new();
     for index in &all_indexes {
         let file = files.get(*index)?;
         for source in &file.suppressed_import_conflict_sources {
             suppressed_import_conflict_edges.insert((file.relative.clone(), source.clone()));
+        }
+        for source in &file.suppressed_import_conflict_preload_sources {
+            suppressed_import_conflict_preload_edges
+                .insert((file.relative.clone(), source.clone()));
         }
     }
 
@@ -454,6 +459,22 @@ pub fn query_import_conflicts(
                     .as_ref()
                     .is_none_or(|importer| !test_files.contains(importer))
         });
+        let runtime_static_without_preloads =
+            shortest_path_tree(&graph, *entrypoint_index, |edge| {
+                runtime_static_traversal_edge(edge.kind)
+                    && edge
+                        .importer
+                        .as_ref()
+                        .is_none_or(|importer| !test_files.contains(importer))
+                    && edge
+                        .importer
+                        .as_ref()
+                        .zip(edge.specifier.as_ref())
+                        .is_none_or(|(importer, specifier)| {
+                            !suppressed_import_conflict_preload_edges
+                                .contains(&(importer.clone(), specifier.clone()))
+                        })
+            });
 
         for (dynamic_edge_index, target_index) in &dynamic_file_edges {
             let dynamic_edge = &graph.edges[*dynamic_edge_index];
@@ -468,6 +489,10 @@ pub fn query_import_conflicts(
             }
 
             let target = graph.nodes[*target_index].path.clone();
+            if !runtime_static_without_preloads.seen[*target_index] {
+                suppressed_targets.insert(target);
+                continue;
+            }
             let relevant_runtime_static = imports_by_target
                 .get(&target)
                 .map(|(runtime_static_imports, _)| {
@@ -476,7 +501,7 @@ pub fn query_import_conflicts(
                         .filter(|key| {
                             graph
                                 .file_node(&key.0)
-                                .is_some_and(|index| runtime_static_tree.seen[index])
+                                .is_some_and(|index| runtime_static_without_preloads.seen[index])
                         })
                         .cloned()
                         .collect::<Vec<_>>()
@@ -484,7 +509,10 @@ pub fn query_import_conflicts(
                 .unwrap_or_default();
             let unsuppressed_runtime_static = relevant_runtime_static
                 .iter()
-                .filter(|key| !suppressed_import_conflict_edges.contains(*key))
+                .filter(|key| {
+                    !suppressed_import_conflict_edges.contains(*key)
+                        && !suppressed_import_conflict_preload_edges.contains(*key)
+                })
                 .cloned()
                 .collect::<Vec<_>>();
             if unsuppressed_runtime_static.is_empty() {
@@ -504,8 +532,11 @@ pub fn query_import_conflicts(
             ));
             relevant.0.extend(unsuppressed_runtime_static);
 
-            let runtime_static_path =
-                reconstruct_path(&graph, *target_index, &runtime_static_tree.parent_edge);
+            let runtime_static_path = reconstruct_path(
+                &graph,
+                *target_index,
+                &runtime_static_without_preloads.parent_edge,
+            );
             let mut dynamic_path =
                 reconstruct_path(&graph, importer_index, &runtime_tree.parent_edge);
             dynamic_path.edges.push(graph.edge(*dynamic_edge_index));

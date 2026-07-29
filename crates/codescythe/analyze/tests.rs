@@ -1992,6 +1992,122 @@ fn import_conflict_suppressions_keep_downstream_static_reachability() {
 }
 
 #[test]
+fn import_conflict_preloads_suppress_target_and_downstream_static_reachability() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict-preload -- dedicated route preload\n\
+             import { preload } from './module';\n\
+             void import('./module');\n\
+             void import('./child');\n\
+             preload();\n",
+        ),
+        (
+            "src/module.ts",
+            "import { child } from './child';\nexport const preload = () => child;\n",
+        ),
+        ("src/child.ts", "export const child = 1;\n"),
+    ]);
+
+    assert!(result.conflicts.is_empty());
+    assert_eq!(result.suppressed_conflict_count, 2);
+}
+
+#[test]
+fn import_conflict_preloads_require_suppression_reason() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict-preload\n\
+             import { preload } from './module';\n\
+             void import('./child');\n\
+             preload();\n",
+        ),
+        (
+            "src/module.ts",
+            "import { child } from './child';\nexport const preload = () => child;\n",
+        ),
+        ("src/child.ts", "export const child = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(result.conflicts[0].target, "src/child.ts");
+    assert_eq!(result.suppressed_conflict_count, 0);
+}
+
+#[test]
+fn import_conflict_preloads_keep_alternate_static_paths() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "// codescythe-ignore-next-line import-conflict-preload -- dedicated route preload\n\
+             import { preload } from './module';\n\
+             import { eager } from './other';\n\
+             void import('./child');\n\
+             preload();\n\
+             eager();\n",
+        ),
+        (
+            "src/module.ts",
+            "import { child } from './child';\nexport const preload = () => child;\n",
+        ),
+        (
+            "src/other.ts",
+            "import { child } from './child';\nexport const eager = () => child;\n",
+        ),
+        ("src/child.ts", "export const child = 1;\n"),
+    ]);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(
+        result.conflicts[0].runtime_static_imports,
+        vec![ImportConflictEdge {
+            importer: "src/other.ts".to_string(),
+            specifier: "./child".to_string(),
+            kind: QueryEdgeKind::NamedImport,
+        }]
+    );
+    assert_eq!(result.suppressed_conflict_count, 0);
+}
+
+#[test]
+fn import_conflict_preloads_keep_other_entrypoint_paths() {
+    let result = import_conflicts_inline_project_with_config(
+        r#"{
+          "entry": ["src/preload-entry.ts", "src/app-entry.ts"],
+          "project": "src/**/*.ts"
+        }"#,
+        &[
+            (
+                "src/preload-entry.ts",
+                "// codescythe-ignore-next-line import-conflict-preload -- dedicated route preload\n\
+                 import { preload } from './module';\n\
+                 void import('./child');\n\
+                 preload();\n",
+            ),
+            (
+                "src/app-entry.ts",
+                "import { child } from './child';\n\
+                 void import('./child');\n\
+                 console.log(child);\n",
+            ),
+            (
+                "src/module.ts",
+                "import { child } from './child';\nexport const preload = () => child;\n",
+            ),
+            ("src/child.ts", "export const child = 1;\n"),
+        ],
+    );
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(
+        result.conflicts[0].entrypoint_route.entrypoint,
+        "src/app-entry.ts"
+    );
+    assert_eq!(result.suppressed_conflict_count, 0);
+}
+
+#[test]
 fn import_conflicts_ignores_test_only_imports() {
     let result = import_conflicts_inline_project(&[
         (
