@@ -21,11 +21,14 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     let internal_annotation_starts = internal_annotation_starts(&source, &program.comments);
     let import_conflict_suppression_starts =
         import_conflict_suppression_starts(&source, &program.comments);
+    let import_conflict_preload_suppression_starts =
+        import_conflict_preload_suppression_starts(&source, &program.comments);
     let mut visitor = FileVisitor::new(
         cwd,
         path,
         internal_annotation_starts,
         import_conflict_suppression_starts,
+        import_conflict_preload_suppression_starts,
     );
     visitor.visit_program(&program);
     let mut file = visitor.finish();
@@ -212,6 +215,24 @@ fn is_import_conflict_suppression(text: &str) -> bool {
         .is_some_and(|reason| !reason.trim().is_empty())
 }
 
+fn import_conflict_preload_suppression_starts(source: &str, comments: &[Comment]) -> BTreeSet<u32> {
+    comments
+        .iter()
+        .filter(|comment| {
+            source
+                .get(comment.content_span().start as usize..comment.content_span().end as usize)
+                .is_some_and(is_import_conflict_preload_suppression)
+        })
+        .map(|comment| comment.attached_to)
+        .collect()
+}
+
+fn is_import_conflict_preload_suppression(text: &str) -> bool {
+    text.trim()
+        .strip_prefix("codescythe-ignore-next-line import-conflict-preload --")
+        .is_some_and(|reason| !reason.trim().is_empty())
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct FileData {
     pub(super) path: PathBuf,
@@ -228,6 +249,7 @@ pub(super) struct FileData {
     pub(super) reexport_all: Vec<String>,
     pub(super) type_only_reexport_all: Vec<String>,
     pub(super) suppressed_import_conflict_sources: BTreeSet<String>,
+    pub(super) suppressed_import_conflict_preload_sources: BTreeSet<String>,
     pub(super) local_references: BTreeSet<String>,
 }
 
@@ -273,10 +295,12 @@ struct FileVisitor {
     reexport_all: Vec<String>,
     type_only_reexport_all: Vec<String>,
     suppressed_import_conflict_sources: BTreeSet<String>,
+    suppressed_import_conflict_preload_sources: BTreeSet<String>,
     local_references: BTreeSet<String>,
     local_internal_declarations: BTreeSet<String>,
     internal_annotation_starts: BTreeSet<u32>,
     import_conflict_suppression_starts: BTreeSet<u32>,
+    import_conflict_preload_suppression_starts: BTreeSet<u32>,
 }
 
 impl FileVisitor {
@@ -285,6 +309,7 @@ impl FileVisitor {
         path: &Path,
         internal_annotation_starts: BTreeSet<u32>,
         import_conflict_suppression_starts: BTreeSet<u32>,
+        import_conflict_preload_suppression_starts: BTreeSet<u32>,
     ) -> Self {
         Self {
             path: path.to_path_buf(),
@@ -301,10 +326,12 @@ impl FileVisitor {
             reexport_all: Vec::new(),
             type_only_reexport_all: Vec::new(),
             suppressed_import_conflict_sources: BTreeSet::new(),
+            suppressed_import_conflict_preload_sources: BTreeSet::new(),
             local_references: BTreeSet::new(),
             local_internal_declarations: BTreeSet::new(),
             internal_annotation_starts,
             import_conflict_suppression_starts,
+            import_conflict_preload_suppression_starts,
         }
     }
 
@@ -343,6 +370,8 @@ impl FileVisitor {
             reexport_all: self.reexport_all,
             type_only_reexport_all: self.type_only_reexport_all,
             suppressed_import_conflict_sources: self.suppressed_import_conflict_sources,
+            suppressed_import_conflict_preload_sources: self
+                .suppressed_import_conflict_preload_sources,
             local_references: self.local_references,
         }
     }
@@ -442,6 +471,13 @@ impl<'a> Visit<'a> for FileVisitor {
             .contains(&declaration.span.start)
         {
             self.suppressed_import_conflict_sources
+                .insert(source.clone());
+        }
+        if self
+            .import_conflict_preload_suppression_starts
+            .contains(&declaration.span.start)
+        {
+            self.suppressed_import_conflict_preload_sources
                 .insert(source.clone());
         }
         let declaration_type_only = declaration.import_kind == ImportOrExportKind::Type;

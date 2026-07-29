@@ -534,6 +534,45 @@ fn cli_prints_runtime_static_dynamic_import_conflicts() {
     assert_eq!(suppressed_json["suppressedConflictCount"], 1);
     assert_eq!(suppressed_json["conflicts"], serde_json::json!([]));
 
+    fs::write(
+        fixture.join("src/main.ts"),
+        "// codescythe-ignore-next-line import-conflict-preload -- dedicated route preload\n\
+         import { value } from './module';\n\
+         void import('./child');\n\
+         console.log(value);\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("src/module.ts"),
+        "import { child } from './child';\nexport const value = child;\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.join("src/child.ts"),
+        "export const child = 1;\n",
+    )
+    .unwrap();
+    let preload_json_output = Command::new(&cli)
+        .args([
+            "query",
+            "import-conflicts",
+            "-C",
+            path_arg(&fixture),
+            "--json",
+        ])
+        .output()
+        .expect("failed to run preload-suppressed JSON import conflict query");
+    assert_eq!(
+        preload_json_output.status.code(),
+        Some(0),
+        "{}",
+        output_text(&preload_json_output)
+    );
+    let preload_json: Value = serde_json::from_slice(&preload_json_output.stdout)
+        .expect("preload-suppressed conflicts stdout should be JSON");
+    assert_eq!(preload_json["suppressedConflictCount"], 1);
+    assert_eq!(preload_json["conflicts"], serde_json::json!([]));
+
     fs::remove_dir_all(fixture).unwrap();
 }
 
