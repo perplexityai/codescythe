@@ -1871,6 +1871,41 @@ fn import_conflicts_ignores_type_only_and_dynamic_imports() {
 }
 
 #[test]
+fn import_conflicts_ignores_type_only_reexports() {
+    let result = import_conflicts_inline_project(&[
+        (
+            "src/main.ts",
+            "import { load } from './wrapper';\nvoid load();\n",
+        ),
+        (
+            "src/wrapper.ts",
+            "export type { Props } from './named';\n\
+             export type * from './star';\n\
+             export type * as Types from './namespace';\n\
+             export const load = () => Promise.all([\n\
+               import('./named'),\n\
+               import('./star'),\n\
+               import('./namespace'),\n\
+             ]);\n",
+        ),
+        (
+            "src/named.ts",
+            "export type Props = { value: number };\nexport const value = 1;\n",
+        ),
+        (
+            "src/star.ts",
+            "export type StarProps = { value: number };\nexport const value = 1;\n",
+        ),
+        (
+            "src/namespace.ts",
+            "export type NamespaceProps = { value: number };\nexport const value = 1;\n",
+        ),
+    ]);
+
+    assert!(result.conflicts.is_empty());
+}
+
+#[test]
 fn import_conflicts_ignores_test_only_imports() {
     let result = import_conflicts_inline_project(&[
         (
