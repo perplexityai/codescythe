@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.9.0...codescythe_cli_v0.10.0) (2026-07-30)
+
+
+### Features
+
+* add unused-file expectations ([#108](https://github.com/perplexityai/codescythe/issues/108)) ([7496faf](https://github.com/perplexityai/codescythe/commit/7496faf96edaa22ee08e639de7a86970a19c8540))
+
 ## [0.9.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.8.0...codescythe_cli_v0.9.0) (2026-07-29)
 
 
