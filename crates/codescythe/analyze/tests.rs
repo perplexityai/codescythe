@@ -17,6 +17,32 @@ fn finds_unused_exports_and_files_in_knip_style_fixture() {
 }
 
 #[test]
+fn rejects_an_entry_glob_that_matches_no_project_files() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": ["src/*.entry.ts", "src/missing/**/*.ts"],
+              "project": "src/**/*.ts"
+            }"#,
+    );
+    write_file(cwd, "src/main.entry.ts", "console.log('entry');\n");
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let error = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap_err();
+    let message = format!("{error:#}");
+
+    assert!(
+        message.contains(
+            r#"entry glob "src/missing/**/*.ts" matched no files in the configured project"#
+        ),
+        "{message}"
+    );
+}
+
+#[test]
 fn expect_error_suppresses_an_expected_unused_file() {
     let analysis = analyze_inline_project(&[
         ("src/entry.ts", "console.log('entry');\n"),
