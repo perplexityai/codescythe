@@ -78,6 +78,56 @@ fn cli_resolves_oxc_resolution_fixture() {
 }
 
 #[test]
+fn cli_enforces_expected_unused_files() {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after UNIX_EPOCH")
+        .as_nanos();
+    let fixture = env::temp_dir().join(format!(
+        "codescythe-e2e-expect-error-{}-{nanos}",
+        std::process::id()
+    ));
+    fs::create_dir_all(fixture.join("src")).unwrap();
+    fs::write(
+        fixture.join("codescythe.json"),
+        r#"{"entry":"src/main.ts","project":"src/**/*.ts"}"#,
+    )
+    .unwrap();
+    fs::write(fixture.join("src/main.ts"), "console.log('entry');\n").unwrap();
+    fs::write(
+        fixture.join("src/detached.ts"),
+        "// codescythe-expect-error unused-file -- loaded by framework\nexport const detached = 1;\n",
+    )
+    .unwrap();
+
+    let cli = runfile("crates/codescythe_cli/codescythe");
+    let suppressed = Command::new(&cli)
+        .args(["-C", path_arg(&fixture), "--json"])
+        .output()
+        .expect("failed to run codescythe CLI");
+    assert!(suppressed.status.success(), "{}", output_text(&suppressed));
+    let analysis: Value =
+        serde_json::from_slice(&suppressed.stdout).expect("CLI stdout should be JSON");
+    assert!(analysis["issues"]["files"].as_object().unwrap().is_empty());
+
+    fs::write(
+        fixture.join("src/main.ts"),
+        "import { detached } from './detached';\nconsole.log(detached);\n",
+    )
+    .unwrap();
+    let stale = Command::new(&cli)
+        .args(["-C", path_arg(&fixture)])
+        .output()
+        .expect("failed to run codescythe CLI");
+    assert_eq!(stale.status.code(), Some(2), "{}", output_text(&stale));
+    let stderr = String::from_utf8_lossy(&stale.stderr);
+    assert!(stderr.contains("unused-file expectation failed"), "{stderr}");
+    assert!(stderr.contains("src/detached.ts"), "{stderr}");
+
+    fs::remove_dir_all(fixture).unwrap();
+}
+
+#[test]
 fn cli_profile_writes_to_stderr_without_polluting_json() {
     let output = Command::new(runfile("crates/codescythe_cli/codescythe_profiling"))
         .env("CODESCYTHE_PROFILE", "1")

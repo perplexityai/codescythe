@@ -16,6 +16,69 @@ fn finds_unused_exports_and_files_in_knip_style_fixture() {
     assert!(!analysis.issues.exports.contains_key("index.ts"));
 }
 
+#[test]
+fn expect_error_suppresses_an_expected_unused_file() {
+    let analysis = analyze_inline_project(&[
+        ("src/entry.ts", "console.log('entry');\n"),
+        (
+            "src/detached.ts",
+            "// codescythe-expect-error unused-file -- loaded by framework\nexport const detached = 1;\n",
+        ),
+    ]);
+
+    assert!(!analysis.issues.files.contains_key("src/detached.ts"));
+    assert!(!analysis.issues.exports.contains_key("src/detached.ts"));
+    assert_eq!(analysis.counters.files, 0);
+    assert_eq!(analysis.counters.exports, 0);
+}
+
+#[test]
+fn expect_error_requires_a_reason() {
+    let analysis = analyze_inline_project(&[
+        ("src/entry.ts", "console.log('entry');\n"),
+        (
+            "src/detached.ts",
+            "// codescythe-expect-error unused-file\nexport const detached = 1;\n",
+        ),
+    ]);
+
+    assert_unused_file(&analysis, "src/detached.ts");
+}
+
+#[test]
+fn expect_error_fails_when_file_becomes_reachable() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let cwd = tempdir.path();
+    write_file(
+        cwd,
+        "codescythe.json",
+        r#"{
+              "entry": "src/entry.ts",
+              "project": "src/**/*.ts"
+            }"#,
+    );
+    write_file(
+        cwd,
+        "src/entry.ts",
+        "import { detached } from './detached';\nconsole.log(detached);\n",
+    );
+    write_file(
+        cwd,
+        "src/detached.ts",
+        "// codescythe-expect-error unused-file -- loaded by framework\nexport const detached = 1;\n",
+    );
+
+    let config = crate::load_config(cwd, None).unwrap();
+    let error = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap_err();
+    let message = format!("{error:#}");
+
+    assert!(
+        message.contains("unused-file expectation failed"),
+        "{message}"
+    );
+    assert!(message.contains("src/detached.ts"), "{message}");
+}
+
 #[cfg(unix)]
 #[test]
 fn follows_runfiles_style_symlinked_source_directories() {
