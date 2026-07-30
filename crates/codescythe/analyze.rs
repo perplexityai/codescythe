@@ -796,6 +796,28 @@ pub fn analyze_path(
         &mut queued_files,
     )?;
 
+    let mut expected_unused_file_indexes = HashSet::new();
+    for index in 0..total_files {
+        if files.expects_unused_file(index)? {
+            expected_unused_file_indexes.insert(index);
+        }
+    }
+    let stale_expectations = expected_unused_file_indexes
+        .iter()
+        .copied()
+        .filter(|index| {
+            entry_indexes.contains(index)
+                || (used_files.contains(index) && !test_file_indexes.contains(index))
+        })
+        .map(|index| files.relative(index))
+        .collect::<Vec<_>>();
+    if !stale_expectations.is_empty() {
+        anyhow::bail!(
+            "unused-file expectation failed; file is reachable from an entry point:\n{}",
+            stale_expectations.join("\n")
+        );
+    }
+
     let internal_test_usages = mark_internal_exports_used_by_tests(
         &mut files,
         &module_resolver,
@@ -834,13 +856,15 @@ pub fn analyze_path(
         let is_test = test_file_indexes.contains(&index);
 
         if !is_used && !is_entry && !is_test {
-            issues.files.insert(
-                relative.clone(),
-                FileIssue {
-                    path: relative.clone(),
-                },
-            );
-            unused_file_indexes.insert(index);
+            if !expected_unused_file_indexes.contains(&index) {
+                issues.files.insert(
+                    relative.clone(),
+                    FileIssue {
+                        path: relative.clone(),
+                    },
+                );
+                unused_file_indexes.insert(index);
+            }
             if !options.include_unreachable_exports {
                 continue;
             }

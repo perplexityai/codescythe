@@ -3,6 +3,7 @@ use super::*;
 fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("failed to read source file {}", path.display()))?;
+    let expects_unused_file = expects_unused_file(&source);
     let source_type = source_type_for_path(path)?;
     let allocator = Allocator::default();
     let ParserReturn {
@@ -32,6 +33,7 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     );
     visitor.visit_program(&program);
     let mut file = visitor.finish();
+    file.expects_unused_file = expects_unused_file;
     for export in file.exports.values_mut() {
         (export.line, export.col) = line_col(&source, export.name_span.start);
     }
@@ -155,6 +157,17 @@ impl FileCache {
             })
             .collect())
     }
+
+    pub(super) fn expects_unused_file(&self, index: usize) -> Result<bool> {
+        if let Some(file) = &self.parsed[index] {
+            return Ok(file.expects_unused_file);
+        }
+
+        let source = fs::read_to_string(&self.paths[index]).with_context(|| {
+            format!("failed to read source file {}", self.paths[index].display())
+        })?;
+        Ok(expects_unused_file(&source))
+    }
 }
 
 fn parse_thread_count() -> usize {
@@ -233,6 +246,54 @@ fn is_import_conflict_preload_suppression(text: &str) -> bool {
         .is_some_and(|reason| !reason.trim().is_empty())
 }
 
+fn expects_unused_file(source: &str) -> bool {
+    let mut in_block_comment = false;
+
+    'lines: for (index, line) in source.lines().enumerate() {
+        let mut remaining = line.trim_start_matches('\u{feff}').trim();
+
+        loop {
+            if in_block_comment {
+                let Some((_, rest)) = remaining.split_once("*/") else {
+                    break;
+                };
+                in_block_comment = false;
+                remaining = rest.trim();
+            }
+
+            if remaining.is_empty() || (index == 0 && remaining.starts_with("#!")) {
+                break;
+            }
+
+            if let Some(comment) = remaining.strip_prefix("//") {
+                if is_expect_unused_file(comment) {
+                    return true;
+                }
+                continue 'lines;
+            }
+
+            if let Some(comment) = remaining.strip_prefix("/*") {
+                if let Some((_, rest)) = comment.split_once("*/") {
+                    remaining = rest.trim();
+                    continue;
+                }
+                in_block_comment = true;
+                break;
+            }
+
+            return false;
+        }
+    }
+
+    false
+}
+
+fn is_expect_unused_file(text: &str) -> bool {
+    text.trim()
+        .strip_prefix("codescythe-expect-error unused-file --")
+        .is_some_and(|reason| !reason.trim().is_empty())
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct FileData {
     pub(super) path: PathBuf,
@@ -251,6 +312,7 @@ pub(super) struct FileData {
     pub(super) suppressed_import_conflict_sources: BTreeSet<String>,
     pub(super) suppressed_import_conflict_preload_sources: BTreeSet<String>,
     pub(super) local_references: BTreeSet<String>,
+    pub(super) expects_unused_file: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -373,6 +435,7 @@ impl FileVisitor {
             suppressed_import_conflict_preload_sources: self
                 .suppressed_import_conflict_preload_sources,
             local_references: self.local_references,
+            expects_unused_file: false,
         }
     }
 

@@ -93,6 +93,15 @@ patterns. `import.meta.glob` marks the matched project files and their exports
 as used; computed patterns and non-literal dynamic imports remain outside the
 supported graph.
 
+Use a reasoned file-header directive for a file that must stay detached:
+
+```ts
+// codescythe-expect-error unused-file -- loaded by framework
+```
+
+Codescythe suppresses that file's unused-file issue. If an entry point later
+reaches the file, analysis fails so the stale expectation cannot hide usage.
+
 ## Fixing
 
 Run Codescythe with `--fix` to apply supported removals. The fix pass removes
