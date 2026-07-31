@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.10.0...codescythe_cli_v0.10.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* reject unmatched entry globs ([#110](https://github.com/perplexityai/codescythe/issues/110)) ([c602395](https://github.com/perplexityai/codescythe/commit/c6023951767eeac83c569dcc75122518e60f9b9c))
+
 ## [0.10.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.9.0...codescythe_cli_v0.10.0) (2026-07-30)
 
 
