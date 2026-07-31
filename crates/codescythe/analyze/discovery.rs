@@ -64,6 +64,16 @@ pub(super) fn discover_entry_files(
     }
 
     let entry_globs = build_glob_set(&config.entry)?;
+    for pattern in config.entry.iter().filter(|pattern| has_glob_meta(pattern)) {
+        let entry_glob = build_glob_set(std::slice::from_ref(pattern))?;
+        if !project_files
+            .iter()
+            .any(|file| entry_glob.is_match(relative_path(cwd, file)))
+        {
+            anyhow::bail!("entry glob {pattern:?} matched no files in the configured project");
+        }
+    }
+
     let mut entries = BTreeSet::<PathBuf>::new();
     for pattern in &config.entry {
         if !has_glob_meta(pattern) {
