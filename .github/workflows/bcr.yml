@@ -58,6 +58,9 @@ jobs:
             const crypto = require("node:crypto");
             const root = process.argv[1];
             const source = JSON.parse(fs.readFileSync(`${root}/source.json`));
+            if (!source.url.includes("/releases/download/")) {
+              throw new Error(`BCR source URL is not a stable release asset: ${source.url}`);
+            }
             for (const [name, expected] of Object.entries(source.overlay)) {
               const content = fs.readFileSync(`${root}/overlay/${name}`);
               const actual = `sha256-${crypto.createHash("sha256").update(content).digest("base64")}`;
