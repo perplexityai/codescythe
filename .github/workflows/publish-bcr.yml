@@ -61,7 +61,7 @@ jobs:
       - name: Publish registry branch
         id: publish
         env:
-          BCR_PUBLISH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          BCR_PUBLISH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN }}
           VERSION: ${{ steps.module.outputs.version }}
         run: |
           set -euo pipefail
@@ -81,7 +81,7 @@ jobs:
 
       - name: Open BCR pull request
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN }}
           VERSION: ${{ steps.module.outputs.version }}
           BRANCH: ${{ steps.publish.outputs.branch }}
         run: |
