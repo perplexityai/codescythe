@@ -1,0 +1,79 @@
+name: Validate BCR overlay
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/bcr.yml"
+      - ".github/workflows/publish-bcr.yml"
+      - "bcr/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/bcr.yml"
+      - ".github/workflows/publish-bcr.yml"
+      - "bcr/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            runner: macos-15
+          - name: Linux AMD64
+            runner: ubuntu-24.04-16core
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-${{ matrix.runner }}
+          repository-cache: true
+
+      - name: Validate overlay
+        run: |
+          set -euo pipefail
+
+          version="$(jq -r '.versions[-1]' bcr/modules/codescythe/metadata.json)"
+          module="bcr/modules/codescythe/$version"
+          cmp "$module/MODULE.bazel" "$module/overlay/MODULE.bazel"
+
+          node -e '
+            const fs = require("node:fs");
+            const crypto = require("node:crypto");
+            const root = process.argv[1];
+            const source = JSON.parse(fs.readFileSync(`${root}/source.json`));
+            for (const [name, expected] of Object.entries(source.overlay)) {
+              const content = fs.readFileSync(`${root}/overlay/${name}`);
+              const actual = `sha256-${crypto.createHash("sha256").update(content).digest("base64")}`;
+              if (actual !== expected) throw new Error(`${name}: ${actual} !== ${expected}`);
+            }
+          ' "$module"
+
+          consumer="$RUNNER_TEMP/codescythe-bcr"
+          mkdir -p "$consumer"
+          printf 'module(name = "codescythe_bcr_validation")\nbazel_dep(name = "codescythe", version = "%s")\n' \
+            "$version" > "$consumer/MODULE.bazel"
+          touch "$consumer/BUILD.bazel"
+          cd "$consumer"
+
+          bazel run \
+            --lockfile_mode=off \
+            --registry="file://$GITHUB_WORKSPACE/bcr" \
+            --registry=https://bcr.bazel.build \
+            @codescythe//:codescythe -- --version

@@ -1,0 +1,108 @@
+name: Publish BCR overlay
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Checked-in Codescythe module version"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-16core
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Checkout Bazel Central Registry
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: bazelbuild/bazel-central-registry
+          path: bazel-central-registry
+          persist-credentials: false
+
+      - name: Stage registry entry
+        id: module
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          source=bcr/modules/codescythe
+          version="${REQUESTED_VERSION:-$(jq -r '.versions[-1]' "$source/metadata.json")}"
+          target=bazel-central-registry/modules/codescythe
+          test -d "$source/$version"
+          mkdir -p "$target"
+
+          if [[ -f "$target/metadata.json" ]]; then
+            jq --slurp \
+              '.[0] as $current | .[1] | .versions = (($current.versions + .versions) | unique)' \
+              "$target/metadata.json" "$source/metadata.json" > "$target/metadata.json.tmp"
+            mv "$target/metadata.json.tmp" "$target/metadata.json"
+          else
+            cp "$source/metadata.json" "$target/metadata.json"
+          fi
+
+          cp -R "$source/$version" "$target/$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish registry branch
+        id: publish
+        env:
+          BCR_PUBLISH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN }}
+          VERSION: ${{ steps.module.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          branch="codescythe-$VERSION"
+          registry=bazel-central-registry
+          git -C "$registry" checkout -b "$branch"
+          git -C "$registry" add modules/codescythe
+          git -C "$registry" \
+            -c user.name=pplx-oss \
+            -c user.email=ossmaintainers@perplexity.ai \
+            commit -m "codescythe@$VERSION"
+          git -C "$registry" remote add publish \
+            "https://x-access-token:$BCR_PUBLISH_TOKEN@github.com/perplexityai/bazel-central-registry.git"
+          git -C "$registry" push --force publish "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open BCR pull request
+        env:
+          GH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN }}
+          VERSION: ${{ steps.module.outputs.version }}
+          BRANCH: ${{ steps.publish.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          pr_url="$(gh api \
+            --method GET \
+            repos/bazelbuild/bazel-central-registry/pulls \
+            -f state=open \
+            -f "head=perplexityai:$BRANCH" \
+            --jq '.[0].html_url')"
+
+          if [[ -z "$pr_url" ]]; then
+            pr_url="$(gh api \
+              --method POST \
+              repos/bazelbuild/bazel-central-registry/pulls \
+              -f "title=codescythe@$VERSION" \
+              -f "head=perplexityai:$BRANCH" \
+              -f base=main \
+              -f body='Publish the Codescythe binary toolchain overlay.' \
+              --jq .html_url)"
+          fi
+
+          echo "$pr_url" >> "$GITHUB_STEP_SUMMARY"

@@ -201,3 +201,11 @@ jobs:
             release/codescythe-linux-arm64 \
             release/checksums.txt \
             --clobber
+
+  publish-to-bcr:
+    name: Publish BCR overlay
+    needs: release
+    uses: ./.github/workflows/publish-bcr.yml
+    permissions:
+      contents: read
+    secrets: inherit
