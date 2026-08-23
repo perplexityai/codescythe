@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.0...codescythe_cli_v0.11.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **bazel:** publish stable BCR release archives ([#118](https://github.com/perplexityai/codescythe/issues/118)) ([293ba56](https://github.com/perplexityai/codescythe/commit/293ba56b6582f49b2a768befebf1d6c5116b9284))
+* **bazel:** skip unstable BCR source URL check ([#116](https://github.com/perplexityai/codescythe/issues/116)) ([f210f6f](https://github.com/perplexityai/codescythe/commit/f210f6fdc270b8bc84dea059d3de65475607a1ba))
+
 ## [0.11.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.10.1...codescythe_cli_v0.11.0) (2026-08-23)
 
 
