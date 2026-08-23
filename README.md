@@ -418,6 +418,28 @@ flowchart LR
   n1 -->|"named import #bazel_generated/client:client"| n0
 ```
 
+## Bazel
+
+Add the published toolchain module to `MODULE.bazel`:
+
+```starlark
+bazel_dep(name = "codescythe", version = "0.10.1")
+```
+
+Run the binary selected for your execution platform:
+
+```sh
+bazel run @codescythe//:codescythe -- --help
+```
+
+The toolchain supports macOS ARM64, Linux AMD64, and Linux ARM64. Custom rules
+can request `@codescythe//:toolchain_type` and access
+`ctx.toolchains["@codescythe//:toolchain_type"].codescythe`.
+
+Codescythe must inspect the complete configured source tree, including files
+unreachable from Bazel targets. Do not use a `deps` closure or aspect as its
+source inventory.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository layout, architecture,
