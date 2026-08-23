@@ -1,7 +1,7 @@
 {
-  "url": "https://github.com/perplexityai/codescythe/archive/refs/tags/codescythe_cli_v0.10.1.tar.gz",
-  "integrity": "sha256-LeLiBjtSWW/tQVXOAa6eDQI4MmBolxIYtc0ukRCW5lQ=",
-  "strip_prefix": "codescythe-codescythe_cli_v0.10.1",
+  "url": "https://github.com/perplexityai/codescythe/releases/download/codescythe_cli_v0.10.1/codescythe-0.10.1.tar.gz",
+  "integrity": "sha256-mKQPdgSfVckSHFgTq4dbDkhMi7Mw8CXhuDW65XS5Vdk=",
+  "strip_prefix": "codescythe-0.10.1",
   "overlay": {
     "BUILD.bazel": "sha256-Xvy9R+IqlTF1S7QTvE0DEDgB9LUSrQJiFMVGlo5Ymns=",
     "MODULE.bazel": "sha256-DF6Qg9DJ35CrEQuQU84KFDdiUf7Bb294pRgKENiX0Uk=",
