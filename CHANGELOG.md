@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.10.1...codescythe_cli_v0.11.0) (2026-08-23)
+
+
+### Features
+
+* **bazel:** publish codescythe BCR overlay ([#114](https://github.com/perplexityai/codescythe/issues/114)) ([eb2adcb](https://github.com/perplexityai/codescythe/commit/eb2adcb075ec7a73daa11d855e4edaf9ad2f6433)), closes [#112](https://github.com/perplexityai/codescythe/issues/112)
+
 ## [0.10.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.10.0...codescythe_cli_v0.10.1) (2026-07-31)
 
 
