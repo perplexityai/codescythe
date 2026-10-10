@@ -64,7 +64,7 @@ steps:
   - buildkite-agent cache save --name bazel
   timeout_in_minutes: 60
   cache:
-    name: codescythe-bcr-oss_darwin_arm64-8-5-0
+    name: codescythe-bcr-oss-darwin-arm64-8-5-0
     size: 40g
     paths:
     - "/tmp/codescythe-ci"
