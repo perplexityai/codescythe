@@ -60,9 +60,14 @@ command=$1
 shift
 case "$command" in
   build|test|run|coverage|fetch)
+    contents_cache=()
+    # Bazel 9 repository contents can retain LLVM symlinks into old agents.
+    if [[ "${USE_BAZEL_VERSION%%.*}" -ge 9 ]]; then
+      contents_cache=(--repo_contents_cache=)
+    fi
     exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}" "$command" \
       --repository_cache="$CI_CACHE_DIR/repository" \
-      --disk_cache="$CI_CACHE_DIR/disk/$USE_BAZEL_VERSION" "$@"
+      --disk_cache="$CI_CACHE_DIR/disk/$USE_BAZEL_VERSION" "${contents_cache[@]}" "$@"
     ;;
   *) exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}" "$command" "$@" ;;
 esac
