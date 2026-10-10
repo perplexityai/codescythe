@@ -12,11 +12,11 @@ case "${1:-}" in
   bcr)
     install_node
     set -euo pipefail
-    
+
     version="$(jq -r '.versions[-1]' bcr/modules/codescythe/metadata.json)"
     module="bcr/modules/codescythe/$version"
     cmp "$module/MODULE.bazel" "$module/overlay/MODULE.bazel"
-    
+
     node -e '
       const fs = require("node:fs");
       const crypto = require("node:crypto");
@@ -31,14 +31,14 @@ case "${1:-}" in
         if (actual !== expected) throw new Error(`${name}: ${actual} !== ${expected}`);
       }
     ' "$module"
-    
+
     consumer="$RUNNER_TEMP/codescythe-bcr"
     mkdir -p "$consumer"
     printf 'module(name = "codescythe_bcr_validation")\nbazel_dep(name = "codescythe", version = "%s")\n' \
       "$version" > "$consumer/MODULE.bazel"
     touch "$consumer/BUILD.bazel"
     cd "$consumer"
-    
+
     bazel run \
       --lockfile_mode=off \
       --registry="file://$GITHUB_WORKSPACE/bcr" \

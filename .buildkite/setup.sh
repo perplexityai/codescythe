@@ -50,15 +50,21 @@ chmod +x "$CI_CACHE_DIR/bin/bazelisk-real"
 cat > "$CI_CACHE_DIR/bin/bazelisk" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+startup=()
+while [[ $# -gt 0 && "$1" == -* ]]; do
+  startup+=("$1")
+  shift
+done
+[[ $# -gt 0 ]] || exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}"
 command=$1
 shift
 case "$command" in
   build|test|run|coverage|fetch)
-    exec "$CI_CACHE_DIR/bin/bazelisk-real" "$command" \
+    exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}" "$command" \
       --repository_cache="$CI_CACHE_DIR/repository" \
       --disk_cache="$CI_CACHE_DIR/disk/$USE_BAZEL_VERSION" "$@"
     ;;
-  *) exec "$CI_CACHE_DIR/bin/bazelisk-real" "$command" "$@" ;;
+  *) exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}" "$command" "$@" ;;
 esac
 SH
 chmod +x "$CI_CACHE_DIR/bin/bazelisk"
