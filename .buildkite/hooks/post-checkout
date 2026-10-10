@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ "${BUILDKITE_PULL_REQUEST:-false}" != false ]] || exit 0
+[[ "$BUILDKITE_PULL_REQUEST" =~ ^[0-9]+$ ]] || {
+  echo 'Expected a pull request number' >&2
+  exit 1
+}
+[[ "${BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC:-false}" != true ]] || exit 0
+
+# Match actions/checkout's PR merge ref, checking for a stale GitHub merge.
+head=$(git rev-parse HEAD)
+if buildkite-agent meta-data exists github-pr-merge; then
+  merge=$(buildkite-agent meta-data get github-pr-merge)
+  [[ "$merge" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid PR merge SHA' >&2; exit 1; }
+  git fetch --no-tags origin "$merge"
+  [[ "$(git rev-parse FETCH_HEAD^2)" == "$head" ]] || {
+    echo 'Pinned merge does not contain this PR head' >&2
+    exit 1
+  }
+  git checkout --detach FETCH_HEAD
+  exit 0
+fi
+for attempt in 1 2 3; do
+  if git fetch --no-tags origin "refs/pull/$BUILDKITE_PULL_REQUEST/merge" &&
+     [[ "$(git rev-parse FETCH_HEAD^2)" == "$head" ]]; then
+    # Bootstrap pins one merge for all jobs, even when the base branch advances.
+    buildkite-agent meta-data set github-pr-merge "$(git rev-parse FETCH_HEAD)"
+    git checkout --detach FETCH_HEAD
+    exit 0
+  fi
+  [[ "$attempt" == 3 ]] || sleep 2
+done
+echo 'GitHub PR merge ref missing or stale; resolve conflicts or retry this build' >&2
+exit 1

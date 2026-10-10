@@ -157,7 +157,6 @@ const kibanaSourceRoots = [
   'x-pack',
   'packages',
   'examples',
-  'oas_docs',
 ];
 const kibanaEntryPatterns = patternsForRoots(kibanaSourceRoots);
 const kibanaProjectRoots = [...kibanaSourceRoots, fuzzDirectory];

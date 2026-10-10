@@ -6,15 +6,13 @@
       "src/**/*.{ts,tsx,mts,cts}",
       "x-pack/**/*.{ts,tsx,mts,cts}",
       "packages/**/*.{ts,tsx,mts,cts}",
-      "examples/**/*.{ts,tsx,mts,cts}",
-      "oas_docs/**/*.{ts,tsx,mts,cts}"
+      "examples/**/*.{ts,tsx,mts,cts}"
     ],
     "project": [
       "src/**/*.{ts,tsx,mts,cts}",
       "x-pack/**/*.{ts,tsx,mts,cts}",
       "packages/**/*.{ts,tsx,mts,cts}",
       "examples/**/*.{ts,tsx,mts,cts}",
-      "oas_docs/**/*.{ts,tsx,mts,cts}",
       "codescythe-conformance-fuzz/**/*.{ts,tsx,mts,cts}"
     ],
     "includeEntryExports": false

@@ -39,11 +39,11 @@ reporting limited to file, value-export, and type-export issues so the
 comparison stays close to Codescythe's scope. The generated config is shared by
 Codescythe and Knip, except Codescythe disables its default test-file leaf
 patterns for these whole-corpus benchmark configs. VS Code uses source-root
-entry/project globs for `src`, `build`, and `extensions`. Grafana uses
+entry/project globs for `src` and `extensions`; `build` remains ignored. Grafana uses
 source-root entry/project globs for `public`, `packages`, `scripts`, and the
 root TypeScript config files. Kibana uses the root `knip.jsonc` introduced in
 `elastic/kibana#270237`; Codescythe uses the equivalent source graph (`src`,
-`x-pack`, `packages`, `examples`, and `plugins` with `ts`, `tsx`, `js`, and
+`x-pack`, `packages`, and `examples` with `ts`, `tsx`, `js`, and
 `jsx` files), while Knip runs with the imported
 `benchmarks/kibana_pr270237_knip.jsonc`. Renovate uses the source-side CLI,
 config-validator, `tsdown` package entries, TypeScript tooling scripts,

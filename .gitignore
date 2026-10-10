@@ -8,3 +8,6 @@
 /.idea
 /.vscode
 *.log
+
+# Buildkite test reports and temporary consumers.
+.buildkite-artifacts/

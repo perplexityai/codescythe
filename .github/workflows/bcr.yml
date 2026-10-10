@@ -27,10 +27,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS ARM64
-            runner: macos-15
-          - name: Linux AMD64
-            runner: ubuntu-24.04-16core
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
 

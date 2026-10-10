@@ -1,0 +1,16 @@
+caches:
+  - name: bazel
+    cache_key:
+      - codescythe-bazel-v1
+      - agent: pipeline
+      - agent: os
+      - agent: arch
+      - env: USE_BAZEL_VERSION
+      - agent: step
+        fallback_limit: true
+      - env: BUILDKITE_COMMIT
+    target_paths:
+      - /tmp/codescythe-ci/bin
+      - /tmp/codescythe-ci/bazelisk
+      - /tmp/codescythe-ci/repository
+      - /tmp/codescythe-ci/disk

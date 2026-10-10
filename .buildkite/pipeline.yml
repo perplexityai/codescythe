@@ -1,0 +1,79 @@
+---
+agents:
+  queue: oss
+steps:
+- label: Test Rust
+  key: native-oss-8-5-0
+  agents:
+    queue: oss
+  command:
+  - buildkite-agent cache restore --name bazel
+  - bash .buildkite/run.sh native
+  - buildkite-agent cache save --name bazel
+  timeout_in_minutes: 60
+  cache:
+    name: codescythe-native-oss-8-5-0
+    size: 40g
+    paths:
+    - "/tmp/codescythe-ci"
+  artifact_paths: ".buildkite-artifacts/**/*;bazel-testlogs/**/test.log;bazel-testlogs/**/test.xml;examples/*/bazel-testlogs/**/test.log;examples/*/bazel-testlogs/**/test.xml;bcr_test/bazel-testlogs/**/test.log"
+  env:
+    USE_BAZEL_VERSION: 8.5.0
+- label: Functional tests
+  key: functional-oss-8-5-0
+  agents:
+    queue: oss
+  command:
+  - buildkite-agent cache restore --name bazel
+  - bash .buildkite/run.sh functional
+  - buildkite-agent cache save --name bazel
+  timeout_in_minutes: 60
+  cache:
+    name: codescythe-functional-oss-8-5-0
+    size: 40g
+    paths:
+    - "/tmp/codescythe-ci"
+  artifact_paths: ".buildkite-artifacts/**/*;bazel-testlogs/**/test.log;bazel-testlogs/**/test.xml;examples/*/bazel-testlogs/**/test.log;examples/*/bazel-testlogs/**/test.xml;bcr_test/bazel-testlogs/**/test.log"
+  env:
+    USE_BAZEL_VERSION: 8.5.0
+  if: build.pull_request.id == null
+- label: Validate BCR overlay (Linux AMD64)
+  key: bcr-oss-8-5-0
+  agents:
+    queue: oss
+  command:
+  - buildkite-agent cache restore --name bazel
+  - bash .buildkite/run.sh bcr
+  - buildkite-agent cache save --name bazel
+  timeout_in_minutes: 60
+  cache:
+    name: codescythe-bcr-oss-8-5-0
+    size: 40g
+    paths:
+    - "/tmp/codescythe-ci"
+  artifact_paths: ".buildkite-artifacts/**/*;bazel-testlogs/**/test.log;bazel-testlogs/**/test.xml;examples/*/bazel-testlogs/**/test.log;examples/*/bazel-testlogs/**/test.xml;bcr_test/bazel-testlogs/**/test.log"
+  env:
+    USE_BAZEL_VERSION: 8.5.0
+- label: Validate BCR overlay (macOS ARM64)
+  key: bcr-oss_darwin_arm64-8-5-0
+  agents:
+    queue: oss_darwin_arm64
+  command:
+  - buildkite-agent cache restore --name bazel
+  - bash .buildkite/run.sh bcr
+  - buildkite-agent cache save --name bazel
+  timeout_in_minutes: 60
+  cache:
+    name: codescythe-bcr-oss-darwin-arm64-8-5-0
+    size: 40g
+    paths:
+    - "/tmp/codescythe-ci"
+  artifact_paths: ".buildkite-artifacts/**/*;bazel-testlogs/**/test.log;bazel-testlogs/**/test.xml;examples/*/bazel-testlogs/**/test.log;examples/*/bazel-testlogs/**/test.xml;bcr_test/bazel-testlogs/**/test.log"
+  env:
+    USE_BAZEL_VERSION: 8.5.0
+- label: Verify hooks
+  key: verify-hooks
+  command: bash .buildkite/verify-hooks.sh
+  agents:
+    queue: oss
+  timeout_in_minutes: 15
