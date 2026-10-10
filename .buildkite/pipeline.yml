@@ -77,3 +77,32 @@ steps:
   agents:
     queue: oss
   timeout_in_minutes: 15
+- label: Build CLI and verify crate release
+  key: release-build
+  agents:
+    queue: oss
+  command:
+  - buildkite-agent cache restore --name bazel
+  - bash .buildkite/release.sh build
+  - buildkite-agent cache save --name bazel
+  timeout_in_minutes: 60
+  cache:
+    name: codescythe-release-oss-8-5-0
+    size: 40g
+    paths:
+    - "/tmp/codescythe-ci"
+  artifact_paths: "release/*"
+  env:
+    USE_BAZEL_VERSION: 8.5.0
+    CARGO_HOME: /tmp/codescythe-ci/cargo
+- label: Upload release artifacts
+  key: release-upload
+  depends_on:
+  - release-build
+  - native-oss-8-5-0
+  - verify-hooks
+  agents:
+    queue: oss
+  command: bash .buildkite/release.sh upload
+  timeout_in_minutes: 15
+  if: build.tag =~ /^codescythe_cli_v/ && build.pull_request.id == null

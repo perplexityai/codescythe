@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run (build and verify only, no publish)"
+        description: "Dry run (verify existing tag artifacts only, no publish)"
         type: boolean
         required: false
         default: true
@@ -18,46 +18,47 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify crate package
-    runs-on: ubuntu-24.04-16core
+    name: Download Buildkite-verified crate
+    if: ${{ startsWith(github.event.release.tag_name || github.ref_name, 'codescythe_cli_v') }}
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
-        with:
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}-crate-package
-          repository-cache: true
+      - name: Download verified release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: bash .github/scripts/download-release.sh
 
       - name: Setup Rust
         run: rustup toolchain install 1.93.0 --profile minimal
 
-      - name: Verify Bazel package inputs
+      - name: Compare package inputs without compiling
         run: |
           set -euo pipefail
+          rustup run 1.93.0 cargo package -p codescythe --locked --no-verify
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/codescythe/Cargo.toml)
+          python3 .github/scripts/verify-crate.py \
+            "release/codescythe-$version.crate" "target/package/codescythe-$version.crate"
 
-          bazel test \
-            //crates/codescythe:codescythe_schema_test \
-            //crates/codescythe:codescythe_test
-
-      - name: Verify cargo package
-        run: |
-          set -euo pipefail
-
-          rustup run 1.93.0 cargo publish \
-            -p codescythe \
-            --registry crates-io \
-            --locked \
-            --dry-run
+      - name: Upload verified crate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-crate
+          path: release/*.crate
+          retention-days: 7
 
   publish:
     name: Publish crate
     needs:
       - verify
-    runs-on: ubuntu-24.04-16core
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
@@ -70,6 +71,20 @@ jobs:
       - name: Setup Rust
         run: rustup toolchain install 1.93.0 --profile minimal
 
+      - name: Download verified crate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-crate
+          path: release
+
+      - name: Compare package inputs without compiling
+        run: |
+          set -euo pipefail
+          rustup run 1.93.0 cargo package -p codescythe --locked --no-verify
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/codescythe/Cargo.toml)
+          python3 .github/scripts/verify-crate.py \
+            "release/codescythe-$version.crate" "target/package/codescythe-$version.crate"
+
       - name: Authenticate with crates.io
         id: auth
         uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe
@@ -81,6 +96,7 @@ jobs:
           rustup run 1.93.0 cargo publish \
             -p codescythe \
             --registry crates-io \
-            --locked
+            --locked \
+            --no-verify
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
