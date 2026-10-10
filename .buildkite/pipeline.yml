@@ -97,6 +97,8 @@ steps:
     CARGO_HOME: /tmp/codescythe-ci/cargo
 - label: Upload release artifacts
   key: release-upload
+  concurrency: 1
+  concurrency_group: codescythe-release-upload
   depends_on:
   - release-build
   - native-oss-8-5-0

@@ -102,6 +102,10 @@ upload_url = release["upload_url"].split("{")[0]
 if urllib.parse.urlparse(upload_url).hostname != "uploads.github.com":
     raise SystemExit("Unexpected GitHub release upload endpoint")
 existing = {asset["name"]: asset["id"] for asset in release["assets"]}
+# Remove the old completion marker before replacing any staged asset.
+marker = existing.pop("buildkite-release.json", None)
+if marker is not None:
+    request(f"https://api.github.com/repos/{repo}/releases/assets/{marker}", "DELETE")
 paths = sorted(Path("release").iterdir())
 # Completion manifest goes last; readers never consume partial uploads.
 paths.sort(key=lambda path: path.name == "buildkite-release.json")
