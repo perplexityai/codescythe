@@ -1,0 +1,58 @@
+steps:
+  - label: "Check fork approval"
+    checkout:
+      skip: true
+    command: |
+      set -euo pipefail
+      python3 - <<'PY' | buildkite-agent pipeline upload --no-interpolation
+      import json
+      import os
+      import re
+      import urllib.request
+
+      steps = []
+      number = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
+      if number != "false":
+          commit = os.environ["BUILDKITE_COMMIT"]
+          if not re.fullmatch(r"[1-9][0-9]*", number) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise ValueError("Expected an immutable PR number and commit SHA")
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/perplexityai/codescythe/pulls/{number}",
+              headers={"Accept": "application/vnd.github+json", "User-Agent": "gazelle-py-buildkite"},
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              pr = json.load(response)
+          base = pr["base"]["repo"]
+          head = pr["head"]["repo"]
+          if pr["number"] != int(number) or base["full_name"] != "perplexityai/codescythe":
+              raise ValueError("Unexpected pull request repository")
+          if pr["head"]["sha"] != commit:
+              raise ValueError("PR head changed; build its current revision")
+          author = pr["user"]
+          renovate = (
+              author["id"] == 29139614
+              and author["login"] == "renovate[bot]"
+              and author["type"] == "Bot"
+          )
+          if head["id"] != base["id"] and not renovate:
+              steps.append({
+                  "block": f"Approve fork PR #{number}",
+                  "key": "approve-fork",
+                  "prompt": f"Approve running fork code at {commit}. New commits require new approval.",
+                  "blocked_state": "running",
+                  "submit": "Approve this commit",
+              })
+      upload = {
+          "label": "Upload CI pipeline",
+          "key": "upload-ci",
+          "command": "buildkite-agent pipeline upload .buildkite/pipeline.yml",
+          "checkout": {"skip": False},
+          "agents": {"queue": "oss"},
+      }
+      if steps:
+          upload["depends_on"] = "approve-fork"
+      steps.append(upload)
+      print(json.dumps({"steps": steps}))
+      PY
+    agents:
+      queue: oss
