@@ -115,7 +115,6 @@ const kibanaSourceRoots = [
   'x-pack',
   'packages',
   'examples',
-  'plugins',
 ];
 const kibanaSourceRootPatterns = kibanaSourceRoots.map(root => `${root}/**/*.{ts,tsx,js,jsx}`);
 const kibanaIgnorePatterns = [
@@ -125,7 +124,6 @@ const kibanaIgnorePatterns = [
 ];
 const vscodeProjectPatterns = [
   'src/**/*.{ts,tsx,mts,cts}',
-  'build/**/*.{ts,tsx,mts,cts}',
   'extensions/**/*.{ts,tsx,mts,cts}',
 ];
 const vscodeEntryPatterns = vscodeProjectPatterns;

@@ -6,12 +6,10 @@
   "config": {
     "entry": [
       "src/**/*.{ts,tsx,mts,cts}",
-      "build/**/*.{ts,tsx,mts,cts}",
       "extensions/**/*.{ts,tsx,mts,cts}"
     ],
     "project": [
       "src/**/*.{ts,tsx,mts,cts}",
-      "build/**/*.{ts,tsx,mts,cts}",
       "extensions/**/*.{ts,tsx,mts,cts}",
       "codescythe-conformance-fuzz/**/*.{ts,tsx,mts,cts}"
     ],
