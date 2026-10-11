@@ -20,13 +20,16 @@ case "${1:-}" in
     bazel build \
       //crates/codescythe_cli:release_binary_darwin_arm64 \
       //crates/codescythe_cli:release_binary_linux_amd64 \
-      //crates/codescythe_cli:release_binary_linux_arm64
+      //crates/codescythe_cli:release_binary_linux_arm64 \
+      //crates/codescythe_cli:release_binary_windows_amd64
     bazel test //crates/codescythe:codescythe_schema_test //crates/codescythe:codescythe_test
     rustup run 1.93.0 cargo package -p codescythe --locked
     mkdir -p release
-    for platform in darwin_arm64 linux_amd64 linux_arm64; do
+    for platform in darwin_arm64 linux_amd64 linux_arm64 windows_amd64; do
       binary=$(bazel cquery --output=files "//crates/codescythe_cli:release_binary_$platform" | tail -n 1)
-      cp "$binary" "release/codescythe-${platform//_/-}"
+      name="codescythe-${platform//_/-}"
+      [[ "$platform" != windows_amd64 ]] || name+=.exe
+      cp "$binary" "release/$name"
     done
     version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/codescythe/Cargo.toml)
     cp "target/package/codescythe-$version.crate" release/
@@ -46,6 +49,8 @@ files["checksums.txt"] = hashlib.sha256((root / "checksums.txt").read_bytes()).h
 (root / "buildkite-release.json").write_text(json.dumps({
     "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "build": os.environ["BUILDKITE_BUILD_URL"],
+    "build_id": os.environ["BUILDKITE_BUILD_ID"],
+    "pipeline": os.environ["BUILDKITE_PIPELINE_SLUG"],
     "files": files,
 }, indent=2) + "\n")
 PY
@@ -56,7 +61,8 @@ PY
     git fetch origin main
     git merge-base --is-ancestor HEAD origin/main
     [[ "$(git rev-parse HEAD)" == "$BUILDKITE_COMMIT" ]]
-    buildkite-agent artifact download 'release/*' . --step release-build
+    buildkite-agent artifact download 'release/*' . --build "${BUILDKITE_BUILD_ID:?}" --step release-build
+    python3 .buildkite/verify-artifact.py release
     response=$(curl --fail --silent --show-error --request POST \
       --header "Authorization: Token $BUILDKITE_AGENT_ACCESS_TOKEN" \
       --header 'Content-Type: application/json' \

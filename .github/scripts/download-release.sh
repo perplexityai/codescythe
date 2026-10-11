@@ -10,7 +10,7 @@ for attempt in $(seq 1 270); do
   sleep 20
 done
 version=${RELEASE_TAG#codescythe_cli_v}
-for asset in codescythe-darwin-arm64 codescythe-linux-amd64 codescythe-linux-arm64 \
+for asset in codescythe-darwin-arm64 codescythe-linux-amd64 codescythe-linux-arm64 codescythe-windows-amd64.exe \
   "codescythe-$version.crate" "codescythe-$version.tar.gz" checksums.txt; do
   gh release download "$RELEASE_TAG" --pattern "buildkite-$asset" --dir release --clobber
   mv "release/buildkite-$asset" "release/$asset"
@@ -28,7 +28,7 @@ commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(
 if manifest["commit"] != commit:
     raise SystemExit("Release artifacts do not match checked-out commit")
 version = os.environ["RELEASE_TAG"].removeprefix("codescythe_cli_v")
-expected = {"codescythe-darwin-arm64", "codescythe-linux-amd64", "codescythe-linux-arm64",
+expected = {"codescythe-darwin-arm64", "codescythe-linux-amd64", "codescythe-linux-arm64", "codescythe-windows-amd64.exe",
             f"codescythe-{version}.crate", f"codescythe-{version}.tar.gz", "checksums.txt"}
 if set(manifest["files"]) != expected:
     raise SystemExit("Unexpected release artifact set")

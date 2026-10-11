@@ -18,7 +18,7 @@ flowchart TD
   R["Release / deployment triggers"] --> G["Retained GitHub publishing workflows"]
 ```
 
-Each Bazel job restores its suite/version/platform cache, runs checks, then saves after success. Hosted queues: `oss` (Linux AMD64), `oss_darwin_arm64` (macOS ARM64). Queue `default` is not used. Tools are checksum-pinned; pnpm follows `packageManager` or npm uses `npm ci`.
+Each Bazel job restores its suite/version/platform cache from `oss-ci-v2`, runs checks, then saves after success. Verified pipeline/branch claims isolate writes; main never restores PR caches. Cache only repository downloads and Bazel action outputs. No shared hosted volumes or cached executables. Fork branch prefixes must stay enabled. Hosted queues: `oss` (Linux AMD64), `oss_darwin_arm64` (macOS ARM64). Queue `default` is not used. Tools are checksum-pinned; pnpm follows `packageManager` or npm uses `npm ci`.
 
 Paste `bootstrap.yml` into pipeline settings; never load approval policy from a PR checkout. Forks require writer approval before checkout or hooks. Only GitHub-verified `renovate[bot]` (ID `29139614`, type `Bot`) bypasses. Each new commit needs approval; API errors and stale PR heads fail closed. Enable third-party forks and publish blocked builds as Pending. Enable workflow-authorized GitHub tokens for release asset uploads. PR tokens remain read-only; merge queues cannot request tokens. Keep pipeline/cluster secrets disabled.
 
@@ -30,14 +30,20 @@ Linux ARM64 jobs stay on GHA per requested runner policy. No new queue provision
 
 ## Releases
 
-CLI release tags build three binaries and verify `cargo package` on BK. BK uploads staging assets with a commit/checksum manifest using a short-lived GitHub App token. GHA waits for that manifest, checks the exact tag commit and every checksum, then smoke-tests all three binaries before publishing their usual release asset names and BCR overlay. Linux ARM64 smoke tests stay on GHA.
+Every build cross-compiles four CLI binaries and verifies `cargo package` once on BK. Dependent Linux AMD64, macOS ARM64, and Windows AMD64 smoke jobs download artifacts from that build’s `release-build` step, verify commit/build/pipeline identity and SHA-256, then run version/help, fixture analysis, and Linux static-link checks without compiling. Tag uploads wait for all three smoke jobs. BK uploads staging assets with a commit/checksum manifest using a short-lived GitHub App token. GHA waits for that manifest, checks the exact tag commit and every checksum, then smoke-tests Linux/macOS binaries before publishing their usual release asset names and BCR overlay. Linux ARM64 smoke tests stay on GHA.
 
 Crates GHA compares every packaged file against the BK-verified `.crate`, then uses OIDC and `cargo publish --locked --no-verify`; packaging repeats, compilation does not. npm release builds and provenance stay on GHA. Manual GHA dry runs select a CLI release tag containing this workflow; they verify existing BK staging assets without publishing.
 
 ```mermaid
 flowchart TD
-  Tag[CLI release tag] --> BK[BK: cross-build binaries and verify Cargo package]
-  BK --> Assets[GitHub release: staging assets, SHA, checksums]
+  Build[PR / main / CLI release tag] --> BK[BK: cross-build four binaries and verify Cargo package]
+  BK --> Linux[BK Linux AMD64: artifact-only smoke]
+  BK --> Mac[BK macOS ARM64: artifact-only smoke]
+  BK --> Windows[BK Windows AMD64: artifact-only smoke]
+  Windows --> Gate
+  Linux --> Gate{Release tag, trusted main commit}
+  Mac --> Gate
+  Gate --> Assets[GitHub release: staging assets, SHA, checksums]
   Assets --> CLI[GHA: verify checksums and native smoke tests]
   CLI --> Release[CLI release assets and BCR]
   Assets --> Crate[GHA: compare packaged contents, no compilation]
@@ -46,3 +52,5 @@ flowchart TD
 ```
 
 Pipeline settings: branch filter `main gh-readonly-queue/* codescythe_cli_v*`, GitHub tag builds enabled, workflow-authorized GitHub access tokens enabled. Upload requires a release tag whose commit is already on main; PR builds only produce test artifacts.
+
+Windows smoke uses PowerShell on `oss_win_amd64`, pins the producer’s PR merge commit, verifies the complete release manifest and hashes, then runs version/help and fixture analysis. The Windows binary is uploaded with the other CLI assets.

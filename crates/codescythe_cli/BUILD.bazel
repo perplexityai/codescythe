@@ -5,6 +5,7 @@ load(
     "release_binary_darwin_arm64",
     "release_binary_linux_amd64",
     "release_binary_linux_arm64",
+    "release_binary_windows_amd64",
 )
 
 VERSION = "0.11.1"  # x-release-please-version
@@ -96,12 +97,21 @@ release_binary_darwin_arm64(
     visibility = ["//visibility:public"],
 )
 
+release_binary_windows_amd64(
+    name = "release_binary_windows_amd64",
+    srcs = [":codescythe"],
+    outs = ["codescythe-windows-amd64.exe"],
+    cmd = "cp $< $@",
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "release_binaries",
     srcs = [
         ":release_binary_darwin_arm64",
         ":release_binary_linux_amd64",
         ":release_binary_linux_arm64",
+        ":release_binary_windows_amd64",
     ],
     visibility = ["//visibility:public"],
 )
