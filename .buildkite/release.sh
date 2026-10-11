@@ -46,6 +46,8 @@ files["checksums.txt"] = hashlib.sha256((root / "checksums.txt").read_bytes()).h
 (root / "buildkite-release.json").write_text(json.dumps({
     "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "build": os.environ["BUILDKITE_BUILD_URL"],
+    "build_id": os.environ["BUILDKITE_BUILD_ID"],
+    "pipeline": os.environ["BUILDKITE_PIPELINE_SLUG"],
     "files": files,
 }, indent=2) + "\n")
 PY
@@ -56,7 +58,8 @@ PY
     git fetch origin main
     git merge-base --is-ancestor HEAD origin/main
     [[ "$(git rev-parse HEAD)" == "$BUILDKITE_COMMIT" ]]
-    buildkite-agent artifact download 'release/*' . --step release-build
+    buildkite-agent artifact download 'release/*' . --build "${BUILDKITE_BUILD_ID:?}" --step release-build
+    python3 .buildkite/verify-artifact.py release
     response=$(curl --fail --silent --show-error --request POST \
       --header "Authorization: Token $BUILDKITE_AGENT_ACCESS_TOKEN" \
       --header 'Content-Type: application/json' \
