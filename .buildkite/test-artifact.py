@@ -20,7 +20,7 @@ class ArtifactTests(unittest.TestCase):
         os.environ['BUILDKITE_BUILD_ID'] = 'test-build'
         os.environ['BUILDKITE_PIPELINE_SLUG'] = 'codescythe'
         names = ['codescythe-linux-amd64', 'codescythe-linux-arm64',
-                 'codescythe-darwin-arm64', 'checksums.txt']
+                 'codescythe-darwin-arm64', 'codescythe-windows-amd64.exe', 'checksums.txt']
         for name in names:
             (self.root / name).write_bytes(b'verified binary')
         self.manifest = {

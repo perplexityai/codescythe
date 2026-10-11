@@ -141,6 +141,7 @@ jobs:
             release/codescythe-darwin-arm64 \
             release/codescythe-linux-amd64 \
             release/codescythe-linux-arm64 \
+            release/codescythe-windows-amd64.exe \
             "release/codescythe-${RELEASE_TAG#codescythe_cli_v}.tar.gz" \
             release/checksums.txt \
             --clobber

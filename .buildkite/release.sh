@@ -20,13 +20,16 @@ case "${1:-}" in
     bazel build \
       //crates/codescythe_cli:release_binary_darwin_arm64 \
       //crates/codescythe_cli:release_binary_linux_amd64 \
-      //crates/codescythe_cli:release_binary_linux_arm64
+      //crates/codescythe_cli:release_binary_linux_arm64 \
+      //crates/codescythe_cli:release_binary_windows_amd64
     bazel test //crates/codescythe:codescythe_schema_test //crates/codescythe:codescythe_test
     rustup run 1.93.0 cargo package -p codescythe --locked
     mkdir -p release
-    for platform in darwin_arm64 linux_amd64 linux_arm64; do
+    for platform in darwin_arm64 linux_amd64 linux_arm64 windows_amd64; do
       binary=$(bazel cquery --output=files "//crates/codescythe_cli:release_binary_$platform" | tail -n 1)
-      cp "$binary" "release/codescythe-${platform//_/-}"
+      name="codescythe-${platform//_/-}"
+      [[ "$platform" != windows_amd64 ]] || name+=.exe
+      cp "$binary" "release/$name"
     done
     version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/codescythe/Cargo.toml)
     cp "target/package/codescythe-$version.crate" release/

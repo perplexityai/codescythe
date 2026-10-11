@@ -30,15 +30,17 @@ Linux ARM64 jobs stay on GHA per requested runner policy. No new queue provision
 
 ## Releases
 
-Every build cross-compiles three CLI binaries and verifies `cargo package` once on BK. Dependent Linux AMD64 and macOS ARM64 smoke jobs download artifacts from that build’s `release-build` step, verify commit/build/pipeline identity and SHA-256, then run version/help, fixture analysis, and Linux static-link checks without compiling. Tag uploads wait for both smoke jobs. BK uploads staging assets with a commit/checksum manifest using a short-lived GitHub App token. GHA waits for that manifest, checks the exact tag commit and every checksum, then smoke-tests all three binaries before publishing their usual release asset names and BCR overlay. Linux ARM64 smoke tests stay on GHA.
+Every build cross-compiles four CLI binaries and verifies `cargo package` once on BK. Dependent Linux AMD64, macOS ARM64, and Windows AMD64 smoke jobs download artifacts from that build’s `release-build` step, verify commit/build/pipeline identity and SHA-256, then run version/help, fixture analysis, and Linux static-link checks without compiling. Tag uploads wait for all three smoke jobs. BK uploads staging assets with a commit/checksum manifest using a short-lived GitHub App token. GHA waits for that manifest, checks the exact tag commit and every checksum, then smoke-tests Linux/macOS binaries before publishing their usual release asset names and BCR overlay. Linux ARM64 smoke tests stay on GHA.
 
 Crates GHA compares every packaged file against the BK-verified `.crate`, then uses OIDC and `cargo publish --locked --no-verify`; packaging repeats, compilation does not. npm release builds and provenance stay on GHA. Manual GHA dry runs select a CLI release tag containing this workflow; they verify existing BK staging assets without publishing.
 
 ```mermaid
 flowchart TD
-  Build[PR / main / CLI release tag] --> BK[BK: cross-build three binaries and verify Cargo package]
+  Build[PR / main / CLI release tag] --> BK[BK: cross-build four binaries and verify Cargo package]
   BK --> Linux[BK Linux AMD64: artifact-only smoke]
   BK --> Mac[BK macOS ARM64: artifact-only smoke]
+  BK --> Windows[BK Windows AMD64: artifact-only smoke]
+  Windows --> Gate
   Linux --> Gate{Release tag, trusted main commit}
   Mac --> Gate
   Gate --> Assets[GitHub release: staging assets, SHA, checksums]
@@ -50,3 +52,5 @@ flowchart TD
 ```
 
 Pipeline settings: branch filter `main gh-readonly-queue/* codescythe_cli_v*`, GitHub tag builds enabled, workflow-authorized GitHub access tokens enabled. Upload requires a release tag whose commit is already on main; PR builds only produce test artifacts.
+
+Windows smoke uses PowerShell on `oss_win_amd64`, pins the producer’s PR merge commit, verifies the complete release manifest and hashes, then runs version/help and fixture analysis. The Windows binary is uploaded with the other CLI assets.

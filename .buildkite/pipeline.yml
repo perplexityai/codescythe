@@ -59,7 +59,7 @@ steps:
   agents:
     queue: oss
   timeout_in_minutes: 15
-- label: Cross-build CLI (three targets) and verify crate
+- label: Cross-build CLI (four targets) and verify crate
   key: release-build
   agents:
     queue: oss
@@ -86,6 +86,13 @@ steps:
     queue: oss_darwin_arm64
   command: bash .buildkite/smoke.sh
   timeout_in_minutes: 15
+- label: Smoke CLI (Windows AMD64 artifacts)
+  key: smoke-windows-amd64
+  depends_on: release-build
+  agents:
+    queue: oss_win_amd64
+  command: powershell -NoProfile -ExecutionPolicy Bypass -File .buildkite/smoke-windows.ps1
+  timeout_in_minutes: 15
 - label: Upload release artifacts
   key: release-upload
   concurrency: 1
@@ -94,6 +101,7 @@ steps:
   - release-build
   - smoke-linux-amd64
   - smoke-darwin-arm64
+  - smoke-windows-amd64
   - native-oss-8-5-0
   - verify-hooks
   agents:

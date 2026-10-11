@@ -34,7 +34,7 @@ def verify(root):
         if actual != digest:
             raise ValueError(f'Artifact checksum mismatch: {name}')
     if not {'codescythe-linux-amd64', 'codescythe-linux-arm64',
-            'codescythe-darwin-arm64', 'checksums.txt'} <= manifest['files'].keys():
+            'codescythe-darwin-arm64', 'codescythe-windows-amd64.exe', 'checksums.txt'} <= manifest['files'].keys():
         raise ValueError('Missing CLI artifact set')
 
 
