@@ -12,7 +12,6 @@ buildkite-agent artifact download 'release/*' "$work" \
 python3 .buildkite/verify-artifact.py "$work/release"
 binary="$work/release/codescythe-$platform"
 chmod +x "$binary"
-file "$binary"
 "$binary" --version
 "$binary" --help
 set +e
@@ -22,11 +21,19 @@ set -e
 [[ "$status" == 1 ]] || { echo "expected fixture analysis to exit with 1, got $status" >&2; exit 1; }
 printf '%s\n' "$output" | grep '"dangling.ts"'
 if [[ "$platform" == linux-* ]]; then
-  ldd_output=$(ldd "$binary" 2>&1 || true)
-  if ! printf '%s\n' "$ldd_output" | grep -Eq 'not a dynamic executable|statically linked'; then
-    if strings "$binary" | grep 'GLIBC_'; then
-      echo "$binary unexpectedly references glibc symbols" >&2
-      exit 1
-    fi
-  fi
+  python3 - "$binary" <<'PYTHON'
+from pathlib import Path
+import struct
+import sys
+
+binary = Path(sys.argv[1]).read_bytes()
+if binary[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<H', binary, 18)[0] != 62:
+    raise SystemExit('Expected Linux AMD64 ELF binary')
+offset = struct.unpack_from('<Q', binary, 32)[0]
+size, count = struct.unpack_from('<HH', binary, 54)
+for index in range(count):
+    if struct.unpack_from('<I', binary, offset + index * size)[0] == 3:
+        raise SystemExit('CLI unexpectedly requires a dynamic interpreter')
+print('Verified static Linux AMD64 binary')
+PYTHON
 fi
