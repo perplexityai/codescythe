@@ -54,7 +54,7 @@ steps:
 - label: Verify hooks
   key: verify-hooks
   command:
-  - python3 .buildkite/test-artifact.py
+  - python3 -B .buildkite/test-artifact.py
   - bash .buildkite/verify-hooks.sh
   agents:
     queue: oss
