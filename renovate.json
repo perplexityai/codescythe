@@ -1,10 +1,68 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": ["config:recommended", ":semanticCommits"],
   "dependencyDashboard": true,
-  "semanticCommits": "enabled",
   "minimumReleaseAge": "7 days",
   "minimumReleaseAgeBehaviour": "timestamp-required",
   "internalChecksFilter": "strict",
-  "prCreation": "not-pending"
+  "prCreation": "not-pending",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "automerge": false,
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "tests/fixtures/**",
+    "benchmarks/**",
+    "bcr/**",
+    ".pnpm-store/**"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["oxc", "oxc_allocator", "oxc_ast", "oxc_parser", "oxc_span"],
+      "groupName": "Oxc crates"
+    },
+    {
+      "matchPackageNames": ["pnpm"],
+      "groupName": "pnpm"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^MODULE\\.bazel$/"],
+      "matchStrings": ["node\\.toolchain\\(node_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node-version",
+      "versioningTemplate": "node"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^MODULE\\.bazel$/"],
+      "matchStrings": ["pnpm_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "pnpm",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^MODULE\\.bazel$/"],
+      "matchStrings": ["toolchains\\.toolchain\\([^)]*version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "rust",
+      "datasourceTemplate": "rust-version"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^MODULE\\.bazel$/"],
+      "matchStrings": ["go_sdk\\.download\\(version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "go",
+      "datasourceTemplate": "golang-version"
+    }
+  ]
 }
