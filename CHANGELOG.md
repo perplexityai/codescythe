@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.1...codescythe_cli_v0.11.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **deps:** regenerate Renovate Bazel lockfiles in CI ([db9d2b3](https://github.com/perplexityai/codescythe/commit/db9d2b35674e133d32436e6e3a9a0ee3f4ebd841))
+
 ## [0.11.1](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.0...codescythe_cli_v0.11.1) (2026-08-23)
 
 
