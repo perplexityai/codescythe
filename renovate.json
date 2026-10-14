@@ -32,6 +32,11 @@
       "matchManagers": ["npm"],
       "matchDepTypes": ["engines"],
       "enabled": false
+    },
+    {
+      "description": "Repository CI regenerates Bazel lockfiles; Mend cannot execute Bazel",
+      "matchManagers": ["bazel-module", "bazelisk"],
+      "skipArtifactsUpdate": true
     }
   ],
   "customManagers": [

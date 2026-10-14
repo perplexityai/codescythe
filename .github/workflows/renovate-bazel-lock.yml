@@ -1,0 +1,114 @@
+name: Update Renovate Bazel Lockfile
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  generate:
+    if: >-
+      github.actor == 'renovate[bot]' &&
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'renovate/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.lockfile.outputs.changed }}
+    steps:
+      - name: Checkout Renovate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # v0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: renovate-bazel-lock
+          repository-cache: true
+          cache-save: false
+
+      - name: Generate lockfile
+        id: lockfile
+        shell: bash
+        run: |
+          bazel mod deps --lockfile_mode=update
+          bazel mod deps --lockfile_mode=error
+          jq -e 'type == "object" and (.lockFileVersion | type == "number")' MODULE.bazel.lock
+          if git ls-files --error-unmatch MODULE.bazel.lock >/dev/null 2>&1 &&
+             git diff --quiet -- MODULE.bazel.lock; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload lockfile
+        if: steps.lockfile.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: bazel-lock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: MODULE.bazel.lock
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: generate
+    if: >-
+      needs.generate.outputs.changed == 'true' &&
+      github.actor == 'renovate[bot]' &&
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'renovate/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout Renovate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify branch still matches
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          test "$(git ls-remote origin "refs/heads/$HEAD_REF" | cut -f1)" = "$HEAD_SHA"
+
+      - name: Download lockfile
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: bazel-lock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: generated-lock
+
+      - name: Commit lockfile
+        shell: bash
+        run: |
+          test -f generated-lock/MODULE.bazel.lock
+          test ! -L generated-lock/MODULE.bazel.lock
+          test "$(wc -c < generated-lock/MODULE.bazel.lock)" -lt 10000000
+          jq -e 'type == "object" and (.lockFileVersion | type == "number")' generated-lock/MODULE.bazel.lock
+          cp generated-lock/MODULE.bazel.lock MODULE.bazel.lock
+          rm -rf generated-lock
+          git add -- MODULE.bazel.lock
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          test "$(git diff --cached --name-only)" = 'MODULE.bazel.lock'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -c core.hooksPath=/dev/null commit -m 'fix(deps): update Bazel lockfile'
+          git push origin "HEAD:refs/heads/$HEAD_REF"
