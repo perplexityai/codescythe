@@ -23,12 +23,12 @@ jsonc-parser = { version = "0.32.4", features = ["serde"] }
 mermaid-rs-renderer = { version = "0.2.2", default-features = false }
 napi = { version = "3.9.0", default-features = false, features = ["napi4"] }
 napi-derive = { version = "3.5.6" }
-oxc = { version = "0.132.0", features = ["ast_visit"] }
-oxc_allocator = { version = "0.132.0" }
-oxc_ast = { version = "0.132.0" }
-oxc_parser = { version = "0.132.0" }
+oxc = { version = "0.153.0", features = ["ast_visit"] }
+oxc_allocator = { version = "0.153.0" }
+oxc_ast = { version = "0.153.0" }
+oxc_parser = { version = "0.153.0" }
 oxc_resolver = { version = "11.19.1" }
-oxc_span = { version = "0.132.0" }
+oxc_span = { version = "0.153.0" }
 rayon = { version = "1.12.0" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["preserve_order"] }
