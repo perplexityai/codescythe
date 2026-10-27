@@ -817,6 +817,23 @@ pub fn analyze_path(
             stale_expectations.join("\n")
         );
     }
+    // Test files are graph leaves: they are reported only when they import
+    // removed code, and that removed code is reported on its own. An
+    // expectation on a test therefore never suppresses anything and can never
+    // become stale, so reject it instead of letting it linger.
+    let mut test_file_expectations = expected_unused_file_indexes
+        .iter()
+        .copied()
+        .filter(|index| test_file_indexes.contains(index) && !entry_indexes.contains(index))
+        .map(|index| files.relative(index))
+        .collect::<Vec<_>>();
+    if !test_file_expectations.is_empty() {
+        test_file_expectations.sort();
+        anyhow::bail!(
+            "unused-file expectation has no effect on a test file; remove it:\n{}",
+            test_file_expectations.join("\n")
+        );
+    }
 
     let internal_test_usages = mark_internal_exports_used_by_tests(
         &mut files,

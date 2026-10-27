@@ -705,7 +705,7 @@ const pages: Page[] = [
   ],
   "unresolved": []
 }`),
-        h('p', null, 'For a file that must stay detached, add a reasoned file-header expectation. Codescythe suppresses its unused-file issue, then fails if an entry point later reaches it.'),
+        h('p', null, 'For a file that must stay detached, add a reasoned file-header expectation. Codescythe suppresses its unused-file issue, then fails if an entry point later reaches it. Its tests need no directive; test files reject it.'),
         h(CodeBlock, { language: 'ts' }, `// codescythe-expect-error unused-file -- loaded by framework`),
       ),
       h(
