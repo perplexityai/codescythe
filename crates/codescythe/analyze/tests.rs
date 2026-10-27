@@ -105,6 +105,83 @@ fn expect_error_fails_when_file_becomes_reachable() {
     assert!(message.contains("src/detached.ts"), "{message}");
 }
 
+#[test]
+fn expect_error_on_a_detached_file_keeps_its_tests_unreported() {
+    let analysis = analyze_inline_project(&[
+        ("src/entry.ts", "console.log('entry');\n"),
+        (
+            "src/detached.ts",
+            "// codescythe-expect-error unused-file -- loaded by framework\nexport const detached = 1;\n",
+        ),
+        (
+            "src/detached.test.ts",
+            "import { detached } from './detached';\nconsole.log(detached);\n",
+        ),
+    ]);
+
+    assert!(
+        analysis.issues.files.is_empty(),
+        "{:?}",
+        analysis.issues.files
+    );
+    assert!(
+        analysis.issues.exports.is_empty(),
+        "{:?}",
+        analysis.issues.exports
+    );
+}
+
+#[test]
+fn expect_error_is_rejected_on_test_files() {
+    for (detached_header, case) in [
+        (
+            "// codescythe-expect-error unused-file -- loaded by framework\n",
+            "detached target",
+        ),
+        ("", "reachable target"),
+    ] {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        write_file(
+            cwd,
+            "codescythe.json",
+            r#"{
+                  "entry": "src/entry.ts",
+                  "project": "src/**/*.ts"
+                }"#,
+        );
+        let entry = if detached_header.is_empty() {
+            "import { detached } from './detached';\nconsole.log(detached);\n"
+        } else {
+            "console.log('entry');\n"
+        };
+        write_file(cwd, "src/entry.ts", entry);
+        write_file(
+            cwd,
+            "src/detached.ts",
+            &format!("{detached_header}export const detached = 1;\n"),
+        );
+        write_file(
+            cwd,
+            "src/detached.test.ts",
+            "// codescythe-expect-error unused-file -- tests the detached file\nimport { detached } from './detached';\nconsole.log(detached);\n",
+        );
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let error = analyze_path(cwd, &config, AnalysisOptions::default()).unwrap_err();
+        let message = format!("{error:#}");
+
+        assert!(
+            message.contains("unused-file expectation has no effect on a test file"),
+            "{case}: {message}"
+        );
+        assert!(
+            message.contains("src/detached.test.ts"),
+            "{case}: {message}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn follows_runfiles_style_symlinked_source_directories() {

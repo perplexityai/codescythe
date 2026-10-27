@@ -101,6 +101,9 @@ Use a reasoned file-header directive for a file that must stay detached:
 
 Codescythe suppresses that file's unused-file issue. If an entry point later
 reaches the file, analysis fails so the stale expectation cannot hide usage.
+Tests of an expected-unused file stay unreported without their own directive.
+The directive is rejected on test files, which are leaf nodes and cannot become
+stale.
 
 ## Fixing
 
