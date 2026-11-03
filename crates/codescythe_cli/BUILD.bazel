@@ -8,7 +8,7 @@ load(
     "release_binary_windows_amd64",
 )
 
-VERSION = "0.11.2"  # x-release-please-version
+VERSION = "0.11.3"  # x-release-please-version
 
 rust_binary(
     name = "codescythe",
