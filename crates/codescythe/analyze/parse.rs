@@ -723,6 +723,21 @@ impl<'a> Visit<'a> for FileVisitor {
         walk::walk_import_expression(self, expression);
     }
 
+    fn visit_ts_import_equals_declaration(&mut self, declaration: &TSImportEqualsDeclaration<'a>) {
+        if let TSModuleReference::ExternalModuleReference(reference) = &declaration.module_reference
+        {
+            let source = reference.expression.value.as_str().to_string();
+            if declaration.import_kind == ImportOrExportKind::Type {
+                self.type_only_file_imports.push(source);
+            } else {
+                self.side_effect_imports.push(source.clone());
+                self.namespace_imports
+                    .insert(declaration.id.name.as_str().to_string(), source);
+            }
+        }
+        walk::walk_ts_import_equals_declaration(self, declaration);
+    }
+
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
         self.local_references
             .insert(identifier.name.as_str().to_string());

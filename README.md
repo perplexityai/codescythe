@@ -88,9 +88,10 @@ importer files, so generated-import suppressions are visible instead of being
 silent.
 
 The source graph includes static imports and re-exports, string-literal dynamic
-imports, destructured `require("./module")` calls, and `import.meta.glob`
-patterns. `import.meta.glob` marks the matched project files and their exports
-as used; computed patterns and non-literal dynamic imports remain outside the
+imports, destructured `require("./module")` calls, TypeScript
+`import x = require("./module")` declarations, and `import.meta.glob` patterns.
+`import.meta.glob` marks the matched project files and their exports as used;
+computed patterns and non-literal dynamic imports remain outside the
 supported graph.
 
 Use a reasoned file-header directive for a file that must stay detached:

@@ -346,6 +346,28 @@ fn parses_js_files_with_jsx_syntax() {
 }
 
 #[test]
+fn follows_typescript_import_equals_require() {
+    let analysis = analyze_inline_project(&[
+        (
+            "src/entry.ts",
+            "import config = require('./config');\nimport type types = require('./types');\nconsole.log(config.value);\n",
+        ),
+        (
+            "src/config.ts",
+            "export const value = 1;\nexport const unusedValue = 2;\n",
+        ),
+        ("src/types.ts", "export type Value = number;\n"),
+        ("src/dead.ts", "export const dead = 1;\n"),
+    ]);
+
+    assert_unused_file(&analysis, "src/dead.ts");
+    assert!(!analysis.issues.files.contains_key("src/config.ts"));
+    assert!(!analysis.issues.files.contains_key("src/types.ts"));
+    assert_no_unused_export(&analysis, "src/config.ts", "value");
+    assert_unused_export(&analysis, "src/config.ts", "unusedValue");
+}
+
+#[test]
 fn follows_oxc_resolution_rules_for_project_imports() {
     let (_tempdir, cwd) = fixture_path("oxc-resolution");
 
