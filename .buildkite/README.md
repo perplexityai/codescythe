@@ -1,6 +1,6 @@
 # Buildkite CI
 
-Native Rust tests, non-PR functional tests, Linux AMD64 and macOS ARM64 BCR overlay validation; Lefthook pre-commit checks. BCR validation runs on every build instead of only matching paths.
+Native Rust tests, functional tests, Linux AMD64 and macOS ARM64 BCR overlay validation; Lefthook pre-commit checks. Functional tests and BCR validation run on every build, including PRs.
 
 ```mermaid
 flowchart TD
@@ -22,7 +22,7 @@ Each Bazel job restores its suite/version/platform cache from `oss-ci-v2`, runs 
 
 Paste `bootstrap.yml` into pipeline settings; never load approval policy from a PR checkout. Forks require writer approval before checkout or hooks. Only GitHub-verified `renovate[bot]` (ID `29139614`, type `Bot`) bypasses. Each new commit needs approval; API errors and stale PR heads fail closed. Enable third-party forks and publish blocked builds as Pending. Enable workflow-authorized GitHub tokens for release asset uploads. PR tokens remain read-only; merge queues cannot request tokens. Keep pipeline/cluster secrets disabled.
 
-Build main pushes, PR updates/reopens/base changes, and merge groups; enable `codescythe_cli_v*` tags through the branch filter. Preserve PR exclusions shown in `pipeline.yml`. Manual builds support former workflow-dispatch checks. Retain required GHA ARM64 checks. Replace migrated required GHA checks with `buildkite/codescythe` from the Buildkite app only after native checks pass.
+Build main pushes, PR updates/reopens/base changes, and merge groups; enable `codescythe_cli_v*` tags through the branch filter. Only release uploads exclude PRs. Manual builds support former workflow-dispatch checks. Retain required GHA ARM64 checks. Replace migrated required GHA checks with `buildkite/codescythe` from the Buildkite app only after native checks pass.
 
 Remaining GHA: Release Please, CLI/npm/crates publishing, BCR publishing, GitHub Pages deployment.
 
