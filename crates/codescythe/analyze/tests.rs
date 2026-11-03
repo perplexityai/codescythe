@@ -585,6 +585,48 @@ fn namespace_usage_of_test_only_exports_marks_test_unused() {
 }
 
 #[test]
+fn namespace_jsx_member_usage_marks_exports_used() {
+    let analysis = analyze_inline_project_with_config(
+        r#"{
+              "entry": "src/entry.tsx",
+              "project": "src/**/*.{ts,tsx}"
+            }"#,
+        &[
+            (
+                "src/entry.tsx",
+                "import * as UI from './ui';\nexport const App = () => (\n  <UI.Root>\n    <UI.Group.Item />\n  </UI.Root>\n);\n",
+            ),
+            (
+                "src/ui.tsx",
+                "export const Root = () => null;\nexport const Group = { Item: () => null };\nexport const Unused = () => null;\n",
+            ),
+        ],
+    );
+
+    assert_no_unused_export(&analysis, "src/ui.tsx", "Root");
+    assert_no_unused_export(&analysis, "src/ui.tsx", "Group");
+    assert_unused_export(&analysis, "src/ui.tsx", "Unused");
+}
+
+#[test]
+fn namespace_qualified_type_usage_marks_exports_used() {
+    let analysis = analyze_inline_project(&[
+        (
+            "src/entry.ts",
+            "import * as UI from './ui';\nconst props: UI.ItemProps = { id: 'a' };\nconst root: typeof UI.root = UI.root;\nconsole.log(props, root);\n",
+        ),
+        (
+            "src/ui.ts",
+            "export type ItemProps = { id: string };\nexport const root = 1;\nexport type UnusedProps = { id: string };\n",
+        ),
+    ]);
+
+    assert_no_unused_export(&analysis, "src/ui.ts", "ItemProps");
+    assert_no_unused_export(&analysis, "src/ui.ts", "root");
+    assert_unused_export(&analysis, "src/ui.ts", "UnusedProps");
+}
+
+#[test]
 fn internal_exports_used_by_tests_are_kept_alive() {
     let analysis = analyze_inline_project(&[
         ("src/entry.ts", "console.log('entry');\n"),

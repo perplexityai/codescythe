@@ -700,6 +700,28 @@ impl<'a> Visit<'a> for FileVisitor {
         walk::walk_static_member_expression(self, expression);
     }
 
+    fn visit_jsx_member_expression(&mut self, expression: &JSXMemberExpression<'a>) {
+        // `<Namespace.Member />` reads `Member` from a namespace binding.
+        if let JSXMemberExpressionObject::IdentifierReference(object) = &expression.object {
+            self.member_uses.push((
+                object.name.as_str().to_string(),
+                expression.property.name.as_str().to_string(),
+            ));
+        }
+        walk::walk_jsx_member_expression(self, expression);
+    }
+
+    fn visit_ts_qualified_name(&mut self, name: &TSQualifiedName<'a>) {
+        // `Namespace.Member` in a type position, including `typeof Namespace.Member`.
+        if let TSTypeName::IdentifierReference(left) = &name.left {
+            self.member_uses.push((
+                left.name.as_str().to_string(),
+                name.right.name.as_str().to_string(),
+            ));
+        }
+        walk::walk_ts_qualified_name(self, name);
+    }
+
     fn visit_variable_declarator(&mut self, declaration: &VariableDeclarator<'a>) {
         if let Some(init) = &declaration.init {
             if let Some((source, kind)) = import_source_from_expression(init) {
