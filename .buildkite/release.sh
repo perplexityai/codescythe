@@ -63,11 +63,14 @@ PY
     [[ "$(git rev-parse HEAD)" == "$BUILDKITE_COMMIT" ]]
     buildkite-agent artifact download 'release/*' . --build "${BUILDKITE_BUILD_ID:?}" --step release-build
     python3 .buildkite/verify-artifact.py release
-    response=$(curl --fail --silent --show-error --request POST \
+    if ! response=$(curl --fail-with-body --silent --show-error --request POST \
       --header "Authorization: Token $BUILDKITE_AGENT_ACCESS_TOKEN" \
       --header 'Content-Type: application/json' \
       --data "{\"repo_url\":\"$BUILDKITE_REPO\",\"workflow\":\"cli-release.yml\",\"permissions\":{\"contents\":\"write\"}}" \
-      "$BUILDKITE_AGENT_ENDPOINT/jobs/$BUILDKITE_JOB_ID/github_workflow_access_token")
+      "$BUILDKITE_AGENT_ENDPOINT/jobs/$BUILDKITE_JOB_ID/github_workflow_access_token"); then
+      printf '%s\n' "$response" >&2
+      exit 1
+    fi
     printf '%s' "$response" | buildkite-agent redactor add --format json
     GH_TOKEN=$(printf '%s' "$response" | jq --exit-status --raw-output .token)
     export GH_TOKEN GH_REPO=perplexityai/codescythe
