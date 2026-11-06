@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.3...codescythe_cli_v0.11.4) (2026-11-06)
+
+
+### Bug Fixes
+
+* **ci:** skip published BCR versions and report token errors ([#132](https://github.com/perplexityai/codescythe/issues/132)) ([3e2e84b](https://github.com/perplexityai/codescythe/commit/3e2e84bca3238da6905febd4fb34ac9f3dcebb09))
+
 ## [0.11.3](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.2...codescythe_cli_v0.11.3) (2026-11-03)
 
 
