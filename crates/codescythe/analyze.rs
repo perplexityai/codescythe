@@ -106,6 +106,38 @@ pub struct Analysis {
     pub internal_exports_used_by_tests: Vec<InternalExportTestUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explain_export: Option<ExplainExportResult>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupported_imports: Vec<UnsupportedImport>,
+}
+
+/// A live file that loads a project file through syntax outside the supported
+/// ESM import graph. `--fix` refuses to run while any of these are present.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsupportedImport {
+    pub file: String,
+    pub line: usize,
+    pub col: usize,
+    pub syntax: UnsupportedImportSyntax,
+    pub specifier: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub enum UnsupportedImportSyntax {
+    /// CommonJS `require("./module")`.
+    Require,
+    /// TypeScript `import x = require("./module")`.
+    ImportEquals,
+}
+
+impl fmt::Display for UnsupportedImportSyntax {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Require => "require()",
+            Self::ImportEquals => "import = require()",
+        })
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -961,6 +993,10 @@ pub fn analyze_path(
         );
     }
 
+    let unsupported_imports = profile.time("scan unsupported imports", || {
+        unsupported_project_imports(&mut files, &module_resolver, &issues.files)
+    })?;
+
     let mut effective_used_files = used_files.clone();
     effective_used_files.extend(live_test_support_files.iter().copied());
     let internal_exports_used_by_tests = internal_test_usages_report(&files, internal_test_usages);
@@ -1078,5 +1114,37 @@ pub fn analyze_path(
         source_alias_ignore_warnings,
         internal_exports_used_by_tests,
         explain_export,
+        unsupported_imports,
     })
+}
+
+/// Collects `require()` and `import = require()` sites in files that survive a
+/// fix pass and resolve to project files. Codescythe only follows ESM imports,
+/// so these targets can look unused even though they are loaded at runtime.
+fn unsupported_project_imports(
+    files: &mut FileCache,
+    module_resolver: &ModuleResolver,
+    unused_files: &BTreeMap<String, FileIssue>,
+) -> Result<Vec<UnsupportedImport>> {
+    let mut found = Vec::new();
+    for index in files.parsed_indexes() {
+        let file = files.get(index)?;
+        if file.unsupported_imports.is_empty() || unused_files.contains_key(&file.relative) {
+            continue;
+        }
+        for import in &file.unsupported_imports {
+            if let ImportResolution::Project(_) = module_resolver.resolve(file, &import.source)? {
+                found.push(UnsupportedImport {
+                    file: file.relative.clone(),
+                    line: import.line,
+                    col: import.col,
+                    syntax: import.syntax,
+                    specifier: import.source.clone(),
+                });
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    Ok(found)
 }

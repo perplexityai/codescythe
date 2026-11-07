@@ -37,6 +37,9 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
     for export in file.exports.values_mut() {
         (export.line, export.col) = line_col(&source, export.name_span.start);
     }
+    for import in &mut file.unsupported_imports {
+        (import.line, import.col) = line_col(&source, import.span.start);
+    }
     Ok(file)
 }
 
@@ -133,6 +136,14 @@ impl FileCache {
     #[cfg(feature = "profiling")]
     pub(super) fn parsed_count(&self) -> usize {
         self.parsed.iter().filter(|file| file.is_some()).count()
+    }
+
+    pub(super) fn parsed_indexes(&self) -> Vec<usize> {
+        self.parsed
+            .iter()
+            .enumerate()
+            .filter_map(|(index, file)| file.is_some().then_some(index))
+            .collect()
     }
 
     pub(super) fn relative(&self, index: usize) -> String {
@@ -312,7 +323,18 @@ pub(super) struct FileData {
     pub(super) suppressed_import_conflict_sources: BTreeSet<String>,
     pub(super) suppressed_import_conflict_preload_sources: BTreeSet<String>,
     pub(super) local_references: BTreeSet<String>,
+    pub(super) unsupported_imports: Vec<UnsupportedImportRecord>,
     pub(super) expects_unused_file: bool,
+}
+
+/// CommonJS-style import syntax that is outside the supported ESM graph.
+#[derive(Debug, Clone)]
+pub(super) struct UnsupportedImportRecord {
+    pub(super) syntax: UnsupportedImportSyntax,
+    pub(super) source: String,
+    pub(super) span: Span,
+    pub(super) line: usize,
+    pub(super) col: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -360,6 +382,7 @@ struct FileVisitor {
     suppressed_import_conflict_preload_sources: BTreeSet<String>,
     local_references: BTreeSet<String>,
     local_internal_declarations: BTreeSet<String>,
+    unsupported_imports: Vec<UnsupportedImportRecord>,
     internal_annotation_starts: BTreeSet<u32>,
     import_conflict_suppression_starts: BTreeSet<u32>,
     import_conflict_preload_suppression_starts: BTreeSet<u32>,
@@ -391,6 +414,7 @@ impl FileVisitor {
             suppressed_import_conflict_preload_sources: BTreeSet::new(),
             local_references: BTreeSet::new(),
             local_internal_declarations: BTreeSet::new(),
+            unsupported_imports: Vec::new(),
             internal_annotation_starts,
             import_conflict_suppression_starts,
             import_conflict_preload_suppression_starts,
@@ -435,6 +459,7 @@ impl FileVisitor {
             suppressed_import_conflict_preload_sources: self
                 .suppressed_import_conflict_preload_sources,
             local_references: self.local_references,
+            unsupported_imports: self.unsupported_imports,
             expects_unused_file: false,
         }
     }
@@ -519,6 +544,21 @@ impl FileVisitor {
                 type_only: false,
             });
         }
+    }
+
+    fn add_unsupported_import(
+        &mut self,
+        syntax: UnsupportedImportSyntax,
+        source: &str,
+        span: Span,
+    ) {
+        self.unsupported_imports.push(UnsupportedImportRecord {
+            syntax,
+            source: source.to_string(),
+            span,
+            line: 0,
+            col: 0,
+        });
     }
 
     fn has_internal_annotation(&self, span: Span) -> bool {
@@ -734,6 +774,14 @@ impl<'a> Visit<'a> for FileVisitor {
     fn visit_call_expression(&mut self, expression: &CallExpression<'a>) {
         self.glob_imports
             .extend(import_meta_glob_patterns(expression));
+        if is_require_call(expression)
+            && let Some(source) = expression
+                .arguments
+                .first()
+                .and_then(argument_string_literal)
+        {
+            self.add_unsupported_import(UnsupportedImportSyntax::Require, &source, expression.span);
+        }
 
         walk::walk_call_expression(self, expression);
     }
@@ -743,6 +791,18 @@ impl<'a> Visit<'a> for FileVisitor {
             self.dynamic_imports.push(source.value.as_str().to_string());
         }
         walk::walk_import_expression(self, expression);
+    }
+
+    fn visit_ts_import_equals_declaration(&mut self, declaration: &TSImportEqualsDeclaration<'a>) {
+        if let TSModuleReference::ExternalModuleReference(reference) = &declaration.module_reference
+        {
+            self.add_unsupported_import(
+                UnsupportedImportSyntax::ImportEquals,
+                reference.expression.value.as_str(),
+                declaration.span,
+            );
+        }
+        walk::walk_ts_import_equals_declaration(self, declaration);
     }
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {

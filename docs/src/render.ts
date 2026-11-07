@@ -677,7 +677,8 @@ const pages: Page[] = [
       h(
         PageSection,
         { id: 'graph', title: 'Import Graph' },
-        h('p', null, 'Codescythe follows static imports, re-exports, string-literal dynamic imports, destructured CommonJS requires, and supported ', h('code', null, 'import.meta.glob'), ' patterns.'),
+        h('p', null, 'Codescythe follows ESM imports: static imports, re-exports, string-literal dynamic imports, and supported ', h('code', null, 'import.meta.glob'), ' patterns.'),
+        h('p', null, 'CommonJS ', h('code', null, 'require()'), ' and TypeScript ', h('code', null, 'import x = require()'), ' are not supported. Fix mode refuses to run while a live file loads a project file through either form.'),
       ),
       h(
         PageSection,
@@ -1443,6 +1444,7 @@ npx codescythe doctor --json --config codescythe.jsonc`),
         PageSection,
         { id: 'fix-refused', title: 'Fix Refused' },
         h('p', null, 'Fix mode refuses source-like unresolved-import ignore patterns that overlap package imports or configured aliases. Narrow the pattern, fix the resolver issue, or force only after reviewing doctor output.'),
+        h('p', null, 'It also refuses when a live file loads a project file through ', h('code', null, 'require()'), ' or ', h('code', null, 'import x = require()'), '. Convert those call sites to ESM imports.'),
         h(Callout, { title: 'Force is a last step' }, h('p', null, h('code', null, '--force'), ' bypasses a safety guard. Keep the run scoped and review the diff.')),
       ),
       h(

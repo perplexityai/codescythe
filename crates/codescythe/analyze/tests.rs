@@ -346,6 +346,67 @@ fn parses_js_files_with_jsx_syntax() {
 }
 
 #[test]
+fn reports_commonjs_style_imports_of_project_files() {
+    let analysis = analyze_inline_project(&[
+        (
+            "src/entry.ts",
+            "import fs = require('node:fs');\nimport config = require('./config');\nimport type types = require('./types');\nconst helper = require('./helper');\nconsole.log(fs, config.value, helper);\n",
+        ),
+        (
+            "src/config.ts",
+            "export const value = 1;\nexport const unusedValue = 2;\n",
+        ),
+        ("src/types.ts", "export type Value = number;\n"),
+        ("src/helper.ts", "export const help = 1;\n"),
+        (
+            "src/dead.ts",
+            "const config = require('./config');\nexport const dead = config;\n",
+        ),
+    ]);
+
+    // Only ESM imports are followed, so these targets are still reported.
+    assert_unused_file(&analysis, "src/config.ts");
+    assert_unused_file(&analysis, "src/types.ts");
+    assert_unused_file(&analysis, "src/dead.ts");
+    assert_eq!(
+        analysis
+            .unsupported_imports
+            .iter()
+            .map(|import| (
+                import.file.as_str(),
+                import.line,
+                import.col,
+                import.syntax,
+                import.specifier.as_str(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "src/entry.ts",
+                2,
+                1,
+                UnsupportedImportSyntax::ImportEquals,
+                "./config"
+            ),
+            (
+                "src/entry.ts",
+                3,
+                1,
+                UnsupportedImportSyntax::ImportEquals,
+                "./types"
+            ),
+            (
+                "src/entry.ts",
+                4,
+                16,
+                UnsupportedImportSyntax::Require,
+                "./helper"
+            ),
+        ]
+    );
+}
+
+#[test]
 fn follows_oxc_resolution_rules_for_project_imports() {
     let (_tempdir, cwd) = fixture_path("oxc-resolution");
 
