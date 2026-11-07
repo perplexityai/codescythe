@@ -41,6 +41,23 @@ fn apply_fixes_internal(
     analysis: &Analysis,
     force: bool,
 ) -> Result<FixResult> {
+    if !force && !analysis.unsupported_imports.is_empty() {
+        let sites = analysis
+            .unsupported_imports
+            .iter()
+            .map(|import| {
+                format!(
+                    "  {}:{}:{} {} {:?}",
+                    import.file, import.line, import.col, import.syntax, import.specifier
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        anyhow::bail!(
+            "--fix refused because project files are loaded through unsupported import syntax; Codescythe only follows ESM imports, so these targets may be removed incorrectly. Convert them to ESM imports or rerun with --force to override:\n{sites}"
+        );
+    }
+
     let mut changed_files = Vec::new();
     let mut removed_files = Vec::new();
     let mut skipped_export_files = Vec::new();
@@ -193,6 +210,51 @@ mod tests {
     }
 
     #[test]
+    fn refuses_fix_when_project_files_are_loaded_through_unsupported_imports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": ["src/main.ts"],
+              "project": ["src/**/*.ts"]
+            }"#,
+        )
+        .unwrap();
+        fs::create_dir(cwd.join("src")).unwrap();
+        fs::write(
+            cwd.join("src/main.ts"),
+            "import { used } from './used';\nimport config = require('./config');\nconsole.log(used, config.value);\n",
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("src/used.ts"),
+            "export const used = 1;\nexport const unused = 2;\n",
+        )
+        .unwrap();
+        fs::write(cwd.join("src/config.ts"), "export const value = 1;\n").unwrap();
+
+        let error = run_and_fix(cwd, None).unwrap_err();
+        let message = format!("{error:#}");
+
+        assert!(message.contains("--fix refused"), "{message}");
+        assert!(
+            message.contains("src/main.ts:2:1 import = require() \"./config\""),
+            "{message}"
+        );
+        assert!(cwd.join("src/config.ts").exists());
+        assert_eq!(
+            fs::read_to_string(cwd.join("src/used.ts")).unwrap(),
+            "export const used = 1;\nexport const unused = 2;\n"
+        );
+
+        let config = crate::load_config(cwd, None).unwrap();
+        let analysis = crate::run(cwd, None).unwrap();
+        let result = apply_fixes_with_options(cwd, &config, &analysis, true).unwrap();
+        assert_eq!(result.removed_files, vec!["src/config.ts"]);
+    }
+
+    #[test]
     fn skips_export_edits_for_removed_files() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();
@@ -235,6 +297,7 @@ mod tests {
                 source_alias_ignore_warnings: Vec::new(),
                 internal_exports_used_by_tests: Vec::new(),
                 explain_export: None,
+                unsupported_imports: Vec::new(),
             },
         )
         .unwrap();
@@ -421,6 +484,7 @@ mod tests {
                 source_alias_ignore_warnings: Vec::new(),
                 internal_exports_used_by_tests: Vec::new(),
                 explain_export: None,
+                unsupported_imports: Vec::new(),
             },
             false,
         )

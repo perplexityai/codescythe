@@ -164,6 +164,11 @@ used. Non-JS/TS asset patterns such as `*.svg?raw` still warn but do not block
 `--fix`. Export edits are skipped when retained ignored-unresolved diagnostics
 match an exporting file's alias namespace.
 
+`--fix` also refuses to run when a live file loads a project file through
+`require()` or `import x = require()`. Codescythe only follows ESM imports, so
+those targets and their exports could be removed while still loaded. `--force`
+overrides the guard.
+
 The CLI and N-API adapter both derive the analysis root the same way: an explicit
 directory or `cwd` option wins, otherwise a config file's parent directory wins,
 otherwise the current process directory is used.
@@ -260,9 +265,13 @@ The visitor records these source forms:
   `ns` as a namespace binding.
 - `import "./file"` marks the target file reachable but does not mark any export
   used.
-- `const { value } = require("./file")` marks export `value` from the resolved
-  file; assigning `require("./file")` to an identifier records a namespace-style
-  binding for later `Namespace.value` member use.
+- `require("./file")` and TypeScript `import x = require("./file")` are
+  outside the supported ESM graph. The visitor records each string-literal
+  call site, and analysis reports the ones in live files that resolve to project
+  files as `unsupportedImports`; `--fix` refuses to run while any are present.
+  Simple `const { value } = require("./file")` and `const ns = require("./file")`
+  bindings are still recorded best-effort, but that is not a supported import
+  form.
 - `const { value } = await import("./file")` marks export `value` from the
   resolved file. The string-literal `import()` expression also marks the file
   reachable.

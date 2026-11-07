@@ -87,12 +87,17 @@ grouped under `ignoredUnresolvedImportsByPattern` with sample specifiers and
 importer files, so generated-import suppressions are visible instead of being
 silent.
 
-The source graph includes static imports and re-exports, string-literal dynamic
-imports, destructured `require("./module")` calls, TypeScript
-`import x = require("./module")` declarations, and `import.meta.glob` patterns.
+The source graph covers ESM imports: static imports and re-exports,
+string-literal dynamic imports, and `import.meta.glob` patterns.
 `import.meta.glob` marks the matched project files and their exports as used;
-computed patterns and non-literal dynamic imports remain outside the
-supported graph.
+computed patterns and non-literal dynamic imports remain outside the supported
+graph.
+
+CommonJS `require("./module")` calls and TypeScript
+`import x = require("./module")` declarations are not supported, so their
+targets can be reported as unused. JSON output lists each one that loads a
+project file from a live file under `unsupportedImports`, and `--fix` refuses to
+run while any are present.
 
 Use a reasoned file-header directive for a file that must stay detached:
 
@@ -120,6 +125,12 @@ non-JS/TS asset patterns such as `*.svg?raw` still warn but do not block
 `--fix`. When ignored unresolved imports create alias-namespace uncertainty for
 a file, Codescythe skips export edits for that file and reports it in
 `skippedExportFiles`.
+
+`--fix` also refuses to run when a live file loads a project file through
+`require()` or `import x = require()`, because Codescythe only follows ESM
+imports and could otherwise remove code that is still loaded. The error lists
+each call site; convert them to ESM imports, or pass `--force` after reviewing
+them.
 
 Fixing is a single analysis-and-edit pass. Removing a dead file can make more
 files or exports unreachable, so repeated cleanup jobs should run Codescythe
