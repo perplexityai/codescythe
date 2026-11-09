@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import time
@@ -53,6 +54,9 @@ def main():
         tagged = subprocess.check_output(['git', 'rev-parse', f'refs/tags/{tag}^{{commit}}'], text=True).strip()
         if tagged != commit:
             raise ValueError('Checkout does not match release tag')
+        version = re.search(r'^version = "([^"\n]+)"', Path('crates/codescythe/Cargo.toml').read_text(), re.MULTILINE)
+        if not version or tag != 'codescythe_cli_v' + version[1]:
+            raise ValueError('Release tag does not match crate version')
     subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
     deadline = time.monotonic() + 90 * 60
     while time.monotonic() < deadline:
