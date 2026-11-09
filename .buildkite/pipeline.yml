@@ -26,7 +26,6 @@ steps:
   artifact_paths: ".buildkite-artifacts/**/*;bazel-testlogs/**/test.log;bazel-testlogs/**/test.xml;examples/*/bazel-testlogs/**/test.log;examples/*/bazel-testlogs/**/test.xml;bcr_test/bazel-testlogs/**/test.log"
   env:
     USE_BAZEL_VERSION: 8.5.0
-  if: build.pull_request.id == null
 - label: Validate BCR overlay (Linux AMD64)
   key: bcr-oss-8-5-0
   agents:
