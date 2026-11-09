@@ -17,8 +17,8 @@ class ArtifactTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        os.environ['BUILDKITE_BUILD_ID'] = 'test-build'
-        os.environ['BUILDKITE_PIPELINE_SLUG'] = 'codescythe'
+        os.environ['CI_RUN_ID'] = 'test-build'
+        os.environ['GITHUB_REPOSITORY'] = 'codescythe'
         names = ['codescythe-linux-amd64', 'codescythe-linux-arm64',
                  'codescythe-darwin-arm64', 'codescythe-windows-amd64.exe', 'checksums.txt']
         for name in names:
@@ -31,7 +31,7 @@ class ArtifactTests(unittest.TestCase):
         }
 
     def verify(self):
-        (self.root / 'buildkite-release.json').write_text(json.dumps(self.manifest))
+        (self.root / 'gha-release.json').write_text(json.dumps(self.manifest))
         artifact.verify(self.root)
 
     def test_valid(self):

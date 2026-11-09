@@ -1,155 +1,149 @@
+---
 name: Codescythe CLI Release
-
 permissions:
   contents: write
-
-on:
+  actions: read
+'on':
   release:
     types:
-      - published
+    - published
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run (verify tag artifacts only, no upload or BCR publish)"
+        description: Dry run (verify tag artifacts only, no upload or BCR publish)
         type: boolean
         required: false
         default: true
-
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
+  group: "${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}"
   cancel-in-progress: false
-
 jobs:
-  build:
-    name: Download Buildkite release artifacts
-    if: ${{ startsWith(github.event.release.tag_name || github.ref_name, 'codescythe_cli_v') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 100
+  gate:
+    name: Verify release commit
+    if: "${{ startsWith(github.event.release.tag_name || github.ref_name, 'codescythe_cli_v')
+      }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
     permissions:
       contents: read
+      actions: read
     steps:
-      - name: Checkout release commit
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - name: Download verified release artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
-        run: bash .github/scripts/download-release.sh
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: cli-release
-          path: release/
-          retention-days: 7
-
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+    - env:
+        GH_TOKEN: "${{ github.token }}"
+        RELEASE_TAG: "${{ github.event.release.tag_name || github.ref_name }}"
+      run: python3 .github/scripts/gha-release-gate.py
+  build:
+    name: Build and verify release artifacts
+    if: "${{ startsWith(github.event.release.tag_name || github.ref_name, 'codescythe_cli_v')
+      }}"
+    uses: "./.github/workflows/ci.yml"
+    permissions:
+      contents: read
+    needs: gate
   verify:
     name: Verify ${{ matrix.name }}
     needs: build
     permissions:
       contents: read
-    runs-on: ${{ matrix.runner }}
+    runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: macOS ARM64
-            runner: macos-15
-            binary: codescythe-darwin-arm64
-          - name: Linux AMD64
-            runner: ubuntu-24.04
-            binary: codescythe-linux-amd64
-          - name: Linux ARM64
-            runner: ubuntu-24.04-arm
-            binary: codescythe-linux-arm64
-
+        - name: macOS ARM64
+          runner: macos-15
+          binary: codescythe-darwin-arm64
+        - name: Linux AMD64
+          runner: ubuntu-24.04
+          binary: codescythe-linux-amd64
+        - name: Linux ARM64
+          runner: ubuntu-24.04-arm
+          binary: codescythe-linux-arm64
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+    - name: Download binary
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: cli-release
+        path: artifacts
+    - name: Smoke test binary
+      run: |
+        set -euo pipefail
 
-      - name: Download binary
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: cli-release
-          path: artifacts
+        binary="artifacts/${{ matrix.binary }}"
+        chmod +x "$binary"
+        file "$binary"
 
-      - name: Smoke test binary
-        run: |
-          set -euo pipefail
+        "$binary" --version
+        "$binary" --help
 
-          binary="artifacts/${{ matrix.binary }}"
-          chmod +x "$binary"
-          file "$binary"
+        set +e
+        output="$("$binary" --json -C tests/fixtures/knip-export-basics)"
+        status="$?"
+        set -e
 
-          "$binary" --version
-          "$binary" --help
+        if [ "$status" -ne 1 ]; then
+          echo "expected fixture analysis to exit with 1, got $status" >&2
+          echo "$output"
+          exit 1
+        fi
 
-          set +e
-          output="$("$binary" --json -C tests/fixtures/knip-export-basics)"
-          status="$?"
-          set -e
+        echo "$output" | grep '"dangling.ts"'
 
-          if [ "$status" -ne 1 ]; then
-            echo "expected fixture analysis to exit with 1, got $status" >&2
-            echo "$output"
+        if [ "${{ runner.os }}" = "Linux" ]; then
+          ldd_output="$(ldd "$binary" 2>&1 || true)"
+          echo "$ldd_output"
+          if echo "$ldd_output" | grep -Eq "not a dynamic executable|statically linked"; then
+            echo "$binary is static"
+          elif strings "$binary" | grep -q 'GLIBC_'; then
+            echo "$binary unexpectedly references glibc symbols" >&2
             exit 1
+          else
+            echo "$binary has no GLIBC_ symbol references"
           fi
-
-          echo "$output" | grep '"dangling.ts"'
-
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            ldd_output="$(ldd "$binary" 2>&1 || true)"
-            echo "$ldd_output"
-            if echo "$ldd_output" | grep -Eq "not a dynamic executable|statically linked"; then
-              echo "$binary is static"
-            elif strings "$binary" | grep -q 'GLIBC_'; then
-              echo "$binary unexpectedly references glibc symbols" >&2
-              exit 1
-            else
-              echo "$binary has no GLIBC_ symbol references"
-            fi
-          fi
-
+        fi
   release:
     name: Upload verified release assets
     needs:
-      - build
-      - verify
+    - build
+    - verify
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'codescythe_cli_v')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && startsWith(github.ref_name, 'codescythe_cli_v')) }}
-
+    if: "${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name,
+      'codescythe_cli_v')) || (github.event_name == 'workflow_dispatch' && inputs.dry_run
+      == false && startsWith(github.ref_name, 'codescythe_cli_v')) }}"
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Download release artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: cli-release
-          path: release
-
-      - name: Upload release assets
-        env:
-          GH_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release upload "$RELEASE_TAG" \
-            release/codescythe-darwin-arm64 \
-            release/codescythe-linux-amd64 \
-            release/codescythe-linux-arm64 \
-            release/codescythe-windows-amd64.exe \
-            "release/codescythe-${RELEASE_TAG#codescythe_cli_v}.tar.gz" \
-            release/checksums.txt \
-            --clobber
-
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+    - name: Download release artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: cli-release
+        path: release
+    - name: Upload release assets
+      env:
+        GH_REPO: "${{ github.repository }}"
+        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        RELEASE_TAG: "${{ github.event.release.tag_name || github.ref_name }}"
+      run: |
+        set -euo pipefail
+        gh release upload "$RELEASE_TAG" \
+          release/codescythe-darwin-arm64 \
+          release/codescythe-linux-amd64 \
+          release/codescythe-linux-arm64 \
+          release/codescythe-windows-amd64.exe \
+          "release/codescythe-${RELEASE_TAG#codescythe_cli_v}.tar.gz" \
+          release/checksums.txt \
+          --clobber
   publish-to-bcr:
     name: Publish BCR overlay
     needs: release
-    uses: ./.github/workflows/publish-bcr.yml
+    uses: "./.github/workflows/publish-bcr.yml"
     permissions:
       contents: read
     secrets: inherit

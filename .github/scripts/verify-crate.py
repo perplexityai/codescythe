@@ -17,5 +17,5 @@ def contents(path):
 
 
 if contents(sys.argv[1]) != contents(sys.argv[2]):
-    raise SystemExit("Cargo package differs from Buildkite-verified crate")
-print("Cargo package matches Buildkite-verified crate")
+    raise SystemExit("Cargo package differs from verified crate")
+print("Cargo package matches verified crate")

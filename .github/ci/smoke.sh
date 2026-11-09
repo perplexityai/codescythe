@@ -7,9 +7,8 @@ case "$(uname -s)-$(uname -m)" in
 esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-buildkite-agent artifact download 'release/*' "$work" \
-  --build "${BUILDKITE_BUILD_ID:?}" --step release-build
-python3 .buildkite/verify-artifact.py "$work/release"
+cp -R "$PWD/release" "$work/"
+python3 .github/ci/verify-artifact.py "$work/release"
 binary="$work/release/codescythe-$platform"
 chmod +x "$binary"
 "$binary" --version
