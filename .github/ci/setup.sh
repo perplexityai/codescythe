@@ -55,7 +55,7 @@ while [[ $# -gt 0 && "$1" == -* ]]; do
   startup+=("$1")
   shift
 done
-[[ $# -gt 0 ]] || exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}"
+[[ $# -gt 0 ]] || exec "$CI_CACHE_DIR/bin/bazelisk-real" ${startup[@]+"${startup[@]}"}
 command=$1
 shift
 case "$command" in
@@ -65,11 +65,11 @@ case "$command" in
     if [[ "${USE_BAZEL_VERSION%%.*}" -ge 9 ]]; then
       contents_cache=(--repo_contents_cache=)
     fi
-    exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}" "$command" \
+    exec "$CI_CACHE_DIR/bin/bazelisk-real" ${startup[@]+"${startup[@]}"} "$command" \
       --repository_cache="$CI_CACHE_DIR/repository" \
-      --disk_cache="$CI_CACHE_DIR/disk/$USE_BAZEL_VERSION" "${contents_cache[@]}" "$@"
+      --disk_cache="$CI_CACHE_DIR/disk/$USE_BAZEL_VERSION" ${contents_cache[@]+"${contents_cache[@]}"} "$@"
     ;;
-  *) exec "$CI_CACHE_DIR/bin/bazelisk-real" "${startup[@]}" "$command" "$@" ;;
+  *) exec "$CI_CACHE_DIR/bin/bazelisk-real" ${startup[@]+"${startup[@]}"} "$command" "$@" ;;
 esac
 SH
 chmod +x "$CI_CACHE_DIR/bin/bazelisk"
