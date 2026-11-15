@@ -255,6 +255,66 @@ mod tests {
     }
 
     #[test]
+    fn refuses_fix_for_require_only_package_imports() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": ["src/main.ts"],
+              "project": ["src/**/*.ts"]
+            }"#,
+        )
+        .unwrap();
+        fs::write(
+            cwd.join("package.json"),
+            r##"{ "name": "app", "imports": { "#config": { "require": "./src/config.ts" } } }"##,
+        )
+        .unwrap();
+        fs::create_dir(cwd.join("src")).unwrap();
+        fs::write(
+            cwd.join("src/main.ts"),
+            "import config = require(\"#config\");\nconsole.log(config.value);\n",
+        )
+        .unwrap();
+        fs::write(cwd.join("src/config.ts"), "export const value = 1;\n").unwrap();
+
+        let error = run_and_fix(cwd, None).unwrap_err();
+        let message = format!("{error:#}");
+
+        assert!(
+            message.contains("src/main.ts:1:1 import = require() \"#config\""),
+            "{message}"
+        );
+        assert!(cwd.join("src/config.ts").exists());
+    }
+
+    #[test]
+    fn allows_fix_when_require_is_a_local_function() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let cwd = tempdir.path();
+        fs::write(
+            cwd.join("codescythe.json"),
+            r#"{
+              "entry": ["src/main.ts"],
+              "project": ["src/**/*.ts"]
+            }"#,
+        )
+        .unwrap();
+        fs::create_dir(cwd.join("src")).unwrap();
+        fs::write(
+            cwd.join("src/main.ts"),
+            "function require(name: string) { return name; }\nconsole.log(require(\"./config\"));\n",
+        )
+        .unwrap();
+        fs::write(cwd.join("src/config.ts"), "export const value = 1;\n").unwrap();
+
+        let result = run_and_fix(cwd, None).unwrap();
+
+        assert_eq!(result.removed_files, vec!["src/config.ts"]);
+    }
+
+    #[test]
     fn skips_export_edits_for_removed_files() {
         let tempdir = tempfile::tempdir().unwrap();
         let cwd = tempdir.path();

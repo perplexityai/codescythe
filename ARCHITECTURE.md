@@ -267,8 +267,11 @@ The visitor records these source forms:
   used.
 - `require("./file")` and TypeScript `import x = require("./file")` are
   outside the supported ESM graph. The visitor records each string-literal
-  call site, and analysis reports the ones in live files that resolve to project
-  files as `unsupportedImports`; `--fix` refuses to run while any are present.
+  call site, skipping `require(...)` calls where `require` is a local binding
+  (a `createRequire(...)` result still counts). Analysis resolves them with
+  CommonJS `require` conditions and reports the ones in live files that resolve
+  to project files as `unsupportedImports`; `--fix` refuses to run while any are
+  present.
   Simple `const { value } = require("./file")` and `const ns = require("./file")`
   bindings are still recorded best-effort, but that is not a supported import
   form.

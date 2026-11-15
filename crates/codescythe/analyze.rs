@@ -55,6 +55,7 @@ use anyhow::{Context, Result};
 use globset::{Glob, GlobMatcher, GlobSet, GlobSetBuilder};
 use ignore::{DirEntry, WalkBuilder};
 use oxc::ast_visit::{Visit, walk};
+use oxc::syntax::scope::ScopeFlags;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_parser::{Parser, ParserReturn};
@@ -1119,8 +1120,9 @@ pub fn analyze_path(
 }
 
 /// Collects `require()` and `import = require()` sites in files that survive a
-/// fix pass and resolve to project files. Codescythe only follows ESM imports,
-/// so these targets can look unused even though they are loaded at runtime.
+/// fix pass and resolve to project files under CommonJS `require` conditions.
+/// Codescythe only follows ESM imports, so these targets can look unused even
+/// though they are loaded at runtime.
 fn unsupported_project_imports(
     files: &mut FileCache,
     module_resolver: &ModuleResolver,
@@ -1133,7 +1135,9 @@ fn unsupported_project_imports(
             continue;
         }
         for import in &file.unsupported_imports {
-            if let ImportResolution::Project(_) = module_resolver.resolve(file, &import.source)? {
+            if let ImportResolution::Project(_) =
+                module_resolver.resolve_require(file, &import.source)?
+            {
                 found.push(UnsupportedImport {
                     file: file.relative.clone(),
                     line: import.line,
