@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source .buildkite/setup.sh
+source .github/ci/setup.sh
 
 case "${1:-}" in
   native)

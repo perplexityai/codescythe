@@ -1,0 +1,242 @@
+---
+name: ci
+'on':
+  push:
+    branches:
+    - main
+  pull_request: {}
+  merge_group: {}
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build
+        type: string
+        required: false
+        default: ''
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' }}"
+env:
+  CI_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
+  CI_RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{
+    github.run_id }}"
+jobs:
+  native-oss-8-5-0:
+    name: Test Rust
+    runs-on: ubuntu-24.04-16core
+    timeout-minutes: 60
+    env:
+      USE_BAZEL_VERSION: 8.5.0
+      CI_CACHE_DIR: "/tmp/oss-ci"
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: "${{ env.CI_CACHE_DIR }}"
+        key: codescythe-${{ runner.os }}-native-oss-8-5-0-${{ github.run_id }}-${{
+          github.run_attempt }}
+        restore-keys: codescythe-${{ runner.os }}-native-oss-8-5-0-
+    - name: Run checks
+      run: bash .github/ci/run.sh native
+      shell: bash
+  functional-oss-8-5-0:
+    name: Functional tests
+    runs-on: ubuntu-24.04-16core
+    timeout-minutes: 60
+    env:
+      USE_BAZEL_VERSION: 8.5.0
+      CI_CACHE_DIR: "/tmp/oss-ci"
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: "${{ env.CI_CACHE_DIR }}"
+        key: codescythe-${{ runner.os }}-functional-oss-8-5-0-${{ github.run_id }}-${{
+          github.run_attempt }}
+        restore-keys: codescythe-${{ runner.os }}-functional-oss-8-5-0-
+    - name: Run checks
+      run: bash .github/ci/run.sh functional
+      shell: bash
+  bcr-oss-8-5-0:
+    name: Validate BCR overlay (Linux AMD64)
+    runs-on: ubuntu-24.04-16core
+    timeout-minutes: 60
+    env:
+      USE_BAZEL_VERSION: 8.5.0
+      CI_CACHE_DIR: "/tmp/oss-ci"
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: "${{ env.CI_CACHE_DIR }}"
+        key: codescythe-${{ runner.os }}-bcr-oss-8-5-0-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        restore-keys: codescythe-${{ runner.os }}-bcr-oss-8-5-0-
+    - name: Run checks
+      run: bash .github/ci/run.sh bcr
+      shell: bash
+  bcr-oss_darwin_arm64-8-5-0:
+    name: Validate BCR overlay (macOS ARM64)
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      USE_BAZEL_VERSION: 8.5.0
+      CI_CACHE_DIR: "/tmp/oss-ci"
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: "${{ env.CI_CACHE_DIR }}"
+        key: codescythe-${{ runner.os }}-bcr-oss_darwin_arm64-8-5-0-${{ github.run_id
+          }}-${{ github.run_attempt }}
+        restore-keys: codescythe-${{ runner.os }}-bcr-oss_darwin_arm64-8-5-0-
+    - name: Run checks
+      run: bash .github/ci/run.sh bcr
+      shell: bash
+  verify-hooks:
+    name: Verify hooks
+    runs-on: ubuntu-24.04-16core
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: "${{ env.CI_CACHE_DIR }}"
+        key: codescythe-${{ runner.os }}-verify-hooks-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        restore-keys: codescythe-${{ runner.os }}-verify-hooks-
+    - name: Run checks
+      run: |-
+        python3 -B .github/scripts/test-gha-release-gate.py
+        python3 -B .github/ci/test-artifact.py
+        bash .github/ci/verify-hooks.sh
+      shell: bash
+    env:
+      CI_CACHE_DIR: "/tmp/oss-ci"
+  release-build:
+    name: Cross-build CLI (four targets) and verify crate
+    runs-on: ubuntu-24.04-16core
+    timeout-minutes: 60
+    env:
+      USE_BAZEL_VERSION: 8.5.0
+      CI_CACHE_DIR: "/tmp/oss-ci"
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: "${{ env.CI_CACHE_DIR }}"
+        key: codescythe-${{ runner.os }}-release-build-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        restore-keys: codescythe-${{ runner.os }}-release-build-
+    - name: Run checks
+      run: bash .github/ci/release.sh build
+      shell: bash
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: cli-release
+        path: release/
+        if-no-files-found: error
+  smoke-linux-amd64:
+    name: Smoke CLI (Linux AMD64 artifacts)
+    runs-on: ubuntu-24.04-16core
+    timeout-minutes: 15
+    needs: release-build
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: cli-release
+        path: release
+    - name: Run checks
+      run: bash .github/ci/smoke.sh
+      shell: bash
+    env:
+      CI_CACHE_DIR: "/tmp/oss-ci"
+  smoke-darwin-arm64:
+    name: Smoke CLI (macOS ARM64 artifacts)
+    runs-on: macos-15
+    timeout-minutes: 15
+    needs: release-build
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: cli-release
+        path: release
+    - name: Run checks
+      run: bash .github/ci/smoke.sh
+      shell: bash
+    env:
+      CI_CACHE_DIR: "/tmp/oss-ci"
+  smoke-windows-amd64:
+    name: Smoke CLI (Windows AMD64 artifacts)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    needs: release-build
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      with:
+        fetch-depth: 0
+        ref: "${{ inputs.ref || github.sha }}"
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: cli-release
+        path: release
+    - name: Run checks
+      run: pwsh -NoProfile -File .github/ci/smoke-windows.ps1
+      shell: pwsh
+    env:
+      CI_CACHE_DIR: "/tmp/oss-ci"
+  ci:
+    name: CI
+    if: "${{ always() }}"
+    needs:
+    - native-oss-8-5-0
+    - functional-oss-8-5-0
+    - bcr-oss-8-5-0
+    - bcr-oss_darwin_arm64-8-5-0
+    - verify-hooks
+    - release-build
+    - smoke-linux-amd64
+    - smoke-darwin-arm64
+    - smoke-windows-amd64
+    runs-on: ubuntu-latest
+    steps:
+    - env:
+        RESULTS: "${{ toJSON(needs) }}"
+      run: |-
+        python3 - <<'CHECK'
+        import json, os
+        results = json.loads(os.environ['RESULTS'])
+        failed = [name for name, job in results.items() if job['result'] != 'success']
+        if failed:
+            raise SystemExit('Failed or skipped checks: ' + ', '.join(failed))
+        CHECK

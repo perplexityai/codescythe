@@ -8,17 +8,17 @@ import sys
 
 
 def verify(root):
-    marker = root / 'buildkite-release.json'
+    marker = root / 'gha-release.json'
     if marker.is_symlink():
         raise ValueError('Unsafe artifact manifest')
     manifest = json.loads(marker.read_text())
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-    expected = {'commit': commit, 'build_id': os.environ['BUILDKITE_BUILD_ID'],
-                'pipeline': os.environ['BUILDKITE_PIPELINE_SLUG']}
+    expected = {'commit': commit, 'build_id': os.environ['CI_RUN_ID'],
+                'pipeline': os.environ['GITHUB_REPOSITORY']}
     for key, value in expected.items():
         if manifest.get(key) != value:
             raise ValueError(f'Artifact {key} mismatch')
-    if {path.name for path in root.iterdir()} != set(manifest['files']) | {'buildkite-release.json'}:
+    if {path.name for path in root.iterdir()} != set(manifest['files']) | {'gha-release.json'}:
         raise ValueError('Unexpected artifact set')
     for name, digest in manifest['files'].items():
         if Path(name).name != name or name in {'.', '..'}:

@@ -44,6 +44,15 @@ jobs:
           version="${REQUESTED_VERSION:-$(jq -r '.versions[-1]' "$source/metadata.json")}"
           target=bazel-central-registry/modules/codescythe
           test -d "$source/$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if [[ -d "$target/$version" ]]; then
+            diff -r "$source/$version" "$target/$version"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "codescythe@$version is already published" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           mkdir -p "$target"
 
           if [[ -f "$target/metadata.json" ]]; then
@@ -56,10 +65,10 @@ jobs:
           fi
 
           cp -R "$source/$version" "$target/$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Publish registry branch
         id: publish
+        if: steps.module.outputs.published != 'true'
         env:
           BCR_PUBLISH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN }}
           VERSION: ${{ steps.module.outputs.version }}
@@ -80,6 +89,7 @@ jobs:
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Open BCR pull request
+        if: steps.module.outputs.published != 'true'
         env:
           GH_TOKEN: ${{ secrets.BCR_PUBLISH_TOKEN }}
           VERSION: ${{ steps.module.outputs.version }}

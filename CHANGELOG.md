@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.3](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.2...codescythe_cli_v0.11.3) (2026-11-03)
+
+
+### Bug Fixes
+
+* count namespace JSX and qualified type member uses ([#130](https://github.com/perplexityai/codescythe/issues/130)) ([d2b00d8](https://github.com/perplexityai/codescythe/commit/d2b00d872fceccd97ba6d3cc1ef1c91077bca1a8))
+* reject unused-file expectations on test files ([#126](https://github.com/perplexityai/codescythe/issues/126)) ([b4cc938](https://github.com/perplexityai/codescythe/commit/b4cc93835c3a749bafa804845ea516ed7cc9d71b))
+
 ## [0.11.2](https://github.com/perplexityai/codescythe/compare/codescythe_cli_v0.11.1...codescythe_cli_v0.11.2) (2026-10-14)
 
 

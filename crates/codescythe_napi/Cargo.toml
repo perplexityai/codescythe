@@ -1,6 +1,6 @@
 [package]
 name = "codescythe_napi"
-version = "0.11.2"
+version = "0.11.3"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
