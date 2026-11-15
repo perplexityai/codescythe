@@ -9,8 +9,13 @@ use std::time::{Duration, Instant};
 
 pub(super) struct ModuleResolver {
     resolver: ResolverGeneric<ResolverFileSystem>,
+    /// Same options with CommonJS conditions, used to check `require()` and
+    /// `import = require()` call sites. A package `exports`/`imports` entry can
+    /// map `require` to a different file than `import`.
+    require_resolver: ResolverGeneric<ResolverFileSystem>,
     index_by_path: HashMap<PathBuf, usize>,
     resolution_cache: RefCell<HashMap<(String, String), ImportResolution>>,
+    require_resolution_cache: RefCell<HashMap<(String, String), ImportResolution>>,
     #[cfg(feature = "profiling")]
     profile: Option<RefCell<ResolverProfileStats>>,
 }
@@ -213,6 +218,10 @@ impl ModuleResolver {
                 ..ResolveOptions::default()
             },
         );
+        let require_resolver = resolver.clone_with_options(ResolveOptions {
+            condition_names: vec!["node".into(), "require".into()],
+            ..resolver.options().clone()
+        });
         let index_by_path = project_files
             .iter()
             .enumerate()
@@ -221,8 +230,10 @@ impl ModuleResolver {
 
         Ok(Self {
             resolver,
+            require_resolver,
             index_by_path,
             resolution_cache: RefCell::new(HashMap::new()),
+            require_resolution_cache: RefCell::new(HashMap::new()),
             #[cfg(feature = "profiling")]
             profile: profile_enabled().then(|| RefCell::new(ResolverProfileStats::default())),
         })
@@ -245,7 +256,7 @@ impl ModuleResolver {
 
         #[cfg(feature = "profiling")]
         let started = self.profile.as_ref().map(|_| Instant::now());
-        let resolution = self.resolve_uncached(from, specifier);
+        let resolution = self.resolve_uncached(&self.resolver, from, specifier);
         #[cfg(feature = "profiling")]
         if let (Some(profile), Some(started)) = (&self.profile, started) {
             let mut profile = profile.borrow_mut();
@@ -266,13 +277,36 @@ impl ModuleResolver {
         Ok(resolution)
     }
 
+    /// Resolves `specifier` the way CommonJS `require()` would, with `require`
+    /// instead of `import` in the export conditions.
+    pub(super) fn resolve_require(
+        &self,
+        from: &FileData,
+        specifier: &str,
+    ) -> Result<ImportResolution> {
+        let cache_key = (from.relative.clone(), specifier.to_string());
+        if let Some(resolution) = self.require_resolution_cache.borrow().get(&cache_key) {
+            return Ok(*resolution);
+        }
+        let resolution = self.resolve_uncached(&self.require_resolver, from, specifier)?;
+        self.require_resolution_cache
+            .borrow_mut()
+            .insert(cache_key, resolution);
+        Ok(resolution)
+    }
+
     #[cfg(feature = "profiling")]
     pub(super) fn profile_stats(&self) -> Option<ResolverProfileStats> {
         self.profile.as_ref().map(|profile| *profile.borrow())
     }
 
-    fn resolve_uncached(&self, from: &FileData, specifier: &str) -> Result<ImportResolution> {
-        match self.resolver.resolve_file(&from.path, specifier) {
+    fn resolve_uncached(
+        &self,
+        resolver: &ResolverGeneric<ResolverFileSystem>,
+        from: &FileData,
+        specifier: &str,
+    ) -> Result<ImportResolution> {
+        match resolver.resolve_file(&from.path, specifier) {
             Ok(resolution) => {
                 let path = normalize_path(resolution.path());
                 Ok(self

@@ -31,11 +31,15 @@ fn parse_file(cwd: &Path, path: &Path) -> Result<FileData> {
         import_conflict_suppression_starts,
         import_conflict_preload_suppression_starts,
     );
+    visitor.require_shadow_scopes = require_shadow_scopes(&program);
     visitor.visit_program(&program);
     let mut file = visitor.finish();
     file.expects_unused_file = expects_unused_file;
     for export in file.exports.values_mut() {
         (export.line, export.col) = line_col(&source, export.name_span.start);
+    }
+    for import in &mut file.unsupported_imports {
+        (import.line, import.col) = line_col(&source, import.span.start);
     }
     Ok(file)
 }
@@ -133,6 +137,14 @@ impl FileCache {
     #[cfg(feature = "profiling")]
     pub(super) fn parsed_count(&self) -> usize {
         self.parsed.iter().filter(|file| file.is_some()).count()
+    }
+
+    pub(super) fn parsed_indexes(&self) -> Vec<usize> {
+        self.parsed
+            .iter()
+            .enumerate()
+            .filter_map(|(index, file)| file.is_some().then_some(index))
+            .collect()
     }
 
     pub(super) fn relative(&self, index: usize) -> String {
@@ -312,7 +324,18 @@ pub(super) struct FileData {
     pub(super) suppressed_import_conflict_sources: BTreeSet<String>,
     pub(super) suppressed_import_conflict_preload_sources: BTreeSet<String>,
     pub(super) local_references: BTreeSet<String>,
+    pub(super) unsupported_imports: Vec<UnsupportedImportRecord>,
     pub(super) expects_unused_file: bool,
+}
+
+/// CommonJS-style import syntax that is outside the supported ESM graph.
+#[derive(Debug, Clone)]
+pub(super) struct UnsupportedImportRecord {
+    pub(super) syntax: UnsupportedImportSyntax,
+    pub(super) source: String,
+    pub(super) span: Span,
+    pub(super) line: usize,
+    pub(super) col: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -360,6 +383,8 @@ struct FileVisitor {
     suppressed_import_conflict_preload_sources: BTreeSet<String>,
     local_references: BTreeSet<String>,
     local_internal_declarations: BTreeSet<String>,
+    unsupported_imports: Vec<UnsupportedImportRecord>,
+    require_shadow_scopes: Vec<Span>,
     internal_annotation_starts: BTreeSet<u32>,
     import_conflict_suppression_starts: BTreeSet<u32>,
     import_conflict_preload_suppression_starts: BTreeSet<u32>,
@@ -391,6 +416,8 @@ impl FileVisitor {
             suppressed_import_conflict_preload_sources: BTreeSet::new(),
             local_references: BTreeSet::new(),
             local_internal_declarations: BTreeSet::new(),
+            unsupported_imports: Vec::new(),
+            require_shadow_scopes: Vec::new(),
             internal_annotation_starts,
             import_conflict_suppression_starts,
             import_conflict_preload_suppression_starts,
@@ -435,6 +462,7 @@ impl FileVisitor {
             suppressed_import_conflict_preload_sources: self
                 .suppressed_import_conflict_preload_sources,
             local_references: self.local_references,
+            unsupported_imports: self.unsupported_imports,
             expects_unused_file: false,
         }
     }
@@ -519,6 +547,27 @@ impl FileVisitor {
                 type_only: false,
             });
         }
+    }
+
+    fn add_unsupported_import(
+        &mut self,
+        syntax: UnsupportedImportSyntax,
+        source: &str,
+        span: Span,
+    ) {
+        self.unsupported_imports.push(UnsupportedImportRecord {
+            syntax,
+            source: source.to_string(),
+            span,
+            line: 0,
+            col: 0,
+        });
+    }
+
+    fn is_require_shadowed(&self, span: Span) -> bool {
+        self.require_shadow_scopes
+            .iter()
+            .any(|scope| scope.start <= span.start && span.end <= scope.end)
     }
 
     fn has_internal_annotation(&self, span: Span) -> bool {
@@ -734,6 +783,15 @@ impl<'a> Visit<'a> for FileVisitor {
     fn visit_call_expression(&mut self, expression: &CallExpression<'a>) {
         self.glob_imports
             .extend(import_meta_glob_patterns(expression));
+        if is_require_call(expression)
+            && !self.is_require_shadowed(expression.span)
+            && let Some(source) = expression
+                .arguments
+                .first()
+                .and_then(argument_string_literal)
+        {
+            self.add_unsupported_import(UnsupportedImportSyntax::Require, &source, expression.span);
+        }
 
         walk::walk_call_expression(self, expression);
     }
@@ -743,6 +801,18 @@ impl<'a> Visit<'a> for FileVisitor {
             self.dynamic_imports.push(source.value.as_str().to_string());
         }
         walk::walk_import_expression(self, expression);
+    }
+
+    fn visit_ts_import_equals_declaration(&mut self, declaration: &TSImportEqualsDeclaration<'a>) {
+        if let TSModuleReference::ExternalModuleReference(reference) = &declaration.module_reference
+        {
+            self.add_unsupported_import(
+                UnsupportedImportSyntax::ImportEquals,
+                reference.expression.value.as_str(),
+                declaration.span,
+            );
+        }
+        walk::walk_ts_import_equals_declaration(self, declaration);
     }
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
@@ -991,6 +1061,210 @@ fn import_source_from_expression(
             import_source_from_expression(&parenthesized.expression)
         }
         _ => None,
+    }
+}
+
+/// Returns the spans of scopes where `require` is a local binding, so a
+/// `require(...)` call inside them is an ordinary function call rather than
+/// CommonJS. A binding is only ever attributed to its own scope or a narrower
+/// one, so a form this does not recognize still counts as CommonJS `require`,
+/// which is the safe side for `--fix`. `const require = createRequire(...)`
+/// keeps CommonJS semantics and does not shadow.
+fn require_shadow_scopes(program: &Program<'_>) -> Vec<Span> {
+    let mut collector = RequireShadowCollector::default();
+    collector.visit_program(program);
+    collector.shadowed
+}
+
+#[derive(Default)]
+struct RequireShadowCollector {
+    /// Innermost-last scopes that hold `let`, `const`, class and function
+    /// declarations.
+    lexical_scopes: Vec<Span>,
+    /// Innermost-last scopes that hold `var` declarations and parameters.
+    var_scopes: Vec<Span>,
+    shadowed: Vec<Span>,
+}
+
+impl RequireShadowCollector {
+    fn with_scope(&mut self, span: Span, var_scope: bool, visit: impl FnOnce(&mut Self)) {
+        self.lexical_scopes.push(span);
+        if var_scope {
+            self.var_scopes.push(span);
+        }
+        visit(self);
+        if var_scope {
+            self.var_scopes.pop();
+        }
+        self.lexical_scopes.pop();
+    }
+
+    fn shadow_lexical(&mut self) {
+        if let Some(scope) = self.lexical_scopes.last() {
+            self.shadowed.push(*scope);
+        }
+    }
+
+    fn shadow_var(&mut self) {
+        if let Some(scope) = self.var_scopes.last() {
+            self.shadowed.push(*scope);
+        }
+    }
+}
+
+impl<'a> Visit<'a> for RequireShadowCollector {
+    fn visit_program(&mut self, program: &Program<'a>) {
+        self.with_scope(program.span, true, |this| walk::walk_program(this, program));
+    }
+
+    fn visit_block_statement(&mut self, block: &BlockStatement<'a>) {
+        self.with_scope(block.span, false, |this| {
+            walk::walk_block_statement(this, block);
+        });
+    }
+
+    fn visit_static_block(&mut self, block: &StaticBlock<'a>) {
+        self.with_scope(block.span, true, |this| {
+            walk::walk_static_block(this, block)
+        });
+    }
+
+    fn visit_ts_module_declaration(&mut self, declaration: &TSModuleDeclaration<'a>) {
+        self.with_scope(declaration.span, true, |this| {
+            walk::walk_ts_module_declaration(this, declaration);
+        });
+    }
+
+    fn visit_switch_statement(&mut self, statement: &SwitchStatement<'a>) {
+        // Declarations in the case block don't cover the discriminant.
+        self.visit_expression(&statement.discriminant);
+        let start = statement
+            .cases
+            .first()
+            .map_or(statement.span.end, |case| case.span.start);
+        self.with_scope(Span::new(start, statement.span.end), false, |this| {
+            for case in &statement.cases {
+                this.visit_switch_case(case);
+            }
+        });
+    }
+
+    fn visit_for_statement(&mut self, statement: &ForStatement<'a>) {
+        self.with_scope(statement.span, false, |this| {
+            walk::walk_for_statement(this, statement);
+        });
+    }
+
+    fn visit_for_in_statement(&mut self, statement: &ForInStatement<'a>) {
+        self.with_scope(statement.span, false, |this| {
+            walk::walk_for_in_statement(this, statement);
+        });
+    }
+
+    fn visit_for_of_statement(&mut self, statement: &ForOfStatement<'a>) {
+        self.with_scope(statement.span, false, |this| {
+            walk::walk_for_of_statement(this, statement);
+        });
+    }
+
+    fn visit_catch_clause(&mut self, clause: &CatchClause<'a>) {
+        self.with_scope(clause.span, false, |this| {
+            if clause
+                .param
+                .as_ref()
+                .is_some_and(|param| binds_require(&param.pattern))
+            {
+                this.shadow_lexical();
+            }
+            walk::walk_catch_clause(this, clause);
+        });
+    }
+
+    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        // Ambient declarations and overload signatures bind nothing at runtime.
+        if function.declare || function.body.is_none() {
+            return;
+        }
+        let named_require = function.id.as_ref().is_some_and(|id| id.name == "require");
+        if named_require && matches!(function.r#type, FunctionType::FunctionDeclaration) {
+            self.shadow_lexical();
+        }
+        self.with_scope(function.span, true, |this| {
+            if named_require && matches!(function.r#type, FunctionType::FunctionExpression) {
+                this.shadow_lexical();
+            }
+            if params_bind_require(&function.params) {
+                this.shadow_var();
+            }
+            walk::walk_function(this, function, flags);
+        });
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        self.with_scope(arrow.span, true, |this| {
+            if params_bind_require(&arrow.params) {
+                this.shadow_var();
+            }
+            walk::walk_arrow_function_expression(this, arrow);
+        });
+    }
+
+    fn visit_class(&mut self, class: &Class<'a>) {
+        if class.declare {
+            return;
+        }
+        if class.id.as_ref().is_some_and(|id| id.name == "require") {
+            match class.r#type {
+                ClassType::ClassDeclaration => self.shadow_lexical(),
+                ClassType::ClassExpression => self.shadowed.push(class.span),
+            }
+        }
+        walk::walk_class(self, class);
+    }
+
+    fn visit_variable_declaration(&mut self, declaration: &VariableDeclaration<'a>) {
+        let binds = !declaration.declare
+            && declaration.declarations.iter().any(|declarator| {
+                binds_require(&declarator.id)
+                    && !declarator.init.as_ref().is_some_and(is_create_require_call)
+            });
+        if binds {
+            if matches!(declaration.kind, VariableDeclarationKind::Var) {
+                self.shadow_var();
+            } else {
+                self.shadow_lexical();
+            }
+        }
+        walk::walk_variable_declaration(self, declaration);
+    }
+}
+
+fn binds_require(pattern: &BindingPattern<'_>) -> bool {
+    let mut names = Vec::new();
+    collect_binding_names(pattern, &mut names);
+    names.iter().any(|name| name == "require")
+}
+
+fn params_bind_require(params: &FormalParameters<'_>) -> bool {
+    params
+        .items
+        .iter()
+        .any(|param| binds_require(&param.pattern))
+        || params
+            .rest
+            .as_ref()
+            .is_some_and(|rest| binds_require(&rest.rest.argument))
+}
+
+/// `createRequire(import.meta.url)` or `module.createRequire(...)`.
+fn is_create_require_call(expression: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expression.get_inner_expression() else {
+        return false;
+    };
+    match &call.callee {
+        Expression::Identifier(identifier) => identifier.name == "createRequire",
+        Expression::StaticMemberExpression(member) => member.property.name == "createRequire",
+        _ => false,
     }
 }
 
